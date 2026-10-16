@@ -29,6 +29,24 @@ node tools/check.mjs examples/mesa.3di
 
 Esse comando mostra os erros com linha e dica, ou então o tamanho e a posição de cada peça nomeada com `.name()`.
 
+Para **ver** a cena sem abrir o editor (também útil para agentes de IA conferirem o que montaram):
+
+```bash
+node tools/render.mjs examples/mesa.3di mesa.png
+node tools/render.mjs examples/boneco.3di boneco.png --t 1.5
+```
+
+Gera um PNG com 4 vistas numa grade 2x2: **frente** (de +z), **lado** (de +x), **topo** (de +y) e
+**perspectiva**, cada uma enquadrada pela caixa envolvente da cena e com rótulo e direção dos eixos;
+no canto vai o tamanho da caixa (e o `t` em cenas animadas). Opções: `--t segundos` congela a
+animação nesse instante (padrão 0; o enquadramento acompanha a cena naquele instante), `--size px`
+é o lado de cada quadro (padrão 512) e `--cpu` força a renderização por software.
+Erros de script saem como no `check.mjs`, com código de saída 1.
+Precisa de Chrome ou Chromium instalado (ou do Chromium do Playwright em `~/.cache/ms-playwright`;
+outro caminho vai em `CHROME=/caminho/do/chrome`). Usa a GPU e, se ela não tiver WebGL2 no modo
+headless, cai para o SwiftShader, que funciona em qualquer máquina mas é bem mais lento.
+No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou Esc fecha).
+
 ## Convenções
 
 - Unidades em **metros**. **y é para cima**, +x é a direita, +z é a frente.
@@ -205,6 +223,8 @@ Não há `import`, classes nem arquivos.
   2.000 primitivas dentro delas; o shader demora mais para compilar quanto mais código houver
   (a vila, com 78, leva ~0,6 s). A compilação roda em segundo plano, sem travar o editor.
 - Dê `.name()` às peças principais e rode `node tools/check.mjs` para conferir tamanhos e posições.
+- Depois, rode `node tools/render.mjs cena.3di cena.png` e olhe a imagem: as vistas de frente, lado e
+  topo mostram peças flutuando, atravessadas ou fora do lugar que os números não deixam ver.
 - Os erros dizem a linha e trazem uma dica do tipo "você quis dizer 'sphere'?".
 
 ## Exemplos
@@ -239,5 +259,6 @@ src/renderer.js  WebGL2: raymarching, sombras suaves, AO, PBR simples, texturas.
                  O main é uma máquina de estados que chama a cena em um único ponto: o
                  compilador da GPU copia a função da cena em cada chamada, então isso
                  mantém a compilação rápida. Compila em segundo plano (KHR_parallel_shader_compile).
-src/main.js      editor + câmera orbital
+src/main.js      editor + câmera orbital + 4 vistas; window.tdi é a API de automação
+tools/render.mjs Chrome headless (protocolo DevTools por pipe, sem npm) → tdi.views() → PNG
 ```

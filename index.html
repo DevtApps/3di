@@ -35,6 +35,9 @@
   #parts { position: absolute; right: 10px; top: 10px; max-width: 280px; max-height: 50%; overflow: auto; background: rgba(20,22,28,.82); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: 11px/1.5 var(--mono); display: none; }
   #parts.show { display: block; }
   #parts b { color: var(--accent); font-weight: 600; }
+  #views { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(10,11,14,.88); cursor: zoom-out; }
+  #views[hidden] { display: none; }
+  #views img { max-width: 100%; max-height: 100%; border: 1px solid var(--border); border-radius: 6px; }
   @media (max-width: 760px) {
     #app { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
     #left { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -50,6 +53,7 @@
       <div class="spacer"></div>
       <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
       <button id="btnParts" title="Mostrar peças nomeadas e medidas">Peças</button>
+      <button id="btnViews" title="Ver frente, lado, topo e perspectiva lado a lado">Vistas</button>
       <button id="btnFrame" title="Reenquadrar a câmera (duplo clique na vista)">Enquadrar</button>
       <button id="btnPng" title="Baixar imagem PNG">PNG</button>
       <button id="btnGlb" title="Exportar a cena como .glb (malhas, cores, esqueleto e animação)">GLB</button>
@@ -63,6 +67,7 @@
   <div id="right">
     <canvas id="view"></canvas>
     <div id="parts"></div>
+    <div id="views" hidden title="Clique ou Esc para fechar"><img alt="Vistas da cena"></div>
     <div id="hud">arrastar: girar · botão direito/shift: mover · roda: zoom · duplo clique: enquadrar</div>
   </div>
 </div>

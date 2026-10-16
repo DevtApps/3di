@@ -230,8 +230,8 @@ export class Renderer {
     if (!this.program) return;
     const gl = this.gl;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * scale;
-    const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
+    // view.size = [w, h] fixa a resolução (vistas fora da tela); senão segue o tamanho do canvas
+    const [w, h] = view.size ?? [this.canvas.clientWidth, this.canvas.clientHeight].map((x) => Math.max(1, Math.round(x * dpr)));
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
