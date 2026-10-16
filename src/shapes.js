@@ -595,4 +595,4 @@ export function collectParts(shapes) {
   return parts;
 }
 
-export { isFiniteBB, center, size, unionBB, mul3, corners, fromPoints, transformedBBox };
+export { isFiniteBB, center, size, unionBB, mul3, corners, fromPoints, transformedBBox, METHODS, PROPS, COLORS, TEXTURES, SIDES };

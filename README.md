@@ -262,3 +262,20 @@ src/renderer.js  WebGL2: raymarching, sombras suaves, AO, PBR simples, texturas.
 src/main.js      editor + câmera orbital + 4 vistas; window.tdi é a API de automação
 tools/render.mjs Chrome headless (protocolo DevTools por pipe, sem npm) → tdi.views() → PNG
 ```
+
+## IDE e app desktop
+
+```bash
+npm install                        # Monaco local (o editor funciona offline)
+node tools/app.mjs cena.3di        # abre a IDE numa janela do Chrome em modo app
+node tools/install-desktop.mjs     # atalho "3DI" no menu e .3di abrindo no app (--uninstall remove)
+```
+
+- **Editor (Monaco):** cores, autocomplete pelo contexto (métodos de forma, de osso e de esqueleto,
+  cores, texturas e parâmetros), assinaturas, documentação ao passar o mouse, snippets e erros na linha.
+- **Arquivos:** Novo/Abrir/Salvar (Ctrl+O, Ctrl+S, Ctrl+Shift+S); PNG e GLB abrem "salvar como".
+- **Câmera:** botões Frente/Lado/Topo/Persp.; clique numa peça do painel Peças para enquadrá-la.
+- **MCP** (`.mcp.json`, `tools/mcp.mjs`): `describe_language`, `check_script`, `get_script`,
+  `set_script`, `save_script`, `screenshot` (vista, peça, grade de 4 vistas, instante), `set_camera`,
+  `frame`, `list_parts`, `set_time`, `export_glb`. O ponto verde no editor indica a ponte conectada.
+  O app e o MCP compartilham o mesmo servidor (porta 8317).

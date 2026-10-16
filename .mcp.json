@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "3di": {
+      "command": "node",
+      "args": ["tools/mcp.mjs"]
+    }
+  }
+}

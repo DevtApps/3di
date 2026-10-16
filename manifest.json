@@ -1,0 +1,15 @@
+{
+  "name": "3DI",
+  "short_name": "3DI",
+  "description": "Linguagem e IDE para criar cenas 3D com código",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#15171c",
+  "theme_color": "#15171c",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "file_handlers": [
+    { "action": "./", "accept": { "text/plain": [".3di"] } }
+  ]
+}
