@@ -1,0 +1,63 @@
+# Personagem com esqueleto (rig) andando em círculo.
+# Cada parte do corpo é presa a um osso com .bind(osso); girar o osso move tudo que vem
+# depois dele na cadeia. As juntas se fundem com group(..., smooth=...).
+# Exporte com o botão GLB: vira uma malha com skin e a animação de caminhada.
+
+esq = skeleton("boneco")
+quadril = esq.bone("quadril", head=(0, 0.95, 0), tail=(0, 1.05, 0))
+coluna = esq.bone("coluna", head=(0, 1.02, 0), tail=(0, 1.42, 0), parent=quadril)
+cabeca = esq.bone("cabeca", head=(0, 1.45, 0), tail=(0, 1.78, 0), parent=coluna)
+
+PELE, CAMISA, CALCA, SAPATO = "skin", "#e0533d", "#2f4b7c", "#3a2a20"
+
+def lado(s, nome):
+    # s = 1 para o lado esquerdo (+x), -1 para o direito
+    ombro, cotovelo, pulso = (0.21 * s, 1.38, 0), (0.25 * s, 1.12, 0), (0.26 * s, 0.88, 0)
+    quadril_j, joelho, tornozelo = (0.1 * s, 0.93, 0), (0.1 * s, 0.5, 0), (0.1 * s, 0.1, 0)
+    braco = esq.bone("braco" + nome, head=ombro, parent=coluna)
+    antebraco = esq.bone("antebraco" + nome, head=cotovelo, tail=pulso, parent=braco)
+    coxa = esq.bone("coxa" + nome, head=quadril_j, parent=quadril)
+    canela = esq.bone("canela" + nome, head=joelho, tail=tornozelo, parent=coxa)
+    partes = [
+        segment(ombro, cotovelo, 0.052).color(CAMISA).bind(braco),
+        group(segment(cotovelo, pulso, 0.042), sphere(0.05).at(0.265 * s, 0.84, 0.0)).color(PELE).bind(antebraco),
+        segment(quadril_j, joelho, 0.068).color(CALCA).bind(coxa),
+        segment(joelho, tornozelo, 0.056).color(CALCA).bind(canela),
+        box(0.1, 0.08, 0.24, round=0.035).place(0.1 * s, 0, -0.06 + 0.1).color(SAPATO).bind(canela),
+    ]
+    return (braco, antebraco, coxa, canela), partes
+
+(bE, abE, cxE, cnE), partesE = lado(1, ".E")
+(bD, abD, cxD, cnD), partesD = lado(-1, ".D")
+
+pelve = ellipsoid(0.17, 0.11, 0.11).at(0, 0.97, 0).color(CALCA).bind(quadril)
+tronco = ellipsoid(0.2, 0.27, 0.13).at(0, 1.22, 0).color(CAMISA).texture("stripes", color2="#f3e7d3", size=0.06).bind(coluna)
+olho = sphere(0.018).at(0.045, 1.63, 0.115).mirror("x").color("black")
+cabelo = (sphere(0.138).at(0, 1.62, -0.01) - box(0.4, 0.4, 0.4).at(0, 1.47, 0.12)).color("#3b2416")
+rosto = group(segment((0, 1.4, 0), (0, 1.5, 0), 0.045), sphere(0.13).at(0, 1.6, 0), sphere(0.022).at(0, 1.59, 0.13)).color(PELE)
+cabeca_partes = group(rosto, olho, cabelo).bind(cabeca)
+
+boneco = group(pelve, tronco, cabeca_partes, partesE, partesD, smooth=0.025).name("boneco")
+
+# ---- caminhada: f é a fase do passo; a perna direita está meio ciclo atrás da esquerda
+f = time * 5
+for (braco, antebraco, coxa, canela), fase in [((bE, abE, cxE, cnE), 0), ((bD, abD, cxD, cnD), pi)]:
+    coxa.rotate(x=-sin(f + fase) * 28)
+    canela.rotate(x=5 + 50 * clamp(cos(f + fase), 0, 1))
+    braco.rotate(x=sin(f + fase) * 25, z=8 if braco is bE else -8)
+    antebraco.rotate(x=-25)
+coluna.rotate(y=sin(f) * 6)
+cabeca.rotate(y=-sin(f) * 4)
+
+# anda em círculo de raio 1.6 m (0.5 rad/s) e balança o quadril a cada passo
+volta = time * 0.5
+quadril.rotate(y=-volta * 180 / pi)
+quadril.move(x=cos(volta) * 1.6 - 1.6, y=abs(cos(f)) * 0.025, z=sin(volta) * 1.6)
+
+# a animação fecha o ciclo em 4π s (10 passos por volta) e pode repetir sem emenda
+animation(duration=4 * pi, fps=30)
+
+chao = plane().color("#d9d2c3").texture("checker", color2="#b9b0a0", size=0.5)
+show(chao, boneco)
+# show(esq.debug())   # descomente para ver os ossos
+camera(pos=(0.6, 1.7, 4.4), look=(-1.3, 0.8, 0))

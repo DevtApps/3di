@@ -19,6 +19,8 @@ python3 tools/serve.py
 
 Abra http://localhost:8317. O editor recompila enquanto você digita (Ctrl+Enter força).
 
+Para exportar para glTF: `node tools/export.mjs cena.3di` (veja "Exportar glTF / GLB").
+
 Para validar um script sem navegador (útil para agentes de IA):
 
 ```bash
@@ -49,6 +51,7 @@ Esse comando mostra os erros com linha e dica, ou então o tamanho e a posição
 | `pyramid(w=1, h=1)` | pirâmide de base quadrada |
 | `prism(w=1, h=0.5, d=1)` | prisma triangular (telhado de duas águas): triângulo de base w e altura h, estendido em z |
 | `plane()` | chão infinito em y=0 |
+| `segment(a, b, r=0.05)` | cápsula ligando os pontos a e b (membros, canos, galhos) |
 
 ## Combinar
 
@@ -127,6 +130,48 @@ O script roda uma vez só: `time` vira código no shader e a GPU anima a cena. P
 entrar em `if`, `while` ou comparações (use `clamp`, `min`, `max` ou `smoothstep`), nem em tamanhos de
 primitivas. O layout (`on`, `place`...) usa a posição em t = 0. O botão ⏸ do editor pausa a animação.
 
+## Rig (esqueleto)
+
+```python
+esq = skeleton("boneco")
+quadril = esq.bone("quadril", head=(0, 0.95, 0))
+coxa = esq.bone("coxa.E", head=(0.1, 0.93, 0), parent=quadril)
+canela = esq.bone("canela.E", head=(0.1, 0.5, 0), tail=(0.1, 0.1, 0), parent=coxa)
+
+perna = segment((0.1, 0.93, 0), (0.1, 0.5, 0), 0.07).bind(coxa)   # parte presa ao osso
+coxa.rotate(x=-sin(time * 5) * 28)                                 # pose / animação
+show(group(perna, ..., smooth=0.025), esq.debug())                 # debug() desenha os ossos
+```
+
+- `esq.bone(nome, head, tail=None, parent=None)`: `head` é a junta, onde o osso gira; `parent` pode
+  ser o osso ou o nome dele.
+- `forma.bind(osso)`: a forma, modelada na pose de repouso, passa a seguir o osso e toda a cadeia de pais.
+- `osso.rotate(x, y, z)` e `osso.move(x, y, z)` somam à pose e aceitam `time`.
+- Cada parte é rígida (peso 1 no osso). Com `group(..., smooth=...)` as juntas se fundem no render.
+- `animation(duration=4, fps=30)` define o ciclo exportado para o glTF. Escolha `duration` para o ciclo
+  fechar (ex.: um passo com `sin(time * 5)` repete a cada 2π/5 s).
+
+## Exportar glTF / GLB
+
+```bash
+node tools/export.mjs examples/boneco.3di out/boneco.glb --res 128
+```
+
+No editor, o botão **GLB** faz o mesmo e baixa o arquivo. O resultado:
+
+- **Malhas:** uma por forma mostrada (ou por parte presa a osso), com normais e cor por vértice
+  (texturas incluídas), geradas do SDF por *surface nets*.
+- **Detalhe:** `--res` são as células na maior dimensão da cena; peças finas ganham voxel menor no eixo
+  em que são finas.
+- **Esqueleto:** vira um `skin` glTF (juntas na pose de repouso), e as rotações e movimentos dos ossos
+  com `time` viram uma animação amostrada.
+- **O que fica parado:** `time` fora de ossos (ex.: um `rotate(y=time * 90)` direto na forma) é
+  exportado em t = 0. Para animar no glTF, use um osso.
+- **Chão:** `plane()` vira um piso recortado em volta da cena.
+
+Para conferir num motor padrão, abra `tools/viewer.html?file=/out/boneco.glb` com o servidor rodando
+(three.js, toca a animação) ou arraste um `.glb` para a página.
+
 ## Medir
 
 Toda forma tem estas propriedades, calculadas pela caixa envolvente: `top`, `bottom`, `left`, `right`, `front`, `back`, `width`, `height`, `depth`, `size`, `center`, `x`, `y`, `z`.
@@ -146,7 +191,8 @@ vaso = cylinder(0.05, 0.2).place(mesa.right - 0.1, mesa.top, 0)
 
 Funções disponíveis: `range`, `len`, `enumerate`, `zip`, `min`, `max`, `sum`, `abs`, `round`, `sqrt`, `sin`, `cos`, `tan`, `atan2`, `radians`, `degrees`, `floor`, `ceil`, `pi`, `lerp`, `clamp`, `linspace`, `print`, `random`, `uniform`, `randint`, `choice` e `seed` (aleatório determinístico).
 
-Desempacotamento com `*` também funciona (`porta, *janelas = lista`, `[*a, *b]`).
+Desempacotamento com `*` também funciona (`porta, *janelas = lista`, `[*a, *b]`), inclusive com
+tuplas aninhadas no `for` (`for (a, b), c in ...`).
 Não há `import`, classes nem arquivos.
 
 ## Dicas para IA
@@ -172,6 +218,7 @@ Não há `import`, classes nem arquivos.
 | `basico.3di`, `organico.3di` | todas as primitivas, `smooth`, `twist` |
 | `materiais.3di` | todas as texturas e `displace` |
 | `animacao.3di` | moinho girando, bola quicando, gema pulsando, órbitas |
+| `boneco.3di` | personagem com esqueleto andando em círculo (exporta com skin e animação) |
 
 ## Arquitetura
 
@@ -183,6 +230,11 @@ src/compiler.js  árvore → GLSL (mapD: distância, mapM: material) + BVH
                  primitivas simples viram dados numa textura (BVH percorrida no shader);
                  só o que é complexo (booleanas, smooth, mirror...) vira código
 src/expr.js      expressões simbólicas com `time` (viram GLSL)
+src/rig.js       esqueleto, ossos e bind (resolvidos em rotações antes de compilar)
+src/sdf.js       o mesmo SDF avaliado em JavaScript (com BVH), para a exportação
+src/mesh.js      SDF -> malha (surface nets, avaliando só perto da superfície)
+src/gltf.js      escrita de .glb (buffers, skin, animação)
+src/export.js    cena -> partes -> malhas -> .glb
 src/renderer.js  WebGL2: raymarching, sombras suaves, AO, PBR simples, texturas.
                  O main é uma máquina de estados que chama a cena em um único ponto: o
                  compilador da GPU copia a função da cena em cada chamada, então isso

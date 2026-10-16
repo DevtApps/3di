@@ -4,6 +4,7 @@
 // aparece uma só vez no código da GPU, o que mantém a compilação rápida.
 import { ScriptError } from './parser.js';
 import { isExpr, glslOf } from './expr.js';
+import { resolveRig } from './rig.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints } from './shapes.js';
 
 export const MAX_LEAVES = 2000;        // primitivas compiladas como código
@@ -328,7 +329,7 @@ function primParams(s) {
 
 const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
-function inv3(m) {
+export function inv3(m) {
   const [a, b, c, d, e, g, h, i, k] = m;
   const A = e * k - g * i, B = -(d * k - g * h), C = d * i - e * h;
   const det = a * A + b * B + c * C;
@@ -342,7 +343,7 @@ const mergeMat = (mat, P) => {
 };
 
 // Separa a cena em primitivas simples (viram dados) e subárvores complexas (viram código).
-function splitScene(shapes) {
+export function splitScene(shapes) {
   const instances = [], residual = [];
   const visit = (s, m, t, ds, mat) => {
     const c0 = s.children[0];
@@ -509,16 +510,18 @@ float bvhD(vec3 p, float best, out int hit) {
 `;
 
 export function compileScene(scene) {
-  if (!scene.shapes.length) {
+  // partes presas a ossos recebem a pose do esqueleto
+  const shapes = resolveRig(scene.shapes);
+  if (!shapes.length) {
     throw new ScriptError('nada para mostrar', null, 'termine o script com show(forma1, forma2, ...)');
   }
-  const { instances, residual } = splitScene(scene.shapes);
+  const { instances, residual } = splitScene(shapes);
   const useBVH = instances.length >= INSTANCE_THRESHOLD;
   if (instances.length > MAX_INSTANCES) {
     throw new ScriptError(`cena grande demais (${instances.length} primitivas, máximo ${MAX_INSTANCES})`, null,
       'use .repeat() ou .mirror(): eles não custam primitivas extras');
   }
-  const codeRoot = useBVH ? (residual.length ? union(residual) : null) : union(scene.shapes);
+  const codeRoot = useBVH ? (residual.length ? union(residual) : null) : union(shapes);
   const codeLeaves = codeRoot ? codeRoot.leaves : 0;
   if (codeLeaves > MAX_LEAVES) {
     throw new ScriptError(`cena complexa demais (${codeLeaves} primitivas dentro de booleanas/smooth/mirror, máximo ${MAX_LEAVES})`, null,
@@ -563,17 +566,17 @@ ${mBody}
 `;
   }
 
-  const finite = scene.shapes.filter((s) => isFiniteBB(s.bbox)).map((s) => s.bbox);
+  const finite = shapes.filter((s) => isFiniteBB(s.bbox)).map((s) => s.bbox);
   const bbox = finite.length ? unionBB(finite) : { min: [-1, 0, -1], max: [1, 1, 1] };
   return {
     glsl,
     data,
     bbox,
-    hasPlane: scene.shapes.some((s) => !isFiniteBB(s.bbox)),
+    hasPlane: shapes.some((s) => !isFiniteBB(s.bbox)),
     animated: glsl.includes('uTime'),
     leaves: codeLeaves + (useBVH ? instances.length : 0),
     codeLeaves,
     instances: useBVH ? instances.length : 0,
-    parts: collectParts(scene.shapes),
+    parts: collectParts(shapes),
   };
 }

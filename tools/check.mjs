@@ -6,6 +6,7 @@ import { runScript } from '../src/interp.js';
 import { compileScene } from '../src/compiler.js';
 import { fmtNum } from '../src/runtime.js';
 import { ScriptError } from '../src/parser.js';
+import { collectBones } from '../src/rig.js';
 
 const file = process.argv[2];
 if (!file) {
@@ -33,5 +34,10 @@ console.log(`cena: de ${v(b.min)} até ${v(b.max)}`);
 for (const p of out.parts) {
   const sz = p.bbox.max.map((x, i) => x - p.bbox.min[i]);
   console.log(`  ${p.name}: tamanho ${v(sz)}, de ${v(p.bbox.min)} até ${v(p.bbox.max)}`);
+}
+const bones = collectBones(res.scene.shapes);
+if (bones.length) {
+  console.log(`esqueleto ${bones[0].skel.name}: ${bones.length} ossos${bones.some((b) => b.animated) ? ' (animados)' : ''}`);
+  for (const b of bones) console.log(`  ${b.name}: cabeça ${v(b.head)}${b.parent ? `, pai ${b.parent.name}` : ''}`);
 }
 if (process.argv.includes('--glsl')) console.log(out.glsl);
