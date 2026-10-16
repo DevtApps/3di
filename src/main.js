@@ -5,6 +5,7 @@ import { ScriptError } from './parser.js';
 import { Renderer } from './renderer.js';
 import { fmtNum } from './runtime.js';
 import { exportGLB } from './export.js';
+import { withTime } from './expr.js';
 
 const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo'];
 const STORAGE_KEY = '3di.code';
@@ -101,7 +102,8 @@ function requestRender() {
   });
 }
 
-function draw(scale) {
+// opts.size = [w, h] desenha numa resolução fixa; opts.time sobrepõe o relógio da animação
+function draw(scale, opts = {}) {
   const sc = sceneInfo.scene;
   const r = radiusOf(sceneInfo.bbox);
   // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
@@ -115,8 +117,85 @@ function draw(scale) {
     sun: sc?.sun?.dir ?? [0.6, 1, 0.4],
     sunColor: sc?.sun?.color ?? [1, 0.95, 0.88],
     sky: sc?.sky ?? [0.3, 0.5, 0.82],
-    time: anim.time,
+    time: opts.time ?? anim.time,
+    size: opts.size,
   }, scale);
+}
+
+// ---------- vistas (frente, lado, topo, perspectiva) ----------
+
+const AXIS_FOV = 30; // fov estreito nas vistas de eixo: quase ortográfico, sem ficar longe demais
+
+// Câmeras das 4 vistas, enquadradas pela bbox da cena. Nas vistas de eixo a distância parte
+// da face mais próxima, que é a que aparece maior na perspectiva.
+function viewCameras(b) {
+  const c = [0, 1, 2].map((i) => (b.min[i] + b.max[i]) / 2);
+  const s = [0, 1, 2].map((i) => Math.max(0.05, b.max[i] - b.min[i]));
+  const fit = (w, h, depth) => depth / 2 + (Math.max(w, h) / 2) * 1.15 / Math.tan((AXIS_FOV * Math.PI) / 360);
+  return [
+    { label: 'FRENTE (de +z)', axes: '→ +x   ↑ +y', yaw: 0, pitch: 0, dist: fit(s[0], s[1], s[2]), fov: AXIS_FOV },
+    { label: 'LADO (de +x)', axes: '→ −z   ↑ +y', yaw: Math.PI / 2, pitch: 0, dist: fit(s[2], s[1], s[0]), fov: AXIS_FOV },
+    { label: 'TOPO (de +y)', axes: '→ +x   ↓ +z', yaw: 0, pitch: Math.PI / 2, dist: fit(s[0], s[2], s[1]), fov: AXIS_FOV },
+    { label: 'PERSPECTIVA', axes: '', yaw: 0.6, pitch: 0.38, dist: (radiusOf(b) / Math.sin((45 * Math.PI) / 360)) * 1.05, fov: 45 },
+  ].map((v) => ({ ...v, target: c }));
+}
+
+// Caixa usada para enquadrar as vistas. Em cenas animadas, roda o script de novo com o
+// layout no instante t (a bbox normal é a de t = 0). Com chão, ignora o que fica abaixo dele.
+function viewBBox(time) {
+  let b = sceneInfo.bbox;
+  if (anim.on && time) {
+    try {
+      b = withTime(time, () => {
+        const res = runScript(sceneInfo.src);
+        return res.ok ? compileScene(res.scene).bbox : b;
+      });
+    } catch {}
+  }
+  if (sceneInfo.hasPlane && b.max[1] > 0.05) b = { min: [b.min[0], Math.max(0, b.min[1]), b.min[2]], max: b.max };
+  return b;
+}
+
+// Desenha as 4 vistas numa grade 2x2 (quadros de size px) com rótulos; devolve um canvas 2D.
+function renderViews({ size = 512, time = anim.time } = {}) {
+  const b = viewBBox(time);
+  const out = document.createElement('canvas');
+  out.width = out.height = size * 2;
+  const g = out.getContext('2d');
+  const saved = { ...cam };
+  const fs = Math.max(11, Math.round(size / 32));
+  const tag = (text, x, y, alignRight = false) => {
+    g.font = `600 ${fs}px system-ui, sans-serif`;
+    const w = g.measureText(text).width + fs;
+    const x0 = alignRight ? x - w : x;
+    g.fillStyle = 'rgba(15,17,22,.72)';
+    g.fillRect(x0, y, w, fs * 1.7);
+    g.fillStyle = '#fff';
+    g.fillText(text, x0 + fs / 2, y + fs * 1.22);
+  };
+  try {
+    viewCameras(b).forEach((v, i) => {
+      Object.assign(cam, { target: v.target, yaw: v.yaw, pitch: v.pitch, dist: v.dist, fov: v.fov });
+      draw(1, { size: [size, size], time });
+      const x = (i % 2) * size, y = Math.floor(i / 2) * size;
+      g.drawImage(canvas, 0, 0, size, size, x, y, size, size);
+      tag(v.label, x + 8, y + 8);
+      if (v.axes) tag(v.axes, x + 8, y + size - fs * 1.7 - 8);
+    });
+  } finally {
+    Object.assign(cam, saved);
+  }
+  const dims = [0, 1, 2].map((i) => fmtNum(+(b.max[i] - b.min[i]).toFixed(3)));
+  tag(`bbox ${dims.join(' × ')} m${anim.on ? ` · t = ${time.toFixed(2)} s` : ''}`, size * 2 - 8, size * 2 - fs * 1.7 - 8, true);
+  g.strokeStyle = 'rgba(0,0,0,.6)';
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(size, 0); g.lineTo(size, size * 2);
+  g.moveTo(0, size); g.lineTo(size * 2, size);
+  g.stroke();
+  // devolve o canvas da cena ao tamanho da tela
+  draw(1);
+  return out;
 }
 
 function interact() {
@@ -214,7 +293,7 @@ async function compile() {
   // substituída por uma edição mais nova, ou um erro de script apareceu enquanto compilava
   if (tShader === null || id !== compileId) return status.textContent;
 
-  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene: res.scene };
+  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene: res.scene, src };
   const camKey = JSON.stringify(res.scene.camera);
   if (res.scene.camera && camKey !== lastCameraKey) applyScriptCamera(res.scene.camera);
   else if (lastCameraKey === null) frame();
@@ -305,6 +384,14 @@ $('btnPlay').onclick = () => {
   anim.last = 0;
   if (!anim.playing) requestRender();
 };
+$('btnViews').onclick = () => {
+  const box = $('views');
+  const img = box.querySelector('img');
+  img.src = renderViews({ size: 640 }).toDataURL('image/png');
+  box.hidden = false;
+};
+$('views').onclick = () => { $('views').hidden = true; };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('views').hidden = true; });
 $('btnParts').onclick = () => partsEl.classList.toggle('show');
 $('btnPng').onclick = () => {
   draw(2 / Math.min(window.devicePixelRatio || 1, 1.5));
@@ -365,6 +452,8 @@ window.tdi = {
   // pausa a animação num instante (s) e desenha
   at(t) { anim.playing = false; anim.time = t; draw(1); },
   status: () => status.textContent,
+  // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
+  views({ size = 512, t } = {}) { return renderViews({ size, time: t ?? anim.time }).toDataURL('image/png'); },
   // tempo médio de um quadro em resolução cheia (ms)
   bench(n = 5) {
     const gl = renderer.gl, px = new Uint8Array(4);

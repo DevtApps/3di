@@ -54,7 +54,16 @@ export const EXPR_FUNCS = Object.keys(JS_FN);
 export const isExpr = (x) => x instanceof Expr;
 
 // valor em t = 0 (para layout, caixas e enquadramento)
-export const val0 = (x) => (x instanceof Expr ? x.eval(0) : x);
+let layoutTime = 0;
+export const val0 = (x) => (x instanceof Expr ? x.eval(layoutTime) : x);
+
+// Roda fn() com o "t = 0" trocado por t: rodar o script e compilar dentro dela dá a caixa
+// envolvente da cena naquele instante (usado para enquadrar vistas de cenas animadas).
+export function withTime(t, fn) {
+  const prev = layoutTime;
+  layoutTime = t;
+  try { return fn(); } finally { layoutTime = prev; }
+}
 
 function fmt(x) {
   let s = String(+(+x).toFixed(6));
