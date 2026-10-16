@@ -1,0 +1,29 @@
+# Uma mesa com caneca, prato e cadeiras.
+# Unidades em metros. y = para cima, +z = frente, +x = direita.
+
+def mesa(w=1.4, d=0.8, h=0.75):
+    tampo = box(w, 0.05, d, round=0.01).place(y=h - 0.05)
+    # uma perna só, espelhada nos 4 cantos
+    perna = cylinder(r=0.03, h=h - 0.05).place(w / 2 - 0.08, 0, d / 2 - 0.08)
+    return group(tampo, perna.mirror("xz")).color("wood").name("mesa")
+
+def cadeira(h_assento=0.45):
+    assento = box(0.45, 0.04, 0.45, round=0.01).place(y=h_assento - 0.04)
+    encosto = box(0.45, 0.45, 0.03, round=0.01).on(assento).move(z=-0.21)
+    perna = box(0.04, h_assento - 0.04, 0.04).place(0.19, 0, 0.19)
+    return group(assento, encosto, perna.mirror("xz")).color("darkwood")
+
+m = mesa()
+caneca = (cylinder(r=0.045, h=0.1).shell(0.008) - cylinder(r=0.04, h=0.05).place(y=0.06))
+caneca = caneca + torus(0.03, 0.007).rotate(x=90).at(0.055, 0, 0)
+caneca = caneca.color("red").material(rough=0.3).on(m, x=0.3, z=0.1).name("caneca")
+prato = cylinder(r=0.12, h=0.015, round=0.005).color("white").material(rough=0.2).on(m, x=-0.3).name("prato")
+laranja = sphere(0.04).color("orange").on(prato).name("laranja")
+
+cadeiras = [
+    # o encosto da cadeira fica em -z; girando 180° ela vira para a mesa
+    cadeira().rotate(y=180).place(0, 0, 0.6).name("cadeira frente"),
+    cadeira().place(0, 0, -0.6).name("cadeira fundo"),
+]
+
+show(plane().color("#cfc8bc"), m, caneca, prato, laranja, cadeiras)

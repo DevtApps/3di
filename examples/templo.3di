@@ -1,0 +1,27 @@
+# Templo grego: degraus, colunata com repeat, frontão.
+W, D = 6, 10          # largura e profundidade
+nx, nz = 6, 10        # colunas em cada lado
+
+def degraus(w, d, n=3, h=0.18, recuo=0.3):
+    ds = [box(w + 2 * recuo * (n - i), h, d + 2 * recuo * (n - i)).place(y=i * h) for i in range(n)]
+    return group(ds)
+
+base = degraus(W, D).color("#e8e2d4").name("base")
+
+fuste = cylinder(0.25, 3.6)
+capitel = box(0.65, 0.15, 0.65)
+coluna = group(fuste.place(), capitel.place(y=3.6), box(0.6, 0.12, 0.6).place())
+col_x = coluna.repeat(x=nx, spacing=(W - 0.6) / (nx - 1))
+col_z = coluna.repeat(z=nz, spacing=(D - 0.6) / (nz - 1))
+colunas = group(
+    col_x.place(0, 0, (D - 0.6) / 2).mirror("z"),
+    col_z.place((W - 0.6) / 2, 0, 0).mirror("x"),
+).on(base).color("#f1ece0").name("colunas")
+
+arquitrave = box(W + 0.2, 0.5, D + 0.2).on(colunas).color("#ece5d6").name("arquitrave")
+frontao = pyramid(1, 1).scale((W + 0.4, 1.4, D + 0.4)).on(arquitrave).color("brick").name("telhado")
+cela = box(W - 2, 3.5, D - 3).on(base).color("#d9cfba").name("cela")
+
+show(plane().color("sand"), base, colunas, arquitrave, frontao, cela)
+sun(0.8, 0.9, 0.5)
+camera(pos=(13, 6, 15), look=(0, 2.5, 0))

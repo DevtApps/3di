@@ -1,0 +1,50 @@
+# Personagem estilizado: pinguim de cachecol, todo feito com uniões suaves.
+
+def pinguim(cachecol="red", gorro="blue"):
+    preto = "#1d2430"
+    corpo = ellipsoid(0.32, 0.42, 0.29).at(0, 0.45, 0)
+    cabeca = sphere(0.23).at(0, 0.93, 0)
+    asa = ellipsoid(0.05, 0.24, 0.13).rotate(z=18).at(0.31, 0.5, -0.02)
+    silhueta = group(corpo, cabeca, asa.mirror("x"), smooth=0.1).color(preto)
+
+    # barriga e rosto brancos, fundidos com borda suave
+    barriga = ellipsoid(0.25, 0.34, 0.2).at(0, 0.42, 0.11)
+    rosto = group(sphere(0.1).at(0.07, 0.96, 0.13).mirror("x"), smooth=0.05)
+    branco = group(barriga, rosto).color("white")
+    pele = group(silhueta, branco, smooth=0.03).material(rough=0.7)
+
+    olho = sphere(0.035).at(0.075, 0.98, 0.21).mirror("x").color("black").material(rough=0.1)
+    brilho = sphere(0.01).at(0.085, 0.995, 0.24).mirror("x").material(color="white", glow=0.6)
+    bico = cone(0.045, 0.13).rotate(x=90).at(0, 0.91, 0.27).color("orange")
+    pe = ellipsoid(0.09, 0.03, 0.13).at(0.11, 0.03, 0.14).mirror("x").color("orange")
+
+    # cachecol: anel + ponta pendurada
+    anel = torus(0.2, 0.045).at(0, 0.74, 0.0)
+    ponta = box(0.08, 0.22, 0.03, round=0.012).rotate(z=-8).at(0.1, 0.62, 0.2)
+    lenco = group(anel, ponta, smooth=0.03).color(cachecol).material(rough=0.9)
+
+    # gorro: meia esfera + barra + pompom
+    copa = sphere(0.235) - box(1, 1, 1).at(0, -0.5, 0)
+    barra = torus(0.215, 0.035)
+    pompom = sphere(0.06).at(0, 0.25, 0)
+    chapeu = group(copa, barra, pompom).color(gorro).material(rough=0.95).rotate(x=-12).at(0, 1.0, -0.01)
+
+    return group(pele, olho, brilho, bico, pe, lenco, chapeu)
+
+grande = pinguim().name("pinguim")
+filhote = pinguim(cachecol="yellow", gorro="pink").scale(0.62).rotate(y=-35).name("filhote")
+
+gelo = cylinder(1.6, 0.3, round=0.1).color("#e8f4fb").material(rough=0.4).place(0, -0.18, 0)
+grande = grande.on(gelo, x=-0.25)
+filhote = filhote.on(gelo, x=0.55, z=0.35)
+
+peixe_corpo = ellipsoid(0.12, 0.05, 0.035)
+cauda = prism(0.08, 0.07, 0.015).rotate(z=90).at(-0.14, 0, 0)
+peixe = group(peixe_corpo, cauda, smooth=0.02).color("silver").material(metal=0.6, rough=0.3)
+peixe = peixe.rotate(y=25).on(gelo, x=0.1, z=0.75).name("peixe")
+
+agua = plane().color("#2a6f97").material(rough=0.05)
+show(agua, gelo, grande, filhote, peixe)
+sky("#a9cdea")
+sun(0.5, 0.9, 0.7)
+camera(pos=(1.4, 1.5, 3.2), look=(0.05, 0.55, 0))

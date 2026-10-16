@@ -1,0 +1,23 @@
+# Todas as primitivas, lado a lado, sobre o chão.
+formas = [
+    box(0.8, round=0.08).color("red"),
+    sphere(0.45).color("orange"),
+    cylinder(0.35, 0.9).color("yellow"),
+    cone(0.45, 0.9).color("green"),
+    torus(0.35, 0.12).color("cyan"),
+    capsule(0.25, 0.9).color("blue"),
+    ellipsoid(0.5, 0.3, 0.35).color("purple"),
+    pyramid(0.8, 0.8).color("pink"),
+]
+
+# espalha em uma linha, cada forma apoiada no chão
+for i, f in enumerate(formas):
+    formas[i] = f.place(x=(i - 3.5) * 1.1)
+
+# booleanas: + une, - subtrai, & intersecta
+dado = (box(0.8, round=0.05) - sphere(0.12).at(0, 0.4, 0).repeat(x=2, z=2, spacing=0.3)).color("white")
+lente = (sphere(0.5).at(-0.2, 0, 0) & sphere(0.5).at(0.2, 0, 0)).color("gold").material(metal=1, rough=0.25)
+gota = group(sphere(0.3), sphere(0.2).at(0, 0.35, 0), smooth=0.15).color("water").material(rough=0.1)
+
+show(plane().color("lightgray"), formas,
+     dado.place(-1.5, 0, 1.6), lente.place(0, 0, 1.6), gota.place(1.5, 0, 1.6))

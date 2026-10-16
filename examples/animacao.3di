@@ -1,0 +1,32 @@
+# Animação: `time` é o tempo em segundos e pode entrar em at/move, rotate, scale e glow.
+# Ele vira código no shader: a cena anima sem rodar o script de novo.
+# osc(a, b, period) vai de a até b e volta, suavemente, a cada `period` segundos.
+
+chao = plane().color("grass").texture("noise", color2="#4d7d33", size=0.8)
+
+# moinho: torre de tijolos, telhado e pás girando
+torre = cylinder(0.7, 3.2, round=0.05).place().color("#d8c8a8").texture("bricks", color2="#9e9282", size=0.3)
+teto = cone(0.95, 1.1).on(torre).color("#7a3b2e")
+pa = box(0.28, 1.9, 0.04).color("#f2ead8").texture("stripes", color2="#b8ad96", size=0.12, axis="x").at(0, 1.0, 0)
+helice = group([pa.rotate(z=a, pivot=(0, 0, 0)) for a in [0, 90, 180, 270]], cylinder(0.12, 0.3).rotate(x=90).color("darkwood"))
+helice = helice.rotate(z=time * 60, pivot=(0, 0, 0)).at(0, 2.9, 0.85)
+moinho = group(torre, teto, helice).place(-2.5, 0, -1).name("moinho")
+
+# bola quicando (abs(sin) dá o quique) e achatando ao tocar o chão
+altura = abs(sin(time * 3)) * 1.4
+bola = sphere(0.3).color("red").material(rough=0.3).at(0.8, 0.3, 0.8).move(y=altura).name("bola")
+
+# gema flutuando, girando e pulsando
+gema = (box(0.5, 0.5, 0.5).rotate(45, 0, 45) & sphere(0.36)).material(color="cyan", metal=0.3, rough=0.1, glow=osc(0.2, 1.5, 1.5))
+gema = gema.rotate(y=time * 90).at(2.2, 1.2, -0.6).move(y=osc(-0.15, 0.15, 3)).name("gema")
+pedestal = cylinder(0.35, 0.7, round=0.03).place(2.2, 0, -0.6).color("white").texture("marble")
+
+# mini sistema solar: planetas em órbita (cos/sin no tempo)
+sol = sphere(0.35).material(color="#ffcc55", glow=1.2).at(0, 2.6, -3)
+def planeta(r, raio, vel, cor):
+    return sphere(r).color(cor).at(0, 2.6, -3).move(x=cos(time * vel) * raio, z=sin(time * vel) * raio)
+planetas = [planeta(0.08, 0.7, 2.0, "gray"), planeta(0.12, 1.1, 1.3, "blue"), planeta(0.1, 1.6, 0.8, "orange")]
+
+show(chao, moinho, bola, pedestal, gema, sol, planetas)
+sky("#8fbbe6")
+camera(pos=(3.5, 3.2, 7), look=(0, 1.2, -1))

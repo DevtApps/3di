@@ -1,0 +1,89 @@
+# Vila procedural: casas aleatórias dos dois lados da rua, praça com poço,
+# postes acesos e um bosque ao redor. Mude o seed para gerar outra vila.
+seed(11)
+
+PAREDES = ["#efe3cc", "#f3d9b8", "#dcc7a8", "#e9d6c9", "#d5dcc9", "#f0e9dc"]
+TELHAS = ["brick", "#8a3b2e", "#5d6b78", "#6e4a33"]
+PE = 1.1   # pé-direito de cada andar
+
+def aberturas(w, d, andares, fundo, z_extra=0):
+    # porta, janelas do térreo e janelas dos andares de cima (frente e fundos).
+    # z_extra > 0 faz o recorte atravessar a parede: corte rente à face deixa uma película.
+    z = d / 2 - fundo / 2 + z_extra
+    porta = box(0.5, 0.85, fundo).place(0, 0, z)
+    terreo = box(0.42, 0.45, fundo).place(w * 0.3, 0.4, z).mirror("x").mirror("z")
+    partes = [porta, terreo]
+    if andares > 1:
+        n = max(1, int((w - 0.4) / 0.85))
+        esp = (w - 0.4) / n
+        cima = box(0.42, 0.5, fundo).repeat(x=n, y=andares - 1, spacing=(esp, PE, 1))
+        partes.append(cima.place(0, PE + 0.4, z).mirror("z"))
+    return partes
+
+def casa(w, d, andares, parede, telha):
+    h = PE * andares
+    corpo = box(w, h, d).place()
+    fachada = subtract(corpo, aberturas(w, d, andares, 0.22, z_extra=0.06)).color(parede)
+    porta, *janelas = aberturas(w, d, andares, 0.02, z_extra=-0.13)
+    vidros = group(janelas).material(color="#33475b", rough=0.08)
+    porta = porta.color("darkwood")
+    telhado = prism(d + 0.35, 0.85, w + 0.35).rotate(y=90).on(corpo).color(telha)
+    chamine = box(0.28, 0.9, 0.28).place(w * 0.25, h + 0.15, -d * 0.15).color("brick")
+    return group(fachada, vidros, porta, telhado, chamine)
+
+# ---- casas ao longo da rua (o lado +z gira 180° para a porta olhar a rua)
+casas = []
+for lado in [-1, 1]:
+    x = -15
+    while x < 15:
+        w, d = uniform(2.2, 3.4), uniform(2.3, 3.0)
+        if abs(x + w / 2) < 3.6:      # deixa espaço para a praça
+            x += 1
+            continue
+        c = casa(w, d, choice([1, 1, 2, 2, 3]), choice(PAREDES), choice(TELHAS))
+        if lado == 1:
+            c = c.rotate(y=180)
+        casas.append(c.place(x + w / 2, 0, lado * (1.7 + d / 2 + uniform(0.1, 0.5))))
+        x += w + uniform(0.3, 0.9)
+
+# ---- rua, praça e poço
+rua = box(34, 0.04, 2.6).place().color("#bba98a").material(rough=0.95)
+praca = cylinder(3.3, 0.06, round=0.02).place().color("stone")
+mureta = (cylinder(0.6, 0.7) - cylinder(0.48, 0.8)).color("stone")
+agua = cylinder(0.48, 0.05).place(y=0.45).material(color="water", rough=0.05)
+viga = group(box(0.08, 1.4, 0.08).place(0.55, 0, 0).mirror("x"), box(1.3, 0.08, 0.08).place(y=1.4)).color("darkwood")
+cobertura = prism(1.5, 0.45, 0.9).place(y=1.45).color("brick")
+poco = group(mureta.place(), agua, viga, cobertura).on(praca).name("poço")
+
+# ---- postes: 1 poste repetido ao longo da rua e espelhado nas duas calçadas
+poste = group(
+    cylinder(0.05, 2.2).place().color("darkgray"),
+    sphere(0.13).at(0, 2.3, 0).material(color="#ffd27a", glow=1.6),
+)
+postes = poste.repeat(x=8, spacing=4.2).place(0, 0, 1.45).mirror("z").name("postes")
+
+# ---- bosque: pinheiros e árvores redondas em volta da vila
+def pinheiro(h):
+    tronco = cylinder(0.1, h * 0.3).place().color("darkwood")
+    copa = [cone(h * (0.32 - 0.07 * i), h * 0.45).place(y=h * (0.22 + 0.2 * i)) for i in range(3)]
+    return group(tronco, group(copa).color("#2f6b3a"))
+
+def redonda(h):
+    tronco = cylinder(0.09, h * 0.5).place().color("darkwood")
+    copa = [sphere(h * uniform(0.22, 0.3)).at(uniform(-0.2, 0.2) * h, h * uniform(0.6, 0.8), uniform(-0.2, 0.2) * h) for _ in range(3)]
+    return group(tronco, group(copa).color("leaf"))
+
+arvores = []
+for _ in range(60):
+    lado = choice([-1, 1])
+    x, z = uniform(-17, 17), lado * uniform(6.5, 14)
+    h = uniform(1.8, 3.6)
+    a = pinheiro(h) if random() < 0.5 else redonda(h)
+    arvores.append(a.place(x, 0, z))
+
+morros = [ellipsoid(uniform(8, 14), uniform(3, 6), 6).at(x, 0, -30).color("#6f9a4d") for x in [-20, -5, 12, 26]]
+
+show(plane().color("grass"), rua, praca, poco, casas, postes, arvores, morros)
+sky("#8fbbe6")
+sun(0.75, 0.55, 0.45)
+camera(pos=(15, 10, 19), look=(0, 0.5, 0))

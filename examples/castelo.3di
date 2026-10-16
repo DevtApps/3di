@@ -1,0 +1,33 @@
+# Castelo: muralha, torres nos cantos, ameias e portão.
+L = 8        # lado da muralha
+H = 2.5      # altura da muralha
+E = 0.6      # espessura
+
+def ameias(comprimento, altura=0.35, n=12):
+    dente = box(comprimento / (2 * n), altura, E)
+    return dente.repeat(x=n, spacing=comprimento / n)
+
+def torre(r=1.0, h=4.5):
+    corpo = cylinder(r, h).place()
+    topo = cylinder(r * 1.15, 0.4).on(corpo)
+    vao = box(0.25, 0.35, r * 3).on(topo, gap=-0.35).rotate(y=45)
+    coroa = (topo + cylinder(r * 1.15, 0.35).on(topo)) - vao - vao.rotate(y=90) - cylinder(r * 0.95, 1).on(topo, gap=-0.2)
+    telhado = cone(r * 1.25, 2.2).on(coroa).color("brick")
+    janela = box(0.2, 0.5, 0.4).at(0, h * 0.6, r)
+    return group(corpo - janela, coroa, telhado)
+
+pedra = "stone"
+parede = box(L, H, E).place(0, 0, L / 2)
+parede = parede + ameias(L).on(parede).move(z=0)
+portao = (box(1.6, 1.8, E * 3) + cylinder(0.8, E * 3).rotate(x=90).at(0, 1.8, 0)).place(0, -0.01, L / 2)
+frente = parede - portao
+muralha = group(frente, parede.rotate(y=90, pivot=(0, 0, 0)), parede.rotate(y=180, pivot=(0, 0, 0)),
+                parede.rotate(y=270, pivot=(0, 0, 0))).color(pedra).name("muralha")
+
+torres = torre().place(L / 2, 0, L / 2).mirror("xz").color(pedra).name("torres")
+torreao = torre(r=1.6, h=7).place().color("lightgray").name("torreão")
+bandeira = box(0.6, 0.35, 0.02).color("red").on(torreao, x=0.32, gap=0.15).name("bandeira")
+mastro = cylinder(0.02, 1.2).color("darkgray").on(torreao, gap=-0.6)
+
+show(plane().color("grass"), muralha, torres, torreao, mastro, bandeira)
+camera(pos=(14, 9, 16), look=(0, 2, 0))
