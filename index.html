@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3DI Editor</title>
+<title>3DI</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#15171c">
 <style>
   :root {
     --bg: #15171c; --panel: #1c1f26; --border: #2b2f39; --text: #d8dbe2; --muted: #8a90a0;
@@ -35,6 +38,14 @@
   #parts { position: absolute; right: 10px; top: 10px; max-width: 280px; max-height: 50%; overflow: auto; background: rgba(20,22,28,.82); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: 11px/1.5 var(--mono); display: none; }
   #parts.show { display: block; }
   #parts b { color: var(--accent); font-weight: 600; }
+  #parts .part { cursor: pointer; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; }
+  #parts .part:hover { background: rgba(106,166,255,.15); }
+  #fileName { color: var(--muted); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mcpState { width: 8px; height: 8px; border-radius: 50%; background: #555b69; flex: none; }
+  #mcpState.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  #camBar { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; z-index: 1; }
+  #camBar button { background: rgba(20,22,28,.78); padding: 3px 7px; font-size: 12px; }
+  .sep { width: 1px; height: 18px; background: var(--border); }
   #views { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(10,11,14,.88); cursor: zoom-out; }
   #views[hidden] { display: none; }
   #views img { max-width: 100%; max-height: 100%; border: 1px solid var(--border); border-radius: 6px; }
@@ -49,8 +60,15 @@
   <div id="left">
     <header>
       <h1><span>3DI</span></h1>
-      <select id="examples" title="Exemplos"></select>
+      <button id="btnNew" title="Novo arquivo (Ctrl+Alt+N)">Novo</button>
+      <button id="btnOpen" title="Abrir arquivo .3di (Ctrl+O)">Abrir</button>
+      <button id="btnSave" title="Salvar (Ctrl+S) · Salvar como (Ctrl+Shift+S)">Salvar</button>
+      <span id="fileName"></span>
       <div class="spacer"></div>
+      <select id="examples" title="Exemplos"></select>
+      <span id="mcpState" title="sem servidor MCP"></span>
+    </header>
+    <header>
       <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
       <button id="btnParts" title="Mostrar peças nomeadas e medidas">Peças</button>
       <button id="btnViews" title="Ver frente, lado, topo e perspectiva lado a lado">Vistas</button>
@@ -66,6 +84,12 @@
   </div>
   <div id="right">
     <canvas id="view"></canvas>
+    <div id="camBar">
+      <button data-view="front" title="Câmera de frente (de +z)">Frente</button>
+      <button data-view="right" title="Câmera pela direita (de +x)">Lado</button>
+      <button data-view="top" title="Câmera de cima">Topo</button>
+      <button data-view="perspective" title="Perspectiva padrão">Persp.</button>
+    </div>
     <div id="parts"></div>
     <div id="views" hidden title="Clique ou Esc para fechar"><img alt="Vistas da cena"></div>
     <div id="hud">arrastar: girar · botão direito/shift: mover · roda: zoom · duplo clique: enquadrar</div>

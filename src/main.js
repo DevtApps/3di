@@ -6,12 +6,21 @@ import { Renderer } from './renderer.js';
 import { fmtNum } from './runtime.js';
 import { exportGLB } from './export.js';
 import { withTime } from './expr.js';
+import { createEditor } from './ide/editor.js';
+import { createFiles } from './ide/files.js';
+import { connectBridge } from './ide/bridge.js';
 
 const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo'];
 const STORAGE_KEY = '3di.code';
+const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
+chao = plane().color("lightgray")
+objeto = box(1, round=0.05).color("red").ground().name("objeto")
+
+show(chao, objeto)
+`;
 
 const $ = (id) => document.getElementById(id);
-const code = $('code'), gutter = $('gutter'), status = $('status'), canvas = $('view'), partsEl = $('parts');
+const status = $('status'), canvas = $('view'), partsEl = $('parts');
 
 let renderer;
 try {
@@ -32,13 +41,46 @@ function radiusOf(b) {
   return Math.max(0.05, 0.5 * Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]));
 }
 
-function frame() {
+// ângulos prontos da câmera (yaw em volta de y, pitch acima do horizonte)
+const PRESETS = {
+  front: { yaw: 0, pitch: 0.1, label: 'frente' },
+  back: { yaw: Math.PI, pitch: 0.1, label: 'trás' },
+  right: { yaw: Math.PI / 2, pitch: 0.1, label: 'direita' },
+  left: { yaw: -Math.PI / 2, pitch: 0.1, label: 'esquerda' },
+  top: { yaw: 0, pitch: 1.5, label: 'topo' },
+  perspective: { yaw: 0.6, pitch: 0.38, label: 'perspectiva' },
+};
+
+// caixa da cena para enquadrar: com chão, ignora o que fica abaixo dele
+function sceneBox() {
   const b = sceneInfo.bbox;
+  return sceneInfo.hasPlane && b.max[1] > 0.05 ? { min: [b.min[0], Math.max(0, b.min[1]), b.min[2]], max: b.max } : b;
+}
+
+function partBox(name) {
+  const p = sceneInfo.parts?.find((q) => q.name === name);
+  if (!p) {
+    const names = sceneInfo.parts?.map((q) => q.name).join(', ');
+    throw new Error(`peça '${name}' não existe${names ? `; peças: ${names}` : ' (dê nomes com .name("..."))'}`);
+  }
+  return p.bbox;
+}
+
+// enquadra a caixa b; view = nome de PRESETS ou null para manter o ângulo atual
+function frameBox(b, view = 'perspective') {
+  const p = PRESETS[view];
+  if (view && !p) throw new Error(`vista desconhecida '${view}'; use ${Object.keys(PRESETS).join(', ')}`);
   cam.target = [0, 1, 2].map((i) => (b.min[i] + b.max[i]) / 2);
   cam.dist = (radiusOf(b) / Math.sin((cam.fov * Math.PI) / 360)) * 1.05;
-  cam.yaw = 0.6;
-  cam.pitch = 0.38;
+  if (p) { cam.yaw = p.yaw; cam.pitch = p.pitch; }
   requestRender();
+}
+
+function frame() { frameBox(sceneBox(), 'perspective'); }
+
+function describeCam() {
+  const r = (a) => `(${a.map((x) => +x.toFixed(3)).join(', ')})`;
+  return `câmera em ${r(eye())} olhando para ${r(cam.target)}, fov ${cam.fov}°`;
 }
 
 function applyScriptCamera(c) {
@@ -157,8 +199,8 @@ function viewBBox(time) {
 }
 
 // Desenha as 4 vistas numa grade 2x2 (quadros de size px) com rótulos; devolve um canvas 2D.
-function renderViews({ size = 512, time = anim.time } = {}) {
-  const b = viewBBox(time);
+function renderViews({ size = 512, time = anim.time, bbox = null } = {}) {
+  const b = bbox ?? viewBBox(time);
   const out = document.createElement('canvas');
   out.width = out.height = size * 2;
   const g = out.getContext('2d');
@@ -242,11 +284,11 @@ new ResizeObserver(() => requestRender()).observe(canvas);
 function setError(err) {
   status.className = 'err';
   status.textContent = err instanceof ScriptError ? `✗ ${err.toString()}` : `✗ ${err.message}`;
-  markLine(err.line ?? null);
+  editor.setError(err.line ? err : null);
 }
 
-function markLine(line) {
-  [...gutter.children].forEach((d, i) => d.classList.toggle('err', i + 1 === line));
+function markLine() {
+  editor.setError(null);
 }
 
 let compileId = 0;
@@ -255,7 +297,7 @@ let compileId = 0;
 // fica na tela até o novo ficar pronto. Devolve uma promise com o texto final do status.
 async function compile() {
   const id = ++compileId;
-  const src = code.value;
+  const src = editor.getValue();
   try { localStorage.setItem(STORAGE_KEY, src); } catch {}
   const t0 = performance.now();
   const res = runScript(src);
@@ -293,7 +335,7 @@ async function compile() {
   // substituída por uma edição mais nova, ou um erro de script apareceu enquanto compilava
   if (tShader === null || id !== compileId) return status.textContent;
 
-  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene: res.scene, src };
+  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene: res.scene, src, parts: out.parts, animated: out.animated, leaves: out.leaves };
   const camKey = JSON.stringify(res.scene.camera);
   if (res.scene.camera && camKey !== lastCameraKey) applyScriptCamera(res.scene.camera);
   else if (lastCameraKey === null) frame();
@@ -311,9 +353,9 @@ async function compile() {
   }
   const v = (a) => a.map(fmtNum).join(', ');
   partsEl.innerHTML = out.parts.length
-    ? out.parts.map((p) => {
-      const sz = p.bbox.max.map((x, i) => x - p.bbox.min[i]);
-      return `<div><b>${escapeHtml(p.name)}</b> ${v(sz.map((x) => +x.toFixed(3)))}<br>&nbsp; em ${v(p.bbox.min.map((x) => +x.toFixed(3)))}</div>`;
+    ? out.parts.map((p, i) => {
+      const sz = p.bbox.max.map((x, k) => x - p.bbox.min[k]);
+      return `<div class="part" data-i="${i}" title="clique para enquadrar"><b>${escapeHtml(p.name)}</b> ${v(sz.map((x) => +x.toFixed(3)))}<br>&nbsp; em ${v(p.bbox.min.map((x) => +x.toFixed(3)))}</div>`;
     }).join('')
     : '<div>nenhuma peça nomeada<br>use .name("...")</div>';
   requestRender();
@@ -324,7 +366,7 @@ function escapeHtml(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
-// ---------- editor ----------
+// ---------- editor e arquivos ----------
 
 let compileTimer = null;
 function scheduleCompile() {
@@ -332,48 +374,38 @@ function scheduleCompile() {
   compileTimer = setTimeout(compile, 350);
 }
 
-function updateGutter() {
-  const n = code.value.split('\n').length;
-  if (gutter.children.length !== n) {
-    gutter.innerHTML = Array.from({ length: n }, (_, i) => `<div>${i + 1}</div>`).join('');
-  }
-  gutter.scrollTop = code.scrollTop;
-}
-
-function insert(text) {
-  if (!document.execCommand('insertText', false, text)) {
-    code.setRangeText(text, code.selectionStart, code.selectionEnd, 'end');
-  }
-}
-
-code.addEventListener('input', () => { updateGutter(); scheduleCompile(); });
-code.addEventListener('scroll', () => { gutter.scrollTop = code.scrollTop; });
-code.addEventListener('keydown', (e) => {
-  const v = code.value;
-  const s = code.selectionStart, end = code.selectionEnd;
-  const lineStart = v.lastIndexOf('\n', s - 1) + 1;
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    const multi = v.slice(s, end).includes('\n');
-    if (!multi && !e.shiftKey) { insert('    '); return; }
-    const blockEnd = v.indexOf('\n', end - 1) < 0 ? v.length : v.indexOf('\n', Math.max(end - 1, s));
-    const lines = v.slice(lineStart, blockEnd).split('\n');
-    const changed = lines.map((l) => (e.shiftKey ? l.replace(/^ {1,4}/, '') : '    ' + l)).join('\n');
-    code.setSelectionRange(lineStart, blockEnd);
-    insert(changed);
-    code.setSelectionRange(lineStart, lineStart + changed.length);
-  } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-    e.preventDefault();
-    const line = v.slice(lineStart, s);
-    let indent = /^ */.exec(line)[0];
-    if (/:\s*(#.*)?$/.test(line)) indent += '    ';
-    insert('\n' + indent);
-  } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'Enter')) {
-    e.preventDefault();
-    clearTimeout(compileTimer);
-    compile();
-  }
+const editor = await createEditor({
+  wrap: $('editorWrap'),
+  textarea: $('code'),
+  gutter: $('gutter'),
+  keys: {
+    save: () => files.save(),
+    saveAs: () => files.saveAs(),
+    open: () => files.open(),
+    newFile: () => files.newFile(),
+    run: () => { clearTimeout(compileTimer); compile(); },
+  },
 });
+
+const files = createFiles({
+  getText: () => editor.getValue(),
+  setText: (t) => { editor.setValue(t); lastCameraKey = null; },
+  template: TEMPLATE,
+  onState: ({ name, dirty, where }) => {
+    $('fileName').textContent = `${dirty ? '• ' : ''}${name}`;
+    $('fileName').title = where ? `salvo em ${where}` : 'ainda não salvo em disco (Ctrl+S para salvar)';
+  },
+});
+
+editor.onChange(() => { files.changed(); scheduleCompile(); });
+document.addEventListener('keydown', (e) => {
+  // atalhos fora do editor (com o foco na vista 3D)
+  if (!(e.ctrlKey || e.metaKey) || e.target.closest?.('#editorWrap')) return;
+  const k = e.key.toLowerCase();
+  if (k === 's') { e.preventDefault(); (e.shiftKey ? files.saveAs : files.save)(); }
+  if (k === 'o') { e.preventDefault(); files.open(); }
+});
+addEventListener('beforeunload', (e) => { if (files.state().dirty && files.state().handle) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------- botões ----------
 
@@ -393,33 +425,39 @@ $('btnViews').onclick = () => {
 $('views').onclick = () => { $('views').hidden = true; };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('views').hidden = true; });
 $('btnParts').onclick = () => partsEl.classList.toggle('show');
+const baseName = () => files.state().name.replace(/\.3di$/i, '');
+
 $('btnPng').onclick = () => {
   draw(2 / Math.min(window.devicePixelRatio || 1, 1.5));
-  canvas.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'cena-3di.png';
-    a.click();
-    URL.revokeObjectURL(a.href);
+  canvas.toBlob(async (blob) => {
     requestRender();
+    const name = await files.saveBinary(blob, `${baseName()}.png`, 'Imagem PNG', '.png', 'image/png');
+    if (name) { status.className = 'ok'; status.textContent = `✓ imagem salva: ${name}`; }
   });
 };
+$('btnNew').onclick = () => files.newFile();
+$('btnOpen').onclick = () => files.open();
+$('btnSave').onclick = () => files.save();
+document.querySelectorAll('#camBar [data-view]').forEach((b) => {
+  b.onclick = () => frameBox(sceneBox(), b.dataset.view);
+});
+partsEl.addEventListener('click', (e) => {
+  const el = e.target.closest('.part');
+  if (el) frameBox(sceneInfo.parts[+el.dataset.i].bbox, null);
+});
 
 $('btnGlb').onclick = () => {
-  const res = runScript(code.value);
+  const res = runScript(editor.getValue());
   if (!res.ok) { setError(res.error); return; }
   status.className = 'ok';
   status.textContent = '⧗ gerando malhas para o .glb…';
   // deixa o status aparecer antes do trabalho pesado
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
       const { glb, stats } = exportGLB(res.scene, { res: 128 });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
-      a.download = 'cena-3di.glb';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      status.textContent = `✓ .glb exportado: ${(stats.bytes / 1024).toFixed(0)} KB · ${stats.parts} partes · ${stats.triangles} triângulos` +
+      const name = await files.saveBinary(new Blob([glb], { type: 'model/gltf-binary' }), `${baseName()}.glb`, 'Modelo glTF binário', '.glb', 'model/gltf-binary');
+      if (!name) { status.textContent = 'exportação cancelada'; return; }
+      status.textContent = `✓ ${name}: ${(stats.bytes / 1024).toFixed(0)} KB · ${stats.parts} partes · ${stats.triangles} triângulos` +
         `${stats.bones ? ` · ${stats.bones} ossos` : ''}${stats.animated ? ' · animado' : ''} · ${(stats.ms / 1000).toFixed(1)} s` +
         stats.warnings.map((w) => `\naviso: ${w}`).join('');
     } catch (e) {
@@ -438,16 +476,16 @@ sel.onchange = async () => {
 };
 
 async function loadExample(name) {
+  if (files.state().dirty && !confirm(`Descartar as alterações em ${files.state().name}?`)) return null;
   const res = await fetch(`examples/${name}.3di`);
-  code.value = await res.text();
-  lastCameraKey = null;
-  updateGutter();
+  files.loadUntitled(`${name}.3di`, await res.text());
+  clearTimeout(compileTimer);
   return compile();
 }
 
 // API mínima para automação (testes, agentes): window.tdi.load(src) / .shot()
 window.tdi = {
-  load(src) { code.value = src; lastCameraKey = null; updateGutter(); return compile(); },
+  load(src) { editor.setValue(src); lastCameraKey = null; clearTimeout(compileTimer); return compile(); },
   view(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist: dist ?? cam.dist }); draw(1); },
   // pausa a animação num instante (s) e desenha
   at(t) { anim.playing = false; anim.time = t; draw(1); },
@@ -466,12 +504,71 @@ window.tdi = {
   },
 };
 
+// ---------- ponte com o MCP (agentes de IA controlam esta vista) ----------
+
+const shot = () => canvas.toDataURL('image/png').split(',')[1];
+connectBridge({
+  getScript: () => editor.getValue(),
+  setScript: ({ code }) => window.tdi.load(code),
+  // salva no arquivo aberto; sem arquivo ligado ao disco, pede para o usuário escolher no editor
+  save: async () => {
+    const st = files.state();
+    if (!st.handle && !st.path) throw new Error(`'${st.name}' ainda não tem lugar no disco: use Salvar no editor para escolher onde salvar`);
+    await files.save();
+    return `salvo: ${st.path ?? st.name}`;
+  },
+  parts: () => {
+    const r = (a) => `(${a.map((x) => +x.toFixed(3)).join(', ')})`;
+    const ps = sceneInfo.parts ?? [];
+    return [
+      `${sceneInfo.leaves ?? 0} primitivas${sceneInfo.animated ? `, animada (t = ${anim.time.toFixed(2)} s, ${anim.playing ? 'tocando' : 'pausada'})` : ''}`,
+      `cena: de ${r(sceneInfo.bbox.min)} até ${r(sceneInfo.bbox.max)}`,
+      ...(ps.length ? ps.map((p) => `  ${p.name}: tamanho ${r(p.bbox.max.map((x, i) => x - p.bbox.min[i]))}, de ${r(p.bbox.min)} até ${r(p.bbox.max)}`) : ['  (nenhuma peça nomeada)']),
+      describeCam(),
+    ].join('\n');
+  },
+  setCamera: ({ pos, look, fov }) => {
+    applyScriptCamera({ pos, look: look ?? null, fov: fov ?? cam.fov });
+    requestRender();
+    return describeCam();
+  },
+  frame: ({ target, view }) => {
+    frameBox(target ? partBox(target) : sceneBox(), view ?? 'perspective');
+    return `enquadrado ${target ? `'${target}'` : 'a cena'}${view ? ` (${PRESETS[view].label})` : ''}; ${describeCam()}`;
+  },
+  setTime: ({ time, playing }) => {
+    if (typeof time === 'number') { anim.time = time; if (playing === undefined) anim.playing = false; }
+    if (typeof playing === 'boolean') anim.playing = playing;
+    $('btnPlay').textContent = anim.playing ? '⏸' : '▶';
+    anim.last = 0;
+    draw(1);
+    return `t = ${anim.time.toFixed(2)} s, ${anim.playing ? 'tocando' : 'pausada'}${anim.on ? '' : ' (a cena não usa time)'}`;
+  },
+  screenshot: ({ view = 'current', target, time }) => {
+    const t = time ?? anim.time;
+    if (view === 'grid') {
+      const png = renderViews({ size: 512, time: t, bbox: target ? partBox(target) : null }).toDataURL('image/png').split(',')[1];
+      return { png, info: `4 vistas${target ? ` de '${target}'` : ''}${anim.on ? `, t = ${t.toFixed(2)} s` : ''}` };
+    }
+    const saved = { ...cam };
+    try {
+      if (view !== 'current' || target) frameBox(target ? partBox(target) : sceneBox(), view === 'current' ? null : view);
+      draw(1, { time: t });
+      return { png: shot(), info: `vista ${view}${target ? ` de '${target}'` : ''}${anim.on ? `, t = ${t.toFixed(2)} s` : ''}; ${describeCam()}` };
+    } finally {
+      Object.assign(cam, saved);
+      draw(1);
+    }
+  },
+}, (on) => {
+  $('mcpState').classList.toggle('on', on);
+  $('mcpState').title = on ? 'conectado ao servidor MCP: agentes de IA podem ver e controlar esta cena' : 'sem servidor MCP (rode node tools/mcp.mjs ou o app 3DI)';
+});
+
+// ---------- início: arquivo da linha de comando, rascunho salvo ou exemplo ----------
+
 let saved = null;
 try { saved = localStorage.getItem(STORAGE_KEY); } catch {}
-if (saved) {
-  code.value = saved;
-  updateGutter();
-  compile();
-} else {
-  loadExample(EXAMPLES[0]);
-}
+if (await files.openFromHash()) compile();
+else if (saved) { files.loadUntitled('sem título.3di', saved); compile(); }
+else loadExample(EXAMPLES[0]);
