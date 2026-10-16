@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3DI Editor</title>
+<style>
+  :root {
+    --bg: #15171c; --panel: #1c1f26; --border: #2b2f39; --text: #d8dbe2; --muted: #8a90a0;
+    --accent: #6aa6ff; --error: #ff6b6b; --ok: #6bd58a;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+  #app { display: grid; grid-template-columns: minmax(320px, 42%) 1fr; grid-template-rows: minmax(0, 1fr); height: 100vh; }
+  #left { display: flex; flex-direction: column; border-right: 1px solid var(--border); min-width: 0; }
+  header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 14px; margin: 0 6px 0 0; letter-spacing: .5px; }
+  header h1 span { color: var(--accent); }
+  select, button { background: #262a33; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  .spacer { flex: 1; }
+  #editorWrap { flex: 1; display: flex; overflow: hidden; position: relative; }
+  #gutter { width: 44px; padding: 10px 6px 10px 0; text-align: right; color: #555b69; font: 13px/1.5 var(--mono); overflow: hidden; user-select: none; background: var(--bg); }
+  #gutter div.err { color: #fff; background: var(--error); border-radius: 3px; }
+  #code { flex: 1; resize: none; border: 0; outline: 0; padding: 10px; background: var(--bg); color: var(--text); font: 13px/1.5 var(--mono); white-space: pre; tab-size: 4; overflow: auto; }
+  #status { padding: 8px 10px; border-top: 1px solid var(--border); background: var(--panel); font: 12px/1.45 var(--mono); white-space: pre-wrap; max-height: 30vh; overflow: auto; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--error); }
+  #status .log { color: var(--muted); }
+  #right { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  #view:active { cursor: grabbing; }
+  #hud { position: absolute; left: 10px; bottom: 10px; color: rgba(255,255,255,.6); font-size: 11px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  #parts { position: absolute; right: 10px; top: 10px; max-width: 280px; max-height: 50%; overflow: auto; background: rgba(20,22,28,.82); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: 11px/1.5 var(--mono); display: none; }
+  #parts.show { display: block; }
+  #parts b { color: var(--accent); font-weight: 600; }
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
+    #left { border-right: 0; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <header>
+      <h1><span>3DI</span></h1>
+      <select id="examples" title="Exemplos"></select>
+      <div class="spacer"></div>
+      <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
+      <button id="btnParts" title="Mostrar peças nomeadas e medidas">Peças</button>
+      <button id="btnFrame" title="Reenquadrar a câmera (duplo clique na vista)">Enquadrar</button>
+      <button id="btnPng" title="Baixar imagem PNG">PNG</button>
+    </header>
+    <div id="editorWrap">
+      <div id="gutter"></div>
+      <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    </div>
+    <div id="status"></div>
+  </div>
+  <div id="right">
+    <canvas id="view"></canvas>
+    <div id="parts"></div>
+    <div id="hud">arrastar: girar · botão direito/shift: mover · roda: zoom · duplo clique: enquadrar</div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

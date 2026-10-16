@@ -1,0 +1,20 @@
+# Árvore fractal: cada galho gera 3 galhos menores, por recursão.
+seed(3)
+
+def galho(comp, r, nivel):
+    tronco = cone(r, comp, top=r * 0.7).place()
+    if nivel == 0:
+        folhas = sphere(comp * 0.7).at(0, comp, 0).color("leaf")
+        return group(tronco, folhas)
+    filhos = []
+    for i in range(3):
+        inclinacao = uniform(25, 42)
+        giro = i * 120 + uniform(-25, 25)
+        f = galho(comp * uniform(0.68, 0.8), r * 0.68, nivel - 1)
+        f = f.rotate(z=inclinacao, pivot=(0, 0, 0)).rotate(y=giro, pivot=(0, 0, 0))
+        filhos.append(f.at(0, comp * 0.96, 0))
+    return group(tronco, filhos)
+
+arvore = galho(1.4, 0.16, 5).color("darkwood").name("árvore")
+grama = cylinder(3.5, 0.06, round=0.03).color("grass").place()
+show(plane().color("sand"), grama, arvore)

@@ -1,0 +1,37 @@
+# Texturas procedurais e deformação com ruído.
+# .texture(tipo, color2=None, size=None, axis="y")  tipos: noise, wood, marble, stripes, checker, bricks
+# .displace(amount, size)  deforma a superfície com ruído (rochas, terreno)
+
+piso = plane().color("#e9e4da").texture("checker", color2="#2b2b2e", size=0.6).material(rough=0.25)
+
+# parede de tijolos com uma janela em arco
+parede = box(6, 3, 0.35).place(0, 0, -2.2)
+arco = (box(1.2, 1.3, 1) + cylinder(0.6, 1).rotate(x=90).at(0, 0.65, 0)).place(1.6, 0.8, -2.2)
+parede = (parede - arco).color("brick").texture("bricks", size=0.28).name("parede")
+
+# mesa de madeira: veios ao longo do comprimento (eixo x)
+tampo = box(1.6, 0.06, 0.8, round=0.01).place(y=0.72)
+perna = box(0.07, 0.72, 0.07).place(0.7, 0, 0.32).mirror("xz")
+mesa = group(tampo, perna).color("#b07a45").texture("wood", axis="x").material(rough=0.45).place(-0.6, 0, -0.6).name("mesa")
+
+# objetos sobre a mesa
+esfera = sphere(0.18).color("#f4f1ea").texture("marble", color2="#4a4e57").material(rough=0.15).on(mesa, x=-0.4)
+vaso = (cylinder(0.12, 0.32, round=0.02) - cylinder(0.1, 0.4).at(0, 0.06, 0)).color("#2f7d8c").texture("stripes", color2="#f2e8cf", size=0.04)
+vaso = vaso.on(mesa, x=0.35).name("vaso")
+
+# coluna de mármore
+coluna = group(
+    cylinder(0.22, 2.4).place(),
+    box(0.6, 0.12, 0.6).place(),
+    box(0.6, 0.12, 0.6).place(y=2.4),
+).color("white").texture("marble", size=0.4).material(rough=0.2).place(-2.3, 0, -1.3).name("coluna")
+
+# rochas: esferas deformadas por ruído, com textura de ruído
+def rocha(r):
+    return sphere(r).displace(r * 0.35, r * 0.7).scale((1.3, 0.7, 1)).color("stone").texture("noise", size=r * 0.6).ground().move(y=-r * 0.12)
+
+rochas = group(rocha(0.45).place(1.6, 0, 0.6), rocha(0.28).place(2.3, 0, 0.2), rocha(0.2).place(1.2, 0, 1.2)).name("rochas")
+
+show(piso, parede, mesa, esfera, vaso, coluna, rochas)
+sun(0.6, 0.9, 0.8)
+camera(pos=(2.8, 2.2, 4.6), look=(0, 0.8, -0.6))
