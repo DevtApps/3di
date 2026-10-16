@@ -262,15 +262,24 @@ class Parser {
     return { t: 'if', tests, orelse, line };
   }
 
+  // alvo de for/compreensão: nomes e tuplas aninhadas, ex: (a, b), c
   targetList() {
-    const paren = this.accept('OP', '(');
-    const names = [this.expect('NAME').value];
+    const one = () => {
+      if (this.accept('OP', '(')) {
+        const inner = this.targetList();
+        this.expect('OP', ')');
+        return inner;
+      }
+      return this.expect('NAME').value;
+    };
+    const first = one();
+    if (!this.isOp(',')) return first;
+    const items = [first];
     while (this.accept('OP', ',')) {
-      if (!this.is('NAME')) break;
-      names.push(this.next().value);
+      if (!this.is('NAME') && !this.isOp('(')) break;
+      items.push(one());
     }
-    if (paren) this.expect('OP', ')');
-    return names.length === 1 && !paren ? names[0] : names;
+    return items;
   }
 
   forStmt() {

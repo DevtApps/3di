@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visualizador GLB</title>
+<style>
+  :root { --bg: #15171c; --text: #d8dbe2; --muted: #8a90a0; --accent: #6aa6ff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #info { position: absolute; left: 12px; top: 10px; background: rgba(20, 22, 28, .8); padding: 8px 12px; border-radius: 8px; max-width: 360px; }
+  #info b { color: var(--accent); }
+  #info .muted { color: var(--muted); font-size: 12px; }
+  #drop { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(106, 166, 255, .15); font-size: 18px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="info"><b>Visualizador GLB</b> (three.js)<div class="muted">Arraste um .glb para cá ou abra com ?file=caminho.glb</div><div id="stats"></div></div>
+<div id="drop">Solte o arquivo .glb</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+// Abre o .glb exportado pelo 3DI num motor padrão (three.js) para conferir malha, cores, skin e animação.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#9fc3e6');
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1000);
+const controls = new OrbitControls(camera, renderer.domElement);
+scene.add(new THREE.HemisphereLight('#dfefff', '#6b5b45', 1.2));
+const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
+sun.position.set(4, 8, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
+
+const clock = new THREE.Clock();
+let mixer = null, current = null;
+const statsEl = document.getElementById('stats');
+
+function frame(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 1;
+  controls.target.copy(c);
+  camera.position.copy(c).add(new THREE.Vector3(0.7, 0.5, 1).normalize().multiplyScalar(r * 2.4));
+  camera.near = r / 100; camera.far = r * 100; camera.updateProjectionMatrix();
+  const s = sun.shadow.camera;
+  s.left = s.bottom = -r * 1.5; s.right = s.top = r * 1.5; s.updateProjectionMatrix();
+  sun.target.position.copy(c); sun.position.copy(c).add(new THREE.Vector3(4, 8, 5).normalize().multiplyScalar(r * 3));
+  scene.add(sun.target);
+}
+
+function load(buffer, name) {
+  new GLTFLoader().parse(buffer, '', (gltf) => {
+    if (current) scene.remove(current);
+    current = gltf.scene;
+    let meshes = 0, tris = 0, skinned = 0;
+    current.traverse((o) => {
+      if (!o.isMesh) return;
+      meshes++; tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+      if (o.isSkinnedMesh) skinned++;
+      o.castShadow = o.receiveShadow = true;
+    });
+    scene.add(current);
+    frame(current);
+    mixer = null;
+    if (gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(current);
+      gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
+    }
+    const anim = gltf.animations.map((a) => `${a.name} (${a.duration.toFixed(2)} s, ${a.tracks.length} trilhas)`).join(', ');
+    statsEl.innerHTML = `<div>${name}</div><div class="muted">${meshes} malhas (${skinned} com skin) · ${Math.round(tris)} triângulos${anim ? ` · animação: ${anim}` : ''}</div>`;
+    window.viewerReady = { meshes, skinned, tris: Math.round(tris), animations: gltf.animations.length };
+  }, (err) => { statsEl.textContent = `erro: ${err.message ?? err}`; window.viewerReady = { error: String(err.message ?? err) }; });
+}
+
+const file = new URLSearchParams(location.search).get('file');
+if (file) fetch(file).then((r) => r.arrayBuffer()).then((b) => load(b, file));
+
+addEventListener('dragover', (e) => { e.preventDefault(); document.getElementById('drop').style.display = 'flex'; });
+addEventListener('dragleave', () => { document.getElementById('drop').style.display = 'none'; });
+addEventListener('drop', async (e) => {
+  e.preventDefault();
+  document.getElementById('drop').style.display = 'none';
+  const f = e.dataTransfer.files[0];
+  if (f) load(await f.arrayBuffer(), f.name);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+// ?t=segundos congela a animação nesse instante (para conferências)
+const freeze = new URLSearchParams(location.search).get('t');
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (mixer) { if (freeze !== null) mixer.setTime(Number(freeze)); else mixer.update(dt); }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import { parse, ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, typeName, repr, str, tuple, fmtNum } from './runtime.js';
 import { Shape, shapeBuiltins, getShapeAttr, shapeBinary } from './shapes.js';
 import { isExpr, sym, TIME, EXPR_FUNCS } from './expr.js';
+import { rigBuiltins } from './rig.js';
 
 class Scope {
   constructor(parent = null) { this.vars = new Map(); this.parent = parent; }
@@ -151,7 +152,7 @@ export class Interpreter {
     this.steps = 0;
     this.depth = 0;
     this.logs = [];
-    this.scene = { shapes: [], camera: null, sun: null, sky: null, fog: null };
+    this.scene = { shapes: [], camera: null, sun: null, sky: null, fog: null, anim: null };
     this.rng = makeRng(1);
     this.globals = new Scope();
     for (const [name, v] of Object.entries(this.builtins())) this.globals.vars.set(name, v);
@@ -253,7 +254,7 @@ export class Interpreter {
       randint: N('randint', ['a', 'b'], ({ a, b }) => a + Math.floor((b - a + 1) * this.rng())),
       choice: N('choice', ['xs'], ({ xs }) => { const a = iterate(xs); return a[Math.floor(this.rng() * a.length)]; }),
     };
-    return { ...b, ...shapeBuiltins(this.scene) };
+    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene) };
   }
 
   toNum(x, what) {
@@ -349,7 +350,7 @@ export class Interpreter {
     if (items.length !== target.length) {
       throw new ScriptError(`esperava ${target.length} valores para desempacotar, recebeu ${items.length}`, line);
     }
-    target.forEach((t, i) => scope.vars.set(t, items[i]));
+    target.forEach((t, i) => this.bindTarget(t, items[i], scope, line));
   }
 
   assign(t, v, scope) {
@@ -564,6 +565,7 @@ export class Interpreter {
 
   getAttr(obj, name) {
     if (obj instanceof Shape) return getShapeAttr(obj, name);
+    if (obj?.attr3di) return obj.attr3di(name);
     const N = (n, params, f) => new Native(n, params, f);
     if (Array.isArray(obj)) {
       const methods = {

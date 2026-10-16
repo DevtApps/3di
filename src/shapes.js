@@ -85,7 +85,7 @@ function transformedBBox(s, m, t) {
       return transformedBBox(s.children[0], mul3(m, s.props.m), t.map((v, i) => v + mv[i]));
     }
     case 'union': return unionBB(s.children.map((c) => transformedBBox(c, m, t)));
-    case 'subtract': case 'material': case 'label':
+    case 'subtract': case 'material': case 'label': case 'bound':
       return transformedBBox(s.children[0], m, t);
   }
   return fromPoints(corners(s.bbox).map((c) => mulMV(m, c).map((v, i) => v + t[i])));
@@ -147,6 +147,7 @@ function computeBBox(s) {
     }
     case 'material':
     case 'label':
+    case 'bound':
       return c0.bbox;
   }
   throw new Error(`bbox: tipo desconhecido ${s.kind}`);
@@ -160,7 +161,7 @@ export function translate(s, v) {
   return new Shape('translate', { v }, [s]);
 }
 
-function rotMatrix(ax, ay, az) {
+export function rotMatrix(ax, ay, az) {
   const [x, y, z] = [ax, ay, az].map((d) => (d * Math.PI) / 180);
   const cx = Math.cos(x), sx = Math.sin(x), cy = Math.cos(y), sy = Math.sin(y), cz = Math.cos(z), sz = Math.sin(z);
   const Rx = [1, 0, 0, 0, cx, -sx, 0, sx, cx];
@@ -180,9 +181,22 @@ function pivotOf(s, pivot) {
   return isFiniteBB(s.bbox) ? center(s.bbox) : [0, 0, 0];
 }
 
-function aroundPivot(s, c, wrap) {
+export function aroundPivot(s, c, wrap) {
   const neg = c.map((x) => -x);
   return translate(wrap(translate(s, neg)), c);
+}
+
+// cápsula de a até b (membros de personagens, canos, galhos...)
+export function segmentShape(a, b, r) {
+  const d = b.map((v, i) => v - a[i]);
+  const len = Math.hypot(...d);
+  const mid = a.map((v, i) => (v + b[i]) / 2);
+  if (len < 1e-9) return translate(new Shape('sphere', { r }), mid);
+  const n = d.map((v) => v / len);
+  const ax = (Math.asin(Math.max(-1, Math.min(1, n[2]))) * 180) / Math.PI;
+  const az = (Math.atan2(-n[0], n[1]) * 180) / Math.PI;
+  const cap = new Shape('capsule', { r, h: len + 2 * r });
+  return translate(new Shape('rotate', { m: rotMatrix(ax, 0, az) }, [cap]), mid);
 }
 
 export function union(list, k = 0) {
@@ -394,6 +408,10 @@ const METHODS = {
   color: [['c'], (s, a) => material(s, { color: a.c })],
   material: [['color=None', 'rough=None', 'metal=None', 'glow=None'], (s, a) => material(s, a)],
   name: [['label'], (s, a) => new Shape('label', { name: String(a.label) }, [s])],
+  bind: [['bone'], (s, a) => {
+    if (!a.bone?.isBone) throw new ScriptError('bind() espera um osso', null, 'crie com esq = skeleton(); osso = esq.bone("nome", head=(x, y, z))');
+    return new Shape('bound', { bone: a.bone }, [s]);
+  }],
   texture: [['kind', 'color2=None', 'size=None', 'axis="y"'], (s, a) => {
     const kind = TEXTURES[String(a.kind).toLowerCase()];
     if (!kind) {
@@ -515,6 +533,7 @@ export function shapeBuiltins(scene) {
     pyramid: N('pyramid', ['w=1', 'h=1'], (a) => new Shape('pyramid', { w: positive(a.w, 'w'), h: positive(a.h, 'h') })),
     prism: N('prism', ['w=1', 'h=0.5', 'd=1'], (a) => new Shape('prism', { w: positive(a.w, 'w'), h: positive(a.h, 'h'), d: positive(a.d, 'd') })),
     plane: N('plane', [], () => new Shape('plane')),
+    segment: N('segment', ['a', 'b', 'r=0.05'], (a) => segmentShape(vec3(a.a, 'a'), vec3(a.b, 'b'), positive(a.r, 'r'))),
     group: N('group', ['*shapes', 'smooth=0'], (a) => {
       const list = flatten(a.shapes, 'group()');
       if (!list.length) throw new ScriptError('group() vazio', null);

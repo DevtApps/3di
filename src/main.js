@@ -4,8 +4,9 @@ import { compileScene } from './compiler.js';
 import { ScriptError } from './parser.js';
 import { Renderer } from './renderer.js';
 import { fmtNum } from './runtime.js';
+import { exportGLB } from './export.js';
 
-const EXAMPLES = ['animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo'];
+const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo'];
 const STORAGE_KEY = '3di.code';
 
 const $ = (id) => document.getElementById(id);
@@ -103,7 +104,8 @@ function requestRender() {
 function draw(scale) {
   const sc = sceneInfo.scene;
   const r = radiusOf(sceneInfo.bbox);
-  const fog = sc?.fog ?? (sceneInfo.hasPlane ? 0.05 / Math.max(1, r) : 0);
+  // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
+  const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(cam.dist, r, 1) * 14) : 0);
   renderer.render({
     eye: eye(),
     target: cam.target,
@@ -314,6 +316,30 @@ $('btnPng').onclick = () => {
     URL.revokeObjectURL(a.href);
     requestRender();
   });
+};
+
+$('btnGlb').onclick = () => {
+  const res = runScript(code.value);
+  if (!res.ok) { setError(res.error); return; }
+  status.className = 'ok';
+  status.textContent = '⧗ gerando malhas para o .glb…';
+  // deixa o status aparecer antes do trabalho pesado
+  setTimeout(() => {
+    try {
+      const { glb, stats } = exportGLB(res.scene, { res: 128 });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+      a.download = 'cena-3di.glb';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      status.textContent = `✓ .glb exportado: ${(stats.bytes / 1024).toFixed(0)} KB · ${stats.parts} partes · ${stats.triangles} triângulos` +
+        `${stats.bones ? ` · ${stats.bones} ossos` : ''}${stats.animated ? ' · animado' : ''} · ${(stats.ms / 1000).toFixed(1)} s` +
+        stats.warnings.map((w) => `\naviso: ${w}`).join('');
+    } catch (e) {
+      console.error(e);
+      setError(new Error(`erro ao exportar: ${e.message}`));
+    }
+  }, 30);
 };
 
 const sel = $('examples');
