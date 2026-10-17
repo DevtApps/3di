@@ -6,9 +6,9 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": [
         "/home/tiago/Documentos/Projetos/3DI/tools/serve.py",
-        "8318"
+        "8319"
       ],
-      "port": 8318
+      "port": 8319
     }
   ]
 }

@@ -18,6 +18,7 @@ const CORNER = [0, 1, 2, 3, 4, 5, 6, 7].map((c) => [c & 1, (c >> 1) & 1, (c >> 2
 export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null } = {}) {
   const ext = bbox.max.map((v, i) => v - bbox.min[i]);
   const H = cell ?? [0, 1, 2].map(() => Math.max(...ext) / res);
+  if (H.length !== 3 || !H.every((v) => Number.isFinite(v) && v > 0) || !ext.every((v) => Number.isFinite(v) && v >= 0)) throw new Error('grade deve ter dimensões finitas e células positivas');
   const [hx, hy, hz] = H;
   const origin = bbox.min.map((v, i) => v - 2 * H[i]);
   const [nx, ny, nz] = ext.map((e, i) => Math.ceil(e / H[i]) + 5);

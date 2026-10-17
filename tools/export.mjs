@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Exporta um script .3di para .glb (glTF binário), com malhas, cores, esqueleto e animação.
+// Exporta um script .3di para .glb (glTF binário), com malhas, texturas PNG, esqueleto e animação.
 // Uso: node tools/export.mjs cena.3di [saida.glb] [--res 128]
 // --res: células na maior dimensão da cena (mais = mais detalhe e arquivo maior)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ if (!run.ok) {
   console.error(`ERRO ${run.error.toString()}`);
   process.exit(1);
 }
-const { glb, stats } = exportGLB(run.scene, {
+const { glb, stats } = await exportGLB(run.scene, {
   res,
   onProgress: (i, n) => process.stderr.write(`\rmalha ${i + 1}/${n}`),
 });
