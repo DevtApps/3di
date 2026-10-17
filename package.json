@@ -20,7 +20,8 @@
     "desktop:build": "node tools/build-desktop.mjs",
     "desktop:deb": "npm run desktop:build && electron-builder --linux deb --config electron-builder.yml",
     "desktop:smoke": "npm run desktop:build && node tools/run-desktop.mjs --smoke",
-    "predev": "npm run desktop:build"
+    "predev": "npm run desktop:build",
+    "vendor:three": "node tools/vendor-three.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -29,6 +30,7 @@
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
+    "three": "0.160.0",
     "typescript": "^7.0.2"
   },
   "name": "3di-engine",

@@ -51,11 +51,14 @@ class Heap {
  * positions: Float32Array (3 por vértice), indices: Uint32Array (3 por triângulo), malha soldada.
  * tolerance: desvio máximo aproximado da superfície, em metros.
  * maxEdge: comprimento máximo de aresta (opcional), para não esticar triângulos que levam textura.
+ * surfaceDist(x, y, z) (opcional): distância à superfície verdadeira. Triângulos novos com aresta maior que
+ * checkEdge têm o centro e os pontos médios das arestas conferidos contra ela (limite: 1,5 x tolerance): o
+ * erro quádrico só vigia os vértices, e um triângulo grande pode cruzar o volume entre eles.
  * Devolve { positions, indices } novos (vértices sem uso são removidos).
  */
 const MAX_VALENCE = 20; // vértice com mais vizinhos que isso vira leque de triângulos finos (e deixa tudo lento)
 
-export function simplifyMesh(positions, indices, tolerance, { maxEdge = Infinity } = {}) {
+export function simplifyMesh(positions, indices, tolerance, { maxEdge = Infinity, surfaceDist = null, checkEdge = Infinity } = {}) {
   const nv = positions.length / 3, nt = indices.length / 3;
   if (nt < 8 || !(tolerance > 0)) return { positions, indices };
   const P = Float64Array.from(positions);
@@ -152,15 +155,31 @@ export function simplifyMesh(positions, indices, tolerance, { maxEdge = Infinity
   const markA = new Int32Array(nv), markB = new Int32Array(nv);
   let stamp = 0;
   // normal da face t com os vértices a e b trocados pelo ponto (x, y, z); devolve o comprimento
+  const tri = new Float64Array(9);
   const normalMoved = (t, a, b, x, y, z, out) => {
     const v0 = F[t * 3], v1 = F[t * 3 + 1], v2 = F[t * 3 + 2];
     const m0 = v0 === a || v0 === b, m1 = v1 === a || v1 === b, m2 = v2 === a || v2 === b;
     const x0 = m0 ? x : P[v0 * 3], y0 = m0 ? y : P[v0 * 3 + 1], z0 = m0 ? z : P[v0 * 3 + 2];
     const x1 = m1 ? x : P[v1 * 3], y1 = m1 ? y : P[v1 * 3 + 1], z1 = m1 ? z : P[v1 * 3 + 2];
     const x2 = m2 ? x : P[v2 * 3], y2 = m2 ? y : P[v2 * 3 + 1], z2 = m2 ? z : P[v2 * 3 + 2];
+    tri[0] = x0; tri[1] = y0; tri[2] = z0; tri[3] = x1; tri[4] = y1; tri[5] = z1; tri[6] = x2; tri[7] = y2; tri[8] = z2;
     const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0, vx = x2 - x0, vy = y2 - y0, vz = z2 - z0;
     out[0] = uy * vz - uz * vy; out[1] = uz * vx - ux * vz; out[2] = ux * vy - uy * vx;
     return Math.hypot(out[0], out[1], out[2]);
+  };
+  const checkEdge2 = checkEdge * checkEdge, limit = tolerance * 1.5;
+  // o triângulo em `tri` (já com o ponto do colapso) fica perto da superfície verdadeira?
+  const nearSurface = () => {
+    const e = (i, j) => (tri[i] - tri[j]) ** 2 + (tri[i + 1] - tri[j + 1]) ** 2 + (tri[i + 2] - tri[j + 2]) ** 2;
+    if (Math.max(e(0, 3), e(3, 6), e(6, 0)) <= checkEdge2) return true;
+    const pts = [
+      [(tri[0] + tri[3] + tri[6]) / 3, (tri[1] + tri[4] + tri[7]) / 3, (tri[2] + tri[5] + tri[8]) / 3],
+      [(tri[0] + tri[3]) / 2, (tri[1] + tri[4]) / 2, (tri[2] + tri[5]) / 2],
+      [(tri[3] + tri[6]) / 2, (tri[4] + tri[7]) / 2, (tri[5] + tri[8]) / 2],
+      [(tri[6] + tri[0]) / 2, (tri[7] + tri[1]) / 2, (tri[8] + tri[2]) / 2],
+    ];
+    for (const q of pts) if (Math.abs(surfaceDist(q[0], q[1], q[2])) > limit) return false;
+    return true;
   };
   const before = [0, 0, 0], after = [0, 0, 0];
   // vizinhos de a e b juntos (sem repetir, sem a e b)
@@ -217,6 +236,7 @@ export function simplifyMesh(positions, indices, tolerance, { maxEdge = Infinity
         const l0 = faceNormal(t, before);
         const l1 = normalMoved(t, a, b, e.x, e.y, e.z, after);
         if (l1 < l0 * 1e-3 || (before[0] * after[0] + before[1] * after[1] + before[2] * after[2]) < 0.3 * l0 * l1) { ok = false; break; }
+        if (surfaceDist && !nearSurface()) { ok = false; break; }
       }
       if (!ok) break;
     }

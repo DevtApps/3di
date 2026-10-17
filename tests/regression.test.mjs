@@ -477,3 +477,31 @@ test('export: each part keeps its own resolution, flat faces are simplified, and
   assert.equal(parallel.stats.triangles, serial.stats.triangles);
   assert.equal(parallel.glb.byteLength, serial.glb.byteLength, 'o arquivo paralelo é idêntico ao sequencial');
 });
+
+test('export quality report: good conversions read ~100% volume, thin features that vanish are flagged', async () => {
+  const report = async (src, res = 64) => (await exportGLB(runScript(src).scene, { res })).stats.partReports;
+  // formas sólidas: desvio dentro da célula, volume ~100% e status ok
+  for (const src of ['show(box(1))', 'show(sphere(0.5))', 'show(polygon(6, 0.5, 0.5))', 'show(star(5, 0.5, h=0.2))', 'show(wedge(1, 0.6, 0.8))', 'show(lathe([(0, 0), (0.4, 0), (0.3, 0.6), (0.1, 1), (0, 1)], smooth=3))']) {
+    const [r] = await report(src);
+    assert.equal(r.status, 'ok', `${src}: ${JSON.stringify(r)}`);
+    assert.ok(r.volumeRatio > 0.93 && r.volumeRatio < 1.07, `${src}: volume ${r.volumeRatio}`);
+    assert.ok(r.maxError <= r.cell * 0.6 && r.faceError <= r.cell * 0.6, `${src}: desvio ${r.maxError}/${r.faceError} vs célula ${r.cell}`);
+    assert.ok(r.triangles > 0 && r.size > 0);
+  }
+  // fios finos demais para a célula (campo de hastes de 3 mm numa peça de 2 m): a malha perde volume e o relatório avisa
+  const thin = 'show(cylinder(0.0015, 0.5).ground().repeat(x=40, z=40, spacing=0.05))';
+  const [t] = await report(thin, 32);
+  assert.ok(t.volumeRatio === null || t.volumeRatio < 0.75, `hastes finas devem perder volume (achou ${t.volumeRatio})`);
+  if (t.volumeRatio !== null) assert.ok(t.status !== 'ok' && t.reason === 'volume', `deve ser marcado por volume: ${JSON.stringify(t)}`);
+  // o relatório acompanha o número de peças e marca as vazias
+  const many = await report('show(box(1), sphere(0.3).at(2, 0, 0))');
+  assert.equal(many.length, 2);
+  assert.ok(many.every((r) => r.name && r.triangles > 0));
+});
+
+test('large triangles never bridge across the volume: simplified meshes stay on the surface', async () => {
+  // a rampa tem uma aresta viva entre a rampa e a face vertical; antes um triângulo de 62 cm cruzava o sólido
+  const [r] = (await exportGLB(runScript('show(wedge(1, 0.6, 0.8).place(0.6, 0, -2.2))').scene, { res: 96 })).stats.partReports;
+  assert.ok(r.faceError <= r.cell * 0.6, `centros dos triângulos devem ficar na superfície (${(r.faceError * 1000).toFixed(1)} mm, célula ${(r.cell * 1000).toFixed(1)} mm)`);
+  assert.equal(r.status, 'ok');
+});

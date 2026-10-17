@@ -315,6 +315,15 @@ show(group(perna, ..., smooth=0.025), esq.debug())                 # debug() des
 - `animation(duration=4, fps=30)` define o ciclo exportado para o glTF. Escolha `duration` para o ciclo
   fechar (ex.: um passo com `sin(time * 5)` repete a cada 2π/5 s).
 
+## Conferir o GLB
+
+O botão **Conferir GLB** (ou a ferramenta MCP `check_glb`) exporta a cena e abre o resultado num motor padrão
+(three.js) no mesmo ângulo do shader: **Dividido** compara a forma exata com a malha exportada; **Triângulos**
+mostra a densidade (faces planas têm poucos, curvas têm mais) e **Normais** o sombreamento. O relatório lista,
+por peça, os triângulos, o **desvio** da malha em relação à forma (em mm, contra o tamanho da célula) e o
+**volume** (quanto da forma virou malha). Volume bem abaixo de 100% é geometria perdida: partes mais finas que
+a célula (grama, fios) somem na conversão; suba o detalhe ou modele-as mais grossas para o GLB.
+
 ## Exportar glTF / GLB
 
 ```bash
