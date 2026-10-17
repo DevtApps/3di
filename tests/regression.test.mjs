@@ -441,3 +441,39 @@ test('mesher keeps sharp edges and corners exact, even on a coarse grid, and smo
   for (let v = 0; v < nv; v++) { const k = [0, 1, 2].map((a) => sph.mesh.positions[v * 3 + a].toFixed(5)).join(); if (seen.has(k)) split++; seen.add(k); }
   assert.ok(split < nv * 0.01, `superfícies lisas não devem ganhar arestas vivas (${split} vértices duplicados)`);
 });
+
+test('export: each part keeps its own resolution, flat faces are simplified, and the parallel export matches the serial one', async () => {
+  const { partSession } = await import('../src/export.js');
+  const { nodePartRunner } = await import('../src/parallel-node.js');
+  const tris = async (src, i) => (await partSession(runScript(src).scene, 64).build(i)).triangles;
+  // a mesma pétala sozinha ou numa cena de 20 m: mesma malha (a resolução é da peça, não da cena)
+  const ring = 'ellipsoid(0.12, 0.05, 0.3).at(0.45, 0.1, 0).polar(8)';
+  const alone = await tris(`show(${ring})`, 0);
+  const inBigScene = await tris(`show(${ring}, box(1).at(20, 0, 0))`, 0);
+  assert.equal(inBigScene, alone, 'uma peça pequena numa cena grande deve sair igual à peça isolada');
+
+  // faces planas viram poucos triângulos, e os cantos continuam exatos
+  const box = await partSession(runScript('show(box(1))').scene, 128).build(0);
+  assert.ok(box.triangles < 200, `um cubo simplificado deve ter poucos triângulos (achou ${box.triangles})`);
+  const P = box.chunks[0].positions;
+  let worstCorner = 0;
+  for (const c of [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5], [0.5, -0.5, 0.5]]) {
+    let best = Infinity;
+    for (let v = 0; v < P.length; v += 3) best = Math.min(best, Math.hypot(P[v] - c[0], P[v + 1] - c[1], P[v + 2] - c[2]));
+    worstCorner = Math.max(worstCorner, best);
+  }
+  assert.ok(worstCorner < 2e-3, `os cantos do cubo simplificado continuam exatos (pior: ${worstCorner.toFixed(4)} m)`);
+
+  // paralelo (workers) = sequencial, e termina mesmo sem callback de progresso
+  const code = 'show(polygon(6, 0.5, 0.5), star(5, 0.5).at(1.5, 0, 0), sphere(0.4).at(-1.5, 0, 0), box(0.3).at(0, 1, 0).color("red").texture("checker", size=0.1))';
+  const serial = await exportGLB(runScript(code).scene, { res: 48 });
+  const runParts = nodePartRunner({ code, res: 48, maxWorkers: 3, workerUrl: new URL('../src/parts-worker-node.js', import.meta.url) });
+  assert.ok(runParts, 'o worker de peças existe');
+  const parallel = await Promise.race([
+    exportGLB(runScript(code).scene, { res: 48, runParts }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('export paralelo não terminou em 60 s')), 60000)),
+  ]);
+  assert.deepEqual(parallel.stats.warnings, [], 'o export paralelo não deve cair para um núcleo');
+  assert.equal(parallel.stats.triangles, serial.stats.triangles);
+  assert.equal(parallel.glb.byteLength, serial.glb.byteLength, 'o arquivo paralelo é idêntico ao sequencial');
+});

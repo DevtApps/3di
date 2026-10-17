@@ -5,7 +5,7 @@
 import { center } from './shapes.js';
 import { isExpr, val0 } from './expr.js';
 import { rotMatrix, texOffset } from './shapes.js';
-import { splitScene, inv3 } from './compiler.js';
+import { splitScene, inv3, isHeavy } from './compiler.js';
 import { polygonSDF, extrudeDist } from './profile.js';
 
 const at = (v, t) => (isExpr(v) ? v.eval(t) : v);
@@ -305,6 +305,12 @@ function primDist(s) {
   return null;
 }
 
+// caixa para pular um filho de união: vale para subárvores grandes ou caras (ruído, repetição...)
+function cullBox(c) {
+  const finite = c.bbox.max.every((v) => v < 5e3) && c.bbox.min.every((v) => v > -5e3);
+  return finite && (c.leaves >= 3 || isHeavy(c)) ? bboxDist(c.bbox) : null;
+}
+
 function bboxDist(b) {
   const c = center(b), h = b.max.map((v, i) => (v - b.min[i]) / 2 + 0.01);
   return (x, y, z) => sdBox(x - c[0], y - c[1], z - c[2], h[0], h[1], h[2]);
@@ -363,7 +369,7 @@ export function buildDist(s, t = 0) {
     case 'union': {
       if (P.k) return (x, y, z) => kids.reduce((a, f, i) => (i ? smin(a, f(x, y, z), P.k) : f(x, y, z)), 0);
       // pula filhos cuja caixa está mais longe que o melhor resultado (como no shader)
-      const bounds = s.children.map((c) => (c.leaves >= 3 && c.bbox.max.every((v) => v < 5e3) && c.bbox.min.every((v) => v > -5e3) ? bboxDist(c.bbox) : null));
+      const bounds = s.children.map(cullBox);
       return (x, y, z) => {
         let best = 1e10;
         for (let i = 0; i < kids.length; i++) {
@@ -442,11 +448,25 @@ export function buildMat(s, t = 0, mat = {}) {
         return withD(r, (r.d + P.amt * (fbm(x / P.size, y / P.size, z / P.size) * 2 - 1)) * lip);
       };
     }
-    case 'union':
-      return (x, y, z, tp) => kids.reduce((a, f, i) => {
-        const r = f(x, y, z, tp);
-        return i === 0 ? r : P.k ? blend(a, r, P.k) : pick(a, r);
-      }, null);
+    case 'union': {
+      if (P.k) {
+        return (x, y, z, tp) => kids.reduce((a, f, i) => {
+          const r = f(x, y, z, tp);
+          return i === 0 ? r : blend(a, r, P.k);
+        }, null);
+      }
+      // mesmo corte por caixa da distância: filhos caros e longe não são avaliados
+      const bounds = s.children.map(cullBox);
+      return (x, y, z, tp) => {
+        let best = null;
+        for (let i = 0; i < kids.length; i++) {
+          if (best && bounds[i] && bounds[i](x, y, z) >= best.d) continue;
+          const r = kids[i](x, y, z, tp);
+          if (!best || r.d < best.d) best = r;
+        }
+        return best;
+      };
+    }
     case 'subtract': {
       const [a, b] = kids;
       return (x, y, z, tp) => {

@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { runScript } from '../src/interp.js';
 import { compileScene } from '../src/compiler.js';
 import { exportGLB } from '../src/export.js';
+import { nodePartRunner } from '../src/parallel-node.js';
+const PARTS_WORKER = new URL('../src/parts-worker-node.js', import.meta.url);
 import { languageSummary } from '../src/langinfo.js';
 import { collectBones } from '../src/rig.js';
 import { ScriptError } from '../src/parser.js';
@@ -152,7 +154,7 @@ const TOOLS = [
       const out = resolve(ROOT, path);
       const rel = relative(ROOT, out);
       if (isAbsolute(rel) || rel.startsWith('..')) return text('path deve ficar dentro do projeto', true);
-      const { glb, stats } = await exportGLB(run.scene, { res });
+      const { glb, stats } = await exportGLB(run.scene, { res, runParts: nodePartRunner({ code: src, res, workerUrl: PARTS_WORKER }) });
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, glb);
       return text(`ok: ${rel} (${(stats.bytes / 1024).toFixed(0)} KB) · ${stats.parts} partes · ${stats.triangles} triângulos` +
