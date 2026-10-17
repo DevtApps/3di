@@ -97,7 +97,7 @@ else {
         const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
         for (let i = 0; i < 100 && runtime.ide.clientCount() === 0; i++) await new Promise((r) => setTimeout(r, 100));
         const client = new Client({ name: 'desktop-smoke', version: '1' });
-        await client.connect(new StreamableHTTPClientTransport(new URL(runtime.mcp.endpoint)));
+        await client.connect(new StreamableHTTPClientTransport(new URL(runtime.mcp!.endpoint)));
         for (let i = 0; i < 100; i++) {
           if (await win.webContents.executeJavaScript('Boolean(window.tdi && window.tdi.status().startsWith("✓"))')) break;
           await new Promise((r) => setTimeout(r, 100));
@@ -141,7 +141,7 @@ else {
           if (navigation.during.glError || navigation.after.glError || !navigation.during.interactive || navigation.after.interactive) throw new Error(JSON.stringify(navigation));
           console.log('3DI_NAVIGATION_OK', JSON.stringify(navigation));
         }
-        console.log('3DI_DESKTOP_OK', JSON.stringify({ tools: tools.tools.length, screenshot: true, endpoint: runtime.mcp.endpoint, native: await win.webContents.executeJavaScript('typeof window.desktop3di.open') }));
+        console.log('3DI_DESKTOP_OK', JSON.stringify({ tools: tools.tools.length, screenshot: true, endpoint: runtime.mcp!.endpoint, native: await win.webContents.executeJavaScript('typeof window.desktop3di.open') }));
         await client.close(); dirty = false; app.quit();
       } catch (e) { console.error(e); dirty = false; app.exit(1); }
     }
