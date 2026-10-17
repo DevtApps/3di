@@ -15,7 +15,8 @@ export const INSTANCE_THRESHOLD = 40;  // abaixo disso, tudo vira código (mais 
 export const GLSL_LIB = /* glsl */ `
 // d: distância, c: cor, m: (rough, metal, glow), c2: 2ª cor da textura,
 // tx: (tipo, tamanho, eixo (3 = triplanar), relevo) da textura, tp: posição no espaço da textura
-struct M { float d; vec3 c; vec3 m; vec3 c2; vec4 tx; vec3 tp; };
+// fc: facetas (low poly) e verniz: tamanho + 16 * variação de tom em % + 1024 * verniz em décimos
+struct M { float d; vec3 c; vec3 m; vec3 c2; vec4 tx; vec3 tp; float fc; };
 float hash31(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vnoise(vec3 x) {
   vec3 i = floor(x), f = fract(x);
@@ -122,6 +123,13 @@ float sdExt(float d2, float hz, float hh, float r) {
   return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)) - r;
 }
 float sdBox(vec3 p, vec3 b) { vec3 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); }
+// caixa com arestas chanfradas a 45° (c = largura do chanfro); r arredonda o resultado
+float sdCBox(vec3 p, vec3 b, float c) {
+  vec3 q = abs(p) - b;
+  float d = length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+  float e = max(max(q.x + q.y, q.y + q.z), q.z + q.x) + c;
+  return max(d, e * 0.70710678);
+}
 float sdCyl(vec3 p, float r, float h) { vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); }
 float sdCone(vec3 p, float h, float r1, float r2) {
   vec2 q = vec2(length(p.xz), p.y);
@@ -157,6 +165,16 @@ float sdPrism(vec3 p, float hw, float h, float hd) {
   vec2 w = vec2(sdTriIso(vec2(p.x, h * 0.5 - p.y), vec2(hw, h)), abs(p.z) - hd);
   return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
 }
+// cone arredondado de a (raio r1) até b (raio r2): membros, caudas e orelhas que afinam
+float sdRoundCone(vec3 p, vec3 a, vec3 b, float r1, float r2) {
+  vec3 ba = b - a; float l2 = dot(ba, ba), rr = r1 - r2, a2 = l2 - rr * rr, il2 = 1.0 / l2;
+  vec3 pa = p - a; float y = dot(pa, ba), z = y - l2;
+  vec3 xv = pa * l2 - ba * y; float x2 = dot(xv, xv), y2 = y * y * l2, z2 = z * z * l2;
+  float k = sign(rr) * rr * rr * x2;
+  if (sign(z) * a2 * z2 > k) return sqrt(x2 + z2) * il2 - r2;
+  if (sign(y) * a2 * y2 < k) return sqrt(x2 + y2) * il2 - r1;
+  return (sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
+}
 float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
 float smax(float a, float b, float k) { return -smin(-a, -b, k); }
 M mU(M a, M b) { if (a.d < b.d) return a; return b; }
@@ -165,6 +183,19 @@ M mUs(M a, M b, float k) {
   M r = b; if (h > 0.5) r = a;
   r.d = mix(b.d, a.d, h) - k * h * (1.0 - h); r.c = mix(b.c, a.c, h); r.m = mix(b.m, a.m, h); r.c2 = mix(b.c2, a.c2, h);
   return r;
+}
+// Junção entre duas formas (merge): perfil 0 = filete redondo, 1 = chanfro, 2 = sulco (emenda
+// afundada ao longo da linha de contato). cm: 0 = cores nítidas (cada forma mantém a sua),
+// 1 = cores misturadas no filete. sw > 0 pinta a emenda com sc numa faixa de largura ~r.
+M mMerge(M a, M b, float r, int prof, int cm, vec3 sc, float sw) {
+  M m = b; if (a.d < b.d) m = a;
+  float h = clamp(0.5 + 0.5 * (b.d - a.d) / r, 0.0, 1.0);
+  if (prof == 0) m.d = mix(b.d, a.d, h) - r * h * (1.0 - h);
+  else if (prof == 1) m.d = min(min(a.d, b.d), (a.d + b.d - r) * 0.70710678);
+  else m.d = max(min(a.d, b.d), r * 0.5 - length(vec2(a.d, b.d)));
+  if (cm == 1) { m.c = mix(b.c, a.c, h); m.m = mix(b.m, a.m, h); }
+  if (sw > 0.0) m.c = mix(m.c, sc, 1.0 - smoothstep(sw * 0.5, sw, length(vec2(a.d, b.d))));
+  return m;
 }
 M mS(M a, M b) { a.d = max(a.d, -b.d); return a; }
 M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
@@ -180,9 +211,13 @@ export function f(x) {
 }
 const v3 = (v) => `vec3(${v.map(f).join(', ')})`;
 
-const M_FAR = 'M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0))';
+const M_FAR = 'M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0)';
 
-const DEFAULT_MAT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null };
+const DEFAULT_MAT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null, facet: null, coat: 0 };
+const MAT_KEYS = ['color', 'rough', 'metal', 'glow', 'tex', 'facet', 'coat'];
+// facetas e verniz num float só: tamanho da faceta (< 16 m) + 16 * variação de tom em % (< 64)
+// + 1024 * verniz em décimos (0 a 10)
+export const facetCode = (fc, coat = 0) => (fc ? fc.size + 16 * Math.round(fc.vary * 100) : 0) + 1024 * Math.round(Math.min(1, Math.max(0, coat ?? 0)) * 10);
 
 // tamanho padrão de cada textura (m) e segunda cor padrão
 const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25, 7: 1, 8: 0.3, 9: 0.1 };
@@ -226,7 +261,7 @@ class Gen {
     const full = { ...DEFAULT_MAT, ...Object.fromEntries(Object.entries(mat).filter(([, v]) => v !== null && v !== undefined)) };
     const tp = texParams(full.tex, full.color);
     const texP = full.tex ? mat.texP : 'vec3(0.0)';
-    this.line(`M ${m} = M(${expr}, ${v3(full.color)}, ${v3([full.rough, full.metal, full.glow])}, ${v3(tp.c2)}, ${v4(tp.tx)}, ${texP});`);
+    this.line(`M ${m} = M(${expr}, ${v3(full.color)}, ${v3([full.rough, full.metal, full.glow])}, ${v3(tp.c2)}, ${v4(tp.tx)}, ${texP}, ${f(facetCode(full.facet, full.coat))});`);
     return m;
   }
 
@@ -253,6 +288,10 @@ class Gen {
         return this.leaf(P.r ? `sdBox(${p}, ${v3(h)}) - ${f(P.r)}` : `sdBox(${p}, ${v3(h)})`, mat);
       }
       case 'sphere': return this.leaf(`length(${p}) - ${f(P.r)}`, mat);
+      case 'cbox': {
+        const h = P.size.map((x) => x / 2 - P.r);
+        return this.leaf(`sdCBox(${p}, ${v3(h)}, ${f(Math.max(0, P.c - P.r))})${P.r ? ` - ${f(P.r)}` : ''}`, mat);
+      }
       case 'cylinder': {
         const rr = P.round;
         return this.leaf(`sdCyl(${p}, ${f(P.r - rr)}, ${f(P.h / 2 - rr)})${rr ? ` - ${f(rr)}` : ''}`, mat);
@@ -264,6 +303,7 @@ class Gen {
       case 'pyramid': return this.leaf(`sdPyramid((${p} + vec3(0.0, ${f(P.h / 2)}, 0.0)) / ${f(P.w)}, ${f(P.h / P.w)}) * ${f(P.w)}`, mat);
       case 'prism': return this.leaf(`sdPrism(${p}, ${f(P.w / 2)}, ${f(P.h)}, ${f(P.d / 2)})`, mat);
       case 'plane': return this.leaf(`${p}.y`, mat);
+      case 'roundcone': return this.leaf(`sdRoundCone(${p}, ${v3(P.a)}, ${v3(P.b)}, ${f(P.r1)}, ${f(P.r2)})`, mat);
       case 'affine': {
         const mi = P.minv;
         const cols = [0, 1, 2].flatMap((c) => [mi[c], mi[3 + c], mi[6 + c]]);
@@ -370,7 +410,7 @@ class Gen {
       case 'material': {
         const merged = { ...mat };
         // a cor mais interna vence: .color() externo só pinta o que ainda não tem cor
-        for (const k of ['color', 'rough', 'metal', 'glow', 'tex']) if (P[k] !== null && P[k] !== undefined) merged[k] = P[k];
+        for (const k of MAT_KEYS) if (P[k] !== null && P[k] !== undefined) merged[k] = P[k];
         // a textura usa o sistema de coordenadas do nó onde foi aplicada
         if (P.tex) {
           const off = texOffset(P.tex);
@@ -379,8 +419,36 @@ class Gen {
         return this.emit(c0, p, merged);
       }
       case 'label': return this.emit(c0, p, mat);
+      case 'paint': {
+        // pinta a superfície da base onde ela está dentro da região (a geometria não muda);
+        // a região só é avaliada perto da superfície
+        const a = this.emit(c0, p, mat);
+        const w = this.tmp('w');
+        this.line(`if (${a}.d < ${f(P.k + 0.06 + 2 * Math.abs(P.relief ?? 0))}) {`);
+        this.indent++;
+        const r = this.emit(s.children[1], p, mat);
+        this.line(`float ${w} = 1.0 - smoothstep(${f(-P.k)}, ${f(P.k + 1e-5)}, ${r}.d);`);
+        // o relevo inclina o campo (até 0,75 relief/k a mais); dividir mantém o passo do raio seguro
+        if (P.relief) this.line(`${a}.d -= ${f(P.relief)} * ${w};`);
+        this.line(`${a}.c = mix(${a}.c, ${r}.c, ${w}); ${a}.m = mix(${a}.m, ${r}.m, ${w});`);
+        this.line(`if (${w} > 0.5) { ${a}.c2 = ${r}.c2; ${a}.tx = ${r}.tx; ${a}.tp = ${r}.tp; ${a}.fc = ${r}.fc; }`);
+        this.indent--;
+        this.line('}');
+        return a;
+      }
 
       case 'union': return this.emitUnion(s, p, mat);
+      case 'merge': {
+        let acc = this.emit(s.children[0], p, mat);
+        const prof = { round: 0, chamfer: 1, groove: 2 }[P.profile];
+        for (const c of s.children.slice(1)) {
+          const b = this.emit(c, p, mat);
+          const out = this.tmp('m');
+          this.line(`M ${out} = mMerge(${acc}, ${b}, ${f(P.r)}, ${prof}, ${P.colors === 'blend' ? 1 : 0}, ${v3(P.seam ?? [0, 0, 0])}, ${f(P.seam ? P.seamWidth : 0)});`);
+          acc = out;
+        }
+        return acc;
+      }
       case 'subtract': {
         const a = this.emit(s.children[0], p, mat);
         const b = this.emit(s.children[1], p, mat);
@@ -455,7 +523,7 @@ export function inv3(m) {
 
 const mergeMat = (mat, P) => {
   const out = { ...mat };
-  for (const k of ['color', 'rough', 'metal', 'glow', 'tex']) if (P[k] !== null && P[k] !== undefined) out[k] = P[k];
+  for (const k of MAT_KEYS) if (P[k] !== null && P[k] !== undefined) out[k] = P[k];
   return out;
 };
 
@@ -496,7 +564,7 @@ export function splitScene(shapes) {
     // subárvore complexa: reaplica transformação e material acumulados como nós
     let node = s;
     const { texFrame, ...matProps } = mat;
-    if (Object.keys(matProps).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, ...matProps }, [node]);
+    if (Object.keys(matProps).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, facet: null, coat: null, ...matProps }, [node]);
     const isIdent = m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => v === 0);
     if (!isIdent) node = new Shape('affine', { m, t, minv: inv3(m), ds }, [node]);
     residual.push(node);
@@ -520,7 +588,7 @@ function packInstances(list) {
     const full = { ...DEFAULT_MAT, ...matProps };
     const tp = texParams(full.tex, full.color);
     data.set([PRIM_IDS[it.s.kind], pr[0], pr[1], pr[2]], o);
-    data.set([pr[3], it.ds, tp.tx[3], 0], o + 4);
+    data.set([pr[3], it.ds, tp.tx[3], facetCode(full.facet, full.coat)], o + 4);
     for (let r = 0; r < 3; r++) data.set([mi[r * 3], mi[r * 3 + 1], mi[r * 3 + 2], -mt[r]], o + 8 + r * 4);
     data.set([...full.color, full.rough], o + 20);
     data.set([full.metal, full.glow, tp.tx[0], tp.tx[1]], o + 24);
@@ -678,7 +746,7 @@ M mapAll(vec3 p, bool wantMat) {
     vec4 c2 = texelFetch(uInst, ivec2(7, hit), 0);
     vec4 t0 = texelFetch(uInst, ivec2(8, hit), 0), t1 = texelFetch(uInst, ivec2(9, hit), 0), t2 = texelFetch(uInst, ivec2(10, hit), 0);
     vec3 tp = vec3(dot(t0.xyz, p) + t0.w, dot(t1.xyz, p) + t1.w, dot(t2.xyz, p) + t2.w);
-    r = M(r.d, c.rgb, vec3(c.a, e.x, e.y), c2.rgb, vec4(e.z, e.w, c2.a, bb.z), tp);
+    r = M(r.d, c.rgb, vec3(c.a, e.x, e.y), c2.rgb, vec4(e.z, e.w, c2.a, bb.z), tp, bb.w);
   }
   return r;
 }

@@ -1,4 +1,4 @@
-# Exemplos e fluxo de trabalho
+# Exemplos
 
 Os arquivos estão em `examples/` no projeto e também no seletor Exemplos da IDE.
 
@@ -9,6 +9,10 @@ Os arquivos estão em `examples/` no projeto e também no seletor Exemplos da ID
 | materiais.3di | Materiais, texturas e deformação |
 | organico.3di | União suave e twist |
 | pinguim.3di | Personagem e simetria |
+| gato.3di | Gato low poly: chain, paint e facets |
+| cachorro.3di | Filhote low poly com orelhas caídas e língua |
+| robo.3di | Boneco de brinquedo só com funções genéricas: merge, bevel, paint com relevo, coat |
+| cemiterio.3di | Diorama completo: repeat, merge, polar, chain, facets, paint |
 | castelo.3di | Booleanas e repetição |
 | templo.3di | Arquitetura e repeat |
 | vila.3di | Geração procedural |

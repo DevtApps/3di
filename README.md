@@ -38,12 +38,15 @@ claude mcp add --transport http --scope user 3di http://127.0.0.1:8318/mcp
 
 Não há caminhos de instalação ou projeto na configuração. As ferramentas operam sobre
 o documento `.3di` ativo: `get_script`, `set_script`, `check_script`, `save_script`,
-`screenshot`, `list_parts`, `frame`, `set_camera`, `set_time` e `export_glb`.
+`screenshot`, `list_parts`, `frame`, `set_camera`, `set_time`, `set_reference`, `compare_reference`,
+`check_glb` e `export_glb`.
 A exportação MCP é relativa à pasta da cena e não sobrescreve arquivos existentes.
 
-Documentação: `get_documentation` com `topic` `language`, `best-practices`, `examples`
-ou `skill`, e os recursos `3di://docs/<topic>`. A skill gerada em projetos novos fica
-em `.agents/skills`; para Claude Code, copie-a para `.claude/skills/3di-scenes/SKILL.md`.
+Documentação em rotas por tema: `get_documentation(topic="inicio")` explica o que é possível e
+qual rota ler para cada tarefa (fundamentos, formas, combinar, deformar, materiais, organico,
+hard-surface, cenarios, animacao, exportar, referencia-visual, revisao, desempenho, ferramentas,
+exemplos, linguagem). As mesmas rotas são os recursos `threedi://docs/<rota>` e `/docs/<rota>` no HTTP.
+A skill `3di-scenes` (em `.agents/skills` e `.claude/skills` nos projetos novos) só aponta para essas rotas.
 
 ## Desenvolvimento
 
@@ -62,5 +65,5 @@ O ambiente web original permanece independente do VS Code. A engine em `src/` é
 compartilhada. A interface da extensão e o serviço FastMCP ficam em `extension/`.
 No navegador, os comandos legados de `tools/` continuam disponíveis para desenvolvimento.
 
-Leia a [referência da linguagem](docs/language.md), as [boas práticas](docs/best-practices.md)
-e os [exemplos](docs/examples.md).
+A documentação está dividida em rotas em [docs/rotas](docs/rotas/inicio.md) (a mesma que o MCP serve);
+a [referência completa](docs/language.md) reúne tudo num documento.

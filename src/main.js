@@ -8,8 +8,9 @@ import { createEditor } from './ide/editor.js';
 import { createFiles } from './ide/files.js';
 import { connectBridge } from './ide/bridge.js';
 import { setupWorkspace } from './ide/workspace.js';
+import { createReference } from './ide/reference.js';
 
-const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
+const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
 const STORAGE_KEY = '3di.code';
 const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
 chao = plane().color("lightgray")
@@ -191,6 +192,7 @@ function draw(scale, opts = {}) {
     sun: sc?.sun?.dir ?? [0.6, 1, 0.4],
     sunColor: sc?.sun?.color ?? [1, 0.95, 0.88],
     sky: sc?.sky ?? [0.3, 0.5, 0.82],
+    light: sc?.light,
     time: opts.time ?? anim.time,
     size: opts.size,
     // raios de sombra mais curtos enquanto a câmera se move
@@ -545,6 +547,7 @@ window.tdi = {
   interactScale: () => interactRes.value,
   animScale: () => anim.res.value,
   glbCheck,
+  reference: () => reference,
   // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
   async views({ size = 512, t } = {}) { return (await renderViews({ size, time: t ?? anim.time })).toDataURL('image/png'); },
   // tempo médio de um quadro em resolução cheia (ms)
@@ -562,6 +565,7 @@ window.tdi = {
 // ---------- ponte com o MCP (agentes de IA controlam esta vista) ----------
 
 const shot = () => canvas.toDataURL('image/png').split(',')[1];
+const reference = createReference({ host: $('right'), button: $('btnRef'), getShot: () => { draw(1); return shot(); } });
 connectBridge({
   getScript: () => editor.getValue(),
   setScript: ({ code }) => window.tdi.load(code),
@@ -585,6 +589,14 @@ connectBridge({
       describeCam(),
     ].join('\n');
   },
+  // imagem de referência por cima da vista; data = PNG/JPEG em base64
+  setReference: ({ data, mime = 'image/png', opacity, scale, x, y, side }) => {
+    const opts = Object.fromEntries(Object.entries({ opacity, scale, x, y, side }).filter(([, v]) => v !== undefined && v !== null));
+    if (data) opts.src = `data:${mime};base64,${data}`;
+    reference.set(opts);
+    return `referência ${data ? 'definida' : 'ajustada'}: ${JSON.stringify(reference.state())}`;
+  },
+  compareReference: async () => ({ png: await reference.compare(), info: `referência | cena | sobreposição; ${describeCam()}` }),
   setCamera: ({ pos, look, fov }) => {
     applyScriptCamera({ pos, look: look ?? null, fov: fov ?? cam.fov });
     requestRender();

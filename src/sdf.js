@@ -35,6 +35,26 @@ function sdCone(px, py, pz, h, r1, r2) {
 }
 function sdTorus(px, py, pz, R, r) { return Math.hypot(Math.hypot(px, pz) - R, py) - r; }
 function sdCapsule(px, py, pz, r, a) { return len3(px, py - clamp(py, -a, a), pz) - r; }
+// junção do merge (igual a mMerge no shader)
+function mergeD(a, b, P) {
+  const r = P.r;
+  if (P.profile === 'round') { const h = clamp(0.5 + (0.5 * (b - a)) / r, 0, 1); return mix(b, a, h) - r * h * (1 - h); }
+  if (P.profile === 'chamfer') return Math.min(a, b, (a + b - r) * Math.SQRT1_2);
+  return Math.max(Math.min(a, b), r * 0.5 - Math.hypot(a, b));
+}
+
+// cone arredondado de a (raio r1) até b (raio r2), igual ao shader
+function sdRoundCone(x, y, z, a, b, r1, r2) {
+  const bx = b[0] - a[0], by = b[1] - a[1], bz = b[2] - a[2];
+  const l2 = bx * bx + by * by + bz * bz, rr = r1 - r2, a2 = l2 - rr * rr, il2 = 1 / l2;
+  const px = x - a[0], py = y - a[1], pz = z - a[2];
+  const yy = px * bx + py * by + pz * bz, zz = yy - l2;
+  const xx = (px * l2 - bx * yy) ** 2 + (py * l2 - by * yy) ** 2 + (pz * l2 - bz * yy) ** 2;
+  const y2 = yy * yy * l2, z2 = zz * zz * l2, k = Math.sign(rr) * rr * rr * xx;
+  if (Math.sign(zz) * a2 * z2 > k) return Math.sqrt(xx + z2) * il2 - r2;
+  if (Math.sign(yy) * a2 * y2 < k) return Math.sqrt(xx + y2) * il2 - r1;
+  return (Math.sqrt(xx * a2 * il2) + yy * rr) * il2 - r1;
+}
 function sdEllipsoid(px, py, pz, rx, ry, rz) {
   const k0 = len3(px / rx, py / ry, pz / rz), k1 = len3(px / (rx * rx), py / (ry * ry), pz / (rz * rz));
   return k1 > 0 ? (k0 * (k0 - 1)) / k1 : -Math.min(rx, ry, rz);
@@ -173,7 +193,7 @@ export function texHeight(p, tx, n) {
 }
 
 // mesmos valores padrão do compilador
-const DEFAULT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null };
+const DEFAULT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null, facet: null, coat: 0 };
 const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25, 7: 1, 8: 0.3, 9: 0.1 };
 function texC2(tex, color) {
   if (tex.c2) return tex.c2;
@@ -289,6 +309,16 @@ function primDist(s) {
     case 'pyramid': return (x, y, z) => sdPyramid(x / P.w, (y + P.h / 2) / P.w, z / P.w, P.h / P.w) * P.w;
     case 'prism': return (x, y, z) => sdPrism(x, y, z, P.w / 2, P.h, P.d / 2);
     case 'plane': return (x, y) => y;
+    case 'cbox': {
+      const h = P.size.map((x) => x / 2 - P.r), c = Math.max(0, P.c - P.r);
+      return (x, y, z) => {
+        const qx = Math.abs(x) - h[0], qy = Math.abs(y) - h[1], qz = Math.abs(z) - h[2];
+        const d = sdBox(x, y, z, h[0], h[1], h[2]);
+        const e = (Math.max(qx + qy, qy + qz, qz + qx) + c) * Math.SQRT1_2;
+        return Math.max(d, e) - P.r;
+      };
+    }
+    case 'roundcone': return (x, y, z) => sdRoundCone(x, y, z, P.a, P.b, P.r1, P.r2);
     case 'extrude': {
       const poly = polygonSDF(P.pts), half = P.h / 2;
       return P.axis === 'z' ? (x, y, z) => extrudeDist(poly(x, y), z, half, P.r) : (x, y, z) => extrudeDist(poly(x, z), y, half, P.r);
@@ -353,6 +383,18 @@ function transformDist(s, t, c) {
 export function buildDist(s, t = 0) {
   const prim = primDist(s);
   if (prim) return prim;
+  if (s.kind === 'paint') {
+    const base = buildDist(s.children[0], t);
+    const P = s.props;
+    if (!P.relief) return base; // a região só pinta
+    // com relevo, a região levanta (ou afunda) a superfície, como no shader
+    const reg = buildDist(s.children[1], t), reach = P.k + 0.06 + 2 * Math.abs(P.relief);
+    return (x, y, z) => {
+      const d = base(x, y, z);
+      if (d >= reach) return d;
+      return d - P.relief * (1 - smoothstep(-P.k, P.k + 1e-5, reg(x, y, z)));
+    };
+  }
   const P = s.props;
   const kids = s.children.map((c) => buildDist(c, t));
   const tf = kids.length === 1 ? transformDist(s, t, kids[0]) : null;
@@ -380,6 +422,7 @@ export function buildDist(s, t = 0) {
         return best;
       };
     }
+    case 'merge': return (x, y, z) => kids.reduce((acc, f, i) => (i ? mergeD(acc, f(x, y, z), P) : f(x, y, z)), 0);
     case 'subtract': {
       const [a, b] = kids;
       return P.k ? (x, y, z) => smax(a(x, y, z), -b(x, y, z), P.k) : (x, y, z) => Math.max(a(x, y, z), -b(x, y, z));
@@ -404,7 +447,7 @@ export function buildMat(s, t = 0, mat = {}) {
     const tex = full.tex;
     const tx = tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis, tex.bump ?? 0] : null;
     const c2 = tex ? texC2(tex, full.color) : null;
-    return (x, y, z, tp) => ({ d: prim(x, y, z), c: full.color, rough: full.rough, metal: full.metal, glow, c2, tx, tp });
+    return (x, y, z, tp) => ({ d: prim(x, y, z), c: full.color, rough: full.rough, metal: full.metal, glow, c2, tx, tp, facet: full.facet, coat: full.coat });
   }
   if (s.kind === 'material') {
     const merged = { ...mat };
@@ -439,6 +482,20 @@ export function buildMat(s, t = 0, mat = {}) {
   };
   switch (s.kind) {
     case 'label': case 'bound': return c0;
+    case 'paint': {
+      const reg = kids[1], k = P.k;
+      const relief = P.relief ?? 0, reach = k + 0.06 + 2 * Math.abs(relief);
+      return (x, y, z, tp) => {
+        const r = c0(x, y, z, tp);
+        if (r.d >= reach) return r;
+        const g = reg(x, y, z, tp);
+        const w = 1 - smoothstep(-k, k + 1e-5, g.d);
+        if (w <= 0) return r;
+        const out = { ...r, d: r.d - relief * w, c: mix3(r.c, g.c, w), rough: mix(r.rough, g.rough, w), metal: mix(r.metal, g.metal, w) };
+        if (w > 0.5) Object.assign(out, { c2: g.c2, tx: g.tx, tp: g.tp, facet: g.facet });
+        return out;
+      };
+    }
     case 'round': return (x, y, z, tp) => { const r = c0(x, y, z, tp); return withD(r, r.d - P.r); };
     case 'shell': return (x, y, z, tp) => { const r = c0(x, y, z, tp); return withD(r, Math.abs(r.d) - P.t / 2); };
     case 'displace': {
@@ -467,6 +524,21 @@ export function buildMat(s, t = 0, mat = {}) {
         return best;
       };
     }
+    case 'merge':
+      return (x, y, z, tp) => kids.reduce((acc, f, i) => {
+        const r = f(x, y, z, tp);
+        if (!i) return r;
+        const out = { ...(acc.d < r.d ? acc : r), d: mergeD(acc.d, r.d, P) };
+        if (P.colors === 'blend') {
+          const h = clamp(0.5 + (0.5 * (r.d - acc.d)) / P.r, 0, 1);
+          out.c = mix3(r.c, acc.c, h);
+        }
+        if (P.seam) {
+          const sw = P.seamWidth, l = Math.hypot(acc.d, r.d);
+          out.c = mix3(out.c, P.seam, 1 - smoothstep(sw * 0.5, sw, l));
+        }
+        return out;
+      }, null);
     case 'subtract': {
       const [a, b] = kids;
       return (x, y, z, tp) => {
@@ -536,7 +608,7 @@ function makeInstance(it) {
     return [ti[0] * a + ti[1] * b + ti[2] * c, ti[3] * a + ti[4] * b + ti[5] * c, ti[6] * a + ti[7] * b + ti[8] * c];
   };
   const mat = (x, y, z, dd) => ({
-    d: dd, c: full.color, rough: full.rough, metal: full.metal, glow: at(full.glow, 0),
+    d: dd, c: full.color, rough: full.rough, metal: full.metal, glow: at(full.glow, 0), facet: full.facet, coat: full.coat,
     c2: tex ? texC2(tex, full.color) : null, tx: tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis, tex.bump ?? 0] : null,
     tp: tex ? texPoint(x, y, z) : null,
   });

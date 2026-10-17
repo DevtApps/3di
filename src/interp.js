@@ -145,7 +145,7 @@ export class Interpreter {
     this.steps = 0;
     this.depth = 0;
     this.logs = [];
-    this.scene = { shapes: [], camera: null, sun: null, sky: null, fog: null, anim: null };
+    this.scene = { shapes: [], camera: null, sun: null, sky: null, fog: null, light: null, anim: null };
     this.rng = makeRng(1);
     this.globals = new Scope();
     for (const [name, v] of Object.entries(this.builtins())) this.globals.vars.set(name, v);

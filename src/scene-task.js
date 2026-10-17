@@ -14,7 +14,7 @@ export function executeSceneTask({ code, task = 'compile', time = 0, res = 128 }
     if (!run.ok) throw run.error;
     if (task === 'export') return exportGLB(run.scene, { res, runParts: partRunner?.({ code, time, res }) ?? null });
     const out = compileScene(run.scene);
-    const { camera, fog, sun, sky } = run.scene;
-    return { out, logs: run.logs, scene: { camera, fog, sun, sky } };
+    const { camera, fog, sun, sky, light } = run.scene;
+    return { out, logs: run.logs, scene: { camera, fog, sun, sky, light } };
   });
 }

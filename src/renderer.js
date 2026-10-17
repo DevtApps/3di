@@ -13,7 +13,8 @@ precision highp float;
 uniform vec2 uRes;
 uniform vec3 uRo, uTa;
 uniform float uFov, uFog, uMaxDist, uTime;
-uniform vec3 uSun, uSunCol, uSky;
+uniform vec3 uSun, uSunCol, uSky, uRimCol;
+uniform vec3 uLight; // rim, fill, ao
 uniform int uZero, uShadowSteps;
 out vec4 outColor;
 ${sceneGlsl}
@@ -26,6 +27,7 @@ vec3 skyCol(vec3 rd) {
   return col + uSunCol * (pow(s, 600.0) * 4.0 + pow(s, 12.0) * 0.08);
 }
 
+vec3 gFill; // direção da luz de preenchimento (do lado da câmera)
 vec3 shade(M m, vec3 rd, vec3 n, float dif, float occ) {
   if (m.tx.x > 0.5) m.c = texColor(m.tp, m.c, m.c2, m.tx, n);
   vec3 L = normalize(uSun);
@@ -45,13 +47,44 @@ vec3 shade(M m, vec3 rd, vec3 n, float dif, float occ) {
   col += uSunCol * spe * F * 0.6;
   col += skyCol(reflect(rd, n)) * F * occ * (1.0 - rough) * 0.9;
   col += m.c * m.m.z * 2.0;
+  // luzes de estúdio: preenchimento sem sombra e contorno nas bordas da silhueta
+  float ndv = clamp(dot(n, -rd), 0.0, 1.0);
+  col += diff * uSunCol * uLight.y * 0.8 * clamp(dot(n, gFill), 0.0, 1.0) * (0.4 + 0.6 * occ);
+  col += uRimCol * uLight.x * pow(1.0 - ndv, 3.0) * (0.35 + 0.65 * occ) * (0.5 + 0.5 * clamp(n.y + 0.5, 0.0, 1.0));
+  // verniz: reflexo nítido por cima da cor, como plástico de brinquedo
+  float coat = floor(m.fc / 1024.0) * 0.1;
+  if (coat > 0.0) {
+    float cf = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+    col += coat * (uSunCol * pow(clamp(dot(n, H), 0.0, 1.0), 900.0) * 30.0 * dif
+                 + uSunCol * pow(clamp(dot(n, normalize(gFill - rd)), 0.0, 1.0), 300.0) * 3.0 * uLight.y
+                 + skyCol(reflect(rd, n)) * cf * occ * 1.5);
+  }
   return col;
 }
+
+const mat3 FACET_ROT = mat3(0.8571, 0.4286, -0.2857, -0.2857, 0.8571, 0.4286, 0.4286, -0.2857, 0.8571);
 
 // direções do tetraedro usado para a normal
 vec3 tetra(int k) { return 0.5773 * (2.0 * vec3((((k + 3) >> 1) & 1), ((k >> 1) & 1), (k & 1)) - 1.0); }
 
-const int S_RAY = 0, S_MAT = 1, S_NOR = 2, S_SHADOW = 3, S_AO = 4;
+// Facetas (low poly): o espaço é dividido numa grade de tetraedros (a do ruído simplex) de lado
+// ~s. A distância nos 4 vértices do tetraedro que contém o ponto define uma função linear; a
+// normal é o gradiente dela, constante dentro do tetraedro. É a faceta que a malha de marching
+// tetrahedra teria ali: triângulos e quadriláteros planos, como um modelo low poly.
+// Devolve o vértice k (0..3) do tetraedro e, em cell, um identificador para variar o tom.
+vec3 facetVertex(vec3 p, float s, int k, out vec3 cell) {
+  vec3 g = p / s;
+  vec3 i = floor(g + dot(g, vec3(1.0 / 3.0)));
+  vec3 x0 = g - (i - dot(i, vec3(1.0 / 6.0)));
+  vec3 e = step(x0.yzx, x0.xyz);
+  vec3 i1 = e * (1.0 - e.zxy), i2 = 1.0 - e.zxy * (1.0 - e);
+  vec3 o = k == 0 ? vec3(0.0) : k == 1 ? i1 : k == 2 ? i2 : vec3(1.0);
+  cell = i + 0.37 * i1 + 0.61 * i2;
+  vec3 v = i + o;
+  return (v - dot(v, vec3(1.0 / 6.0))) * s;
+}
+
+const int S_RAY = 0, S_MAT = 1, S_NOR = 2, S_SHADOW = 3, S_AO = 4, S_FAC = 5;
 
 void main() {
   vec2 uv = (2.0 * gl_FragCoord.xy - uRes) / min(uRes.x, uRes.y);
@@ -62,18 +95,22 @@ void main() {
   float fl = 1.0 / tan(radians(uFov) * 0.5);
   vec3 rd = normalize(uv.x * uu + uv.y * vv + fl * ww);
   vec3 L = normalize(uSun);
+  gFill = normalize(-ww - 0.7 * uu + 0.5 * vv);
 
   int state = S_RAY, k = 0, steps = 0;
   float t = 0.001, hitT = -1.0;
   vec3 pos = vec3(0.0), nor = vec3(0.0);
   float sh = 1.0, st = 0.003, occ = 0.0, sca = 1.0;
-  M mat = M(0.0, vec3(0.5), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0));
+  M mat = M(0.0, vec3(0.5), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
+  vec3 fcell = vec3(0.0), fv[4];
+  float fd[4];
   // uZero = 0 (uniform) impede o compilador de desenrolar o laço e duplicar a cena
   for (int it = uZero; it < 420; it++) {
     vec3 q;
     if (state == S_RAY) q = uRo + rd * t;
     else if (state == S_MAT) q = pos;
     else if (state == S_NOR) q = pos + 0.0004 * tetra(k);
+    else if (state == S_FAC) q = fv[k];
     else if (state == S_SHADOW) q = pos + nor * 0.002 + L * st;
     else q = pos + nor * (0.01 + 0.04 * float(k));
 
@@ -95,6 +132,18 @@ void main() {
       nor += tetra(k) * d;
       if (++k == 4) {
         nor = normalize(nor);
+        k = 0;
+        if (mod(mat.fc, 1024.0) > 0.0) {
+          // a grade gira um pouco para as facetas não ficarem alinhadas aos eixos
+          for (int j = 0; j < 4; j++) fv[j] = FACET_ROT * facetVertex(pos * FACET_ROT, mod(mat.fc, 16.0), j, fcell);
+          state = S_FAC;
+        }
+        else if (dot(nor, L) > 0.001) { state = S_SHADOW; steps = 0; }
+        else { sh = 0.0; state = S_AO; }
+      }
+    } else if (state == S_FAC) {
+      fd[k] = d;
+      if (++k == 4) {
         k = 0;
         if (dot(nor, L) > 0.001) { state = S_SHADOW; steps = 0; }
         else { sh = 0.0; state = S_AO; }
@@ -121,8 +170,18 @@ void main() {
       float px = hitT * 2.0 * tan(radians(uFov) * 0.5) / min(uRes.x, uRes.y);
       nor = bumpNormal(nor, mat.tx.w * mat.tx.y, dhx, dhy, dpx, dpy, px);
     }
+    if (mod(mat.fc, 1024.0) > 0.0) {
+      // normal da faceta (a semente pode cair em outra parte do corpo: nesse caso fica a lisa)
+      // gradiente da função linear nos 4 vértices: resolve [v1-v0; v2-v0; v3-v0] g = [d1-d0, ...]
+      mat3 A = transpose(mat3(fv[1] - fv[0], fv[2] - fv[0], fv[3] - fv[0]));
+      vec3 g = inverse(A) * vec3(fd[1] - fd[0], fd[2] - fd[0], fd[3] - fd[0]);
+      vec3 fn = normalize(g);
+      if (length(g) > 0.2 && dot(fn, nor) > 0.3) nor = fn;
+      float vary = floor(mod(mat.fc, 1024.0) / 16.0) * 0.01;
+      mat.c *= 1.0 + vary * (2.0 * hash31(fcell + 5.17) - 1.0);
+    }
     float dif = clamp(dot(nor, L), 0.0, 1.0) * clamp(sh, 0.0, 1.0);
-    vec3 c = shade(mat, rd, nor, dif, clamp(1.0 - 3.0 * occ, 0.0, 1.0));
+    vec3 c = shade(mat, rd, nor, dif, clamp(1.0 - 3.0 * occ * uLight.z, 0.0, 1.0));
     col = mix(col, c, exp(-uFog * hitT));
   }
   col = col * (2.51 * col + 0.03) / (col * (2.43 * col + 0.59) + 0.14);
@@ -207,7 +266,7 @@ export class Renderer {
     this.program = prog;
     this.glsl = glsl;
     this.loc = {};
-    for (const u of ['uRes', 'uRo', 'uTa', 'uFov', 'uFog', 'uMaxDist', 'uSun', 'uSunCol', 'uSky', 'uTime', 'uZero', 'uShadowSteps']) {
+    for (const u of ['uRes', 'uRo', 'uTa', 'uFov', 'uFog', 'uMaxDist', 'uSun', 'uSunCol', 'uSky', 'uTime', 'uZero', 'uShadowSteps', 'uLight', 'uRimCol']) {
       this.loc[u] = gl.getUniformLocation(prog, u);
     }
     gl.useProgram(prog);
@@ -235,8 +294,9 @@ export class Renderer {
     put(1, this.tex[1], data.bvhW, data.nodeCount, data.bvh, 'uBvh');
   }
 
+  // devolve false quando ainda não há shader (nada foi desenhado)
   render(view, scale = 1) {
-    if (!this.program) return;
+    if (!this.program) return false;
     const gl = this.gl;
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * scale;
     // view.size = [w, h] fixa a resolução (vistas fora da tela); senão segue o tamanho do canvas
@@ -260,6 +320,10 @@ export class Renderer {
     gl.uniform1f(L.uTime, view.time ?? 0);
     gl.uniform1i(L.uZero, 0);
     gl.uniform1i(L.uShadowSteps, view.shadowSteps ?? 80);
+    const lt = view.light ?? { rim: 0, fill: 0, ao: 1, rimColor: [1, 1, 1] };
+    gl.uniform3f(L.uLight, lt.rim, lt.fill, lt.ao);
+    gl.uniform3fv(L.uRimCol, lt.rimColor);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return true;
   }
 }

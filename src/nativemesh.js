@@ -279,6 +279,7 @@ function collect(shape, limit) {
       case 'rotate': return visit(c0, mul3(m, P.angles ? rotMatrix(...P.angles.map(val0)) : P.m), t);
       case 'scale': { const k = P.s.map(val0); return visit(c0, mul3(m, [k[0], 0, 0, 0, k[1], 0, 0, 0, k[2]]), t); }
       case 'affine': { const mv = mulMV(m, P.t); return visit(c0, mul3(m, P.m), t.map((x, i) => x + mv[i])); }
+      case 'paint': if (P.relief) throw new Unsupported('paint com relevo'); return visit(c0, m, t);
       case 'material': case 'label': case 'bound': return visit(c0, m, t);
       case 'union':
         if (P.k) throw new Unsupported('união suave');
