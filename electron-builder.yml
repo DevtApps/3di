@@ -6,6 +6,7 @@ directories:
 asar: true
 asarUnpack:
   - desktop/engine-worker.cjs
+  - desktop/parts-worker-node.cjs
 linux:
   target:
     - deb

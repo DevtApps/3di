@@ -60,6 +60,31 @@ Use propriedades reais `top`, `bottom`, `left`, `right`, `front`, `back`, `width
 `height`, `depth`, `center`, `x`, `y`, `z`. Evite repetir números independentes para
 bordas que precisam coincidir. Após modificar a base, recalcule seus dependentes.
 
+## Escolher geometrias e modificadores
+
+- Para perfis recortados e silhuetas próprias, use `extrude(points, h, axis="z")`:
+  pontos `(x,y)` de frente; com `axis="y"`, pontos `(x,z)` no chão. O perfil mantém
+  suas coordenadas; finalize o apoio com `place` ou `ground`.
+- Use `lathe(profile, smooth=0)` para vasos, colunas e peças de revolução: pontos
+  `(raio, altura)` em torno de y. `smooth` aceita 0 a 8; confira a silhueta após suavizar.
+- `polygon` cria pilares regulares, `star` estrelas extrudadas, `wedge` rampas,
+  `hemisphere` cúpulas e `tube` canos abertos. Consulte assinaturas e limites em
+  `describe_language` e em `get_documentation(topic="language")`.
+- `taper` afunila, `bend` curva, `shear` inclina e `elongate` acrescenta comprimento
+  no meio. A ordem com rotações e deslocamentos muda o resultado. `bend.pivot` é
+  uma coordenada numérica no eixo de curvatura, diferente do pivô vetorial de `rotate`.
+- Para cópias radiais, afaste a peça do eixo y antes de `.polar(count)` (2 a 256),
+  depois mova o conjunto. Use `repeat` para grades e `mirror` para espelhamento.
+- Reserve `implicit(f, size=2, lip=0.5)` para campos por fórmula: negativo dentro,
+  zero na superfície; `size` recorta uma caixa centrada. Use `hypot`, `abs`, `min`,
+  `max`, `step` e outras funções simbólicas, sem comparações ou `if` dependentes
+  de x/y/z. Consulte "Formas por fórmula" para escolher `lip` e evitar campos instáveis.
+
+Consulte `get_documentation(topic="examples")` para localizar `formas.3di`,
+`formulas.3di` e os geradores `grass`, `plant`, `tree`, `person` e `vehicle`.
+Para texturas, use `.texture(...)`; `bump` gera relevo e `triplanar=True` orienta
+padrões nas diferentes faces. Cor chamada `"wood"` sozinha não cria textura de madeira.
+
 ## Para arquitetura e peças encaixadas
 
 - Parede, recorte e caixilho devem compartilhar centro, nível e dimensão de abertura.
@@ -91,3 +116,6 @@ revisão visual pendente. Reutilize a janela existente.
 Para animação GLB, use ossos e `.bind()`; `time` fora dos ossos exporta em t=0.
 Salve/exporte quando fizer parte do pedido. Confira a malha exportada: o preview
 SDF não prova que detalhes finos ou texturas sobreviveram à conversão.
+A resolução do GLB é por peça; comece baixa e aumente conforme os detalhes.
+O exportador simplifica faces planas e embute atlas PNG com UV e normal maps quando
+há textura/relevo. Isso não significa que arquivos PNG separados sejam salvos.

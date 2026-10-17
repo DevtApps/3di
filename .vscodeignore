@@ -3,6 +3,7 @@
 !README.md
 !dist/extension.cjs
 !dist/engine-worker.cjs
+!dist/parts-worker-node.cjs
 !dist/preview.js
 !dist/preview.css
 !dist/THIRD-PARTY-NOTICES.txt

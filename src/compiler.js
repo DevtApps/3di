@@ -199,7 +199,7 @@ const v4 = (v) => `vec4(${v.map(f).join(', ')})`;
 // Nós caros de avaliar (ruído, repetição, torção) valem uma checagem de caixa antes, mesmo sozinhos:
 // um bloco com displace chama fbm (5 oitavas) em todo passo do raio se não for pulado de longe.
 const HEAVY = new Set(['displace', 'repeat', 'twist', 'bend', 'taper', 'polar', 'extrude', 'lathe', 'implicit']);
-function isHeavy(sh) {
+export function isHeavy(sh) {
   return (sh._heavy ??= HEAVY.has(sh.kind) || sh.children.some(isHeavy));
 }
 

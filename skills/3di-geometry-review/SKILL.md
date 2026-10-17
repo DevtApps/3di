@@ -48,6 +48,13 @@ ou medidas da superfície), a construção dos recortes e vistas aproximadas.
 Para uma água plana `y = y0 + inclinacao * (x-x0)`, compare o encontro da peça com
 a altura avaliada no x de contato, não com `telhado.top`.
 
+Para `extrude`, confira o plano do perfil (`z`: x/y; `y`: x/z) e sua origem;
+para `lathe`, confira raios, tampas e silhueta após `smooth`. Em `taper`, `bend`,
+`shear` e `elongate`, as caixas podem conter folga: meça contatos pela superfície
+real e confira a ordem das transformações. Em `polar`, confira o afastamento ao
+eixo y e a distribuição radial. Em `implicit`, a caixa `size` é um recorte,
+não uma medida da superfície: examine cortes nas bordas, buracos e cascas.
+
 ### Diagnóstico executável na linguagem
 
 O 3DI suporta `if` e `print`; não invente `assert`, imports, exceções ou bibliotecas.

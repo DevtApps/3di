@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Exporta um script .3di para .glb (glTF binário), com malhas, texturas PNG, esqueleto e animação.
 // Uso: node tools/export.mjs cena.3di [saida.glb] [--res 128]
-// --res: células na maior dimensão da cena (mais = mais detalhe e arquivo maior)
+// --res: células na maior dimensão de cada peça (mais = mais detalhe e arquivo maior)
+// THREEDI_SERIAL=1 malha num núcleo só (para comparar ou depurar)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { runScript } from '../src/interp.js';
 import { exportGLB } from '../src/export.js';
+import { nodePartRunner } from '../src/parallel-node.js';
+const PARTS_WORKER = new URL('../src/parts-worker-node.js', import.meta.url);
 
 const args = process.argv.slice(2);
 const resIdx = args.indexOf('--res');
@@ -16,7 +19,8 @@ if (!input) {
   process.exit(2);
 }
 
-const run = runScript(readFileSync(input, 'utf8'));
+const code = readFileSync(input, 'utf8');
+const run = runScript(code);
 for (const l of run.logs) console.log(`print: ${l}`);
 if (!run.ok) {
   console.error(`ERRO ${run.error.toString()}`);
@@ -24,6 +28,8 @@ if (!run.ok) {
 }
 const { glb, stats } = await exportGLB(run.scene, {
   res,
+  // as peças são malhadas em paralelo, uma por núcleo
+  runParts: process.env.THREEDI_SERIAL ? null : nodePartRunner({ code, res, workerUrl: PARTS_WORKER }),
   onProgress: (i, n) => process.stderr.write(`\rmalha ${i + 1}/${n}`),
 });
 process.stderr.write('\n');

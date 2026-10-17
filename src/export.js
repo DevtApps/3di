@@ -14,7 +14,6 @@ import { GltfBuilder, GL, mat4FromAffine, mat4Mul, mat4Translate, mat4Invert, eu
 
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 const EXPORT_CHUNK_TRIANGLES = 8192;
-const ATLAS_TILE = 10; // 8 texels de conteúdo + 1 texel de margem em cada lado
 
 function u32be(n) { return Uint8Array.of(n >>> 24, n >>> 16, n >>> 8, n); }
 function pngChunk(type, data) {
@@ -56,23 +55,25 @@ const norm3 = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] /
 // Atlas de cor (e, se heightAt existir, de normais): um bloco por triângulo.
 // sampleColor(x, y, z, n) recebe a normal da face (para a projeção triplanar);
 // heightAt(x, y, z, n) devolve { h, amp, e } do relevo: altura 0..1, amplitude (m) e passo de derivação (m).
-async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null, normals = null) {
+async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null, normals = null, content = 8) {
+  // bloco de cada triângulo: content x content texels de conteúdo + 1 de margem em cada lado
+  const TILE = content + 2;
   const triangleCount = indices.length / 3;
   const grid = Math.ceil(Math.sqrt(triangleCount));
-  const width = 2 ** Math.ceil(Math.log2(grid * ATLAS_TILE));
+  const width = 2 ** Math.ceil(Math.log2(grid * TILE));
   const uv = new Float32Array(triangleCount * 6);
   const rgba = new Uint8Array(width * width * 4);
   const nrgba = heightAt ? new Uint8Array(width * width * 4) : null;
   const sample = (x, y, z, n) => sampleColor(x, y, z, n).map(linearToSrgb);
   const coords = (corner, left, top) => {
-    const x0 = (left + 1.5) / width, x1 = (left + 8.5) / width;
-    // glTF tem a origem de V no topo da imagem (sem inversão): linha py = 8 é sy = 0, py = 1 é sy = 1
-    const v0 = (top + 8.5) / width, v1 = (top + 1.5) / width;
+    const x0 = (left + 1.5) / width, x1 = (left + content + 0.5) / width;
+    // glTF tem a origem de V no topo da imagem (sem inversão): linha py = content é sy = 0, py = 1 é sy = 1
+    const v0 = (top + content + 0.5) / width, v1 = (top + 1.5) / width;
     return corner === 0 ? [x0, v0] : corner === 1 ? [x1, v0] : [x0, v1];
   };
 
   for (let tri = 0; tri < triangleCount; tri++) {
-    const tileX = (tri % grid) * ATLAS_TILE, tileY = Math.floor(tri / grid) * ATLAS_TILE;
+    const tileX = (tri % grid) * TILE, tileY = Math.floor(tri / grid) * TILE;
     const points = [0, 1, 2].map((corner) => {
       const v = indices[tri * 3 + corner] * 3;
       return [positions[v], positions[v + 1], positions[v + 2]];
@@ -90,9 +91,9 @@ async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null
     const B = norm3(sub3(e2, T.map((c) => c * dot3(e2, T))));
     // Bake a private UV chart per triangle. This preserves the exact 3D
     // procedural coordinates, including noise that changes through depth.
-    for (let py = 0; py < ATLAS_TILE; py++) for (let px = 0; px < ATLAS_TILE; px++) {
-      const sx = Math.max(-0.15, Math.min(1.15, (px - 1) / 7));
-      const sy = Math.max(-0.15, Math.min(1.15, 1 - (py - 1) / 7));
+    for (let py = 0; py < TILE; py++) for (let px = 0; px < TILE; px++) {
+      const sx = Math.max(-0.15, Math.min(1.15, (px - 1) / (content - 1)));
+      const sy = Math.max(-0.15, Math.min(1.15, 1 - (py - 1) / (content - 1)));
       const weights = [1 - sx - sy, sx, sy];
       const point = [0, 1, 2].map((axis) => points.reduce((sum, p, i) => sum + p[axis] * weights[i], 0));
       const color = sample(...point, nf);
@@ -118,6 +119,20 @@ async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null
     }
   }
   return { uv, png: await encodePng(width, width, rgba), normalPng: nrgba ? await encodePng(width, width, nrgba) : null };
+}
+
+// Menor tamanho de padrão das texturas de uma forma (Infinity se não tiver textura), corrigido pelas escalas.
+const TEX_SIZE_DEFAULT = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25, 7: 1, 8: 0.3, 9: 0.1 };
+function smallestTexture(s, k = 1) {
+  let m = Infinity;
+  if (s.kind === 'material' && s.props.tex) {
+    const t = s.props.tex;
+    // o degradê é suave: o tamanho dele é a extensão inteira; os outros padrões têm detalhe de `size`
+    m = (t.size ?? TEX_SIZE_DEFAULT[t.kind] ?? 0.25) * k * (t.kind === 7 ? 0.5 : 1);
+  }
+  const kk = s.kind === 'scale' ? k * Math.min(...s.props.s.map((v) => Math.abs(val0(v)))) : k;
+  for (const c of s.children) m = Math.min(m, smallestTexture(c, kk));
+  return m;
 }
 
 // Raios de arredondamento de uma forma: .round(), box(round=), cylinder(round=), extrude/polygon/star(round=),
@@ -182,12 +197,129 @@ function splitParts(shapes) {
   return parts;
 }
 
+// Contexto compartilhado por todas as peças (precisa ser igual em qualquer worker).
+function sceneContext(parts, res) {
+  const finite = parts.filter((p) => isFiniteBB(p.shape.bbox)).map((p) => p.shape.bbox);
+  const sceneBB = finite.length ? unionBB(finite) : { min: [-1, 0, -1], max: [1, 1, 1] };
+  const sceneMax = Math.max(...size(sceneBB), 0.01);
+  return { res, sceneBB, sceneMax };
+}
+
+/**
+ * Geometria de uma peça: só dados (arrays e PNGs), sem o glTF, para poder rodar em outro worker.
+ * Devolve { name, kind, materialProps, chunks: [{ positions, normals, colors | uv, png, normalPng }], triangles, vertices }
+ * ou { name, empty: true } se a peça não tem superfície.
+ */
+export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
+  let bb = p.shape.bbox;
+  const infinite = !isFiniteBB(bb);
+  if (infinite) {
+    // chão infinito: recorta uma região em volta da cena
+    const margin = Math.max(3, sceneMax * 0.25);
+    bb = {
+      min: [sceneBB.min[0] - margin, Math.max(bb.min[1], -0.25), sceneBB.min[2] - margin],
+      max: [sceneBB.max[0] + margin, Math.min(bb.max[1], 0.25), sceneBB.max[2] + margin],
+    };
+  }
+  const dims = size(bb);
+  const partMax = Math.max(...dims);
+  // Cada peça é malhada na própria resolução: res células na sua maior dimensão, independente do
+  // tamanho da cena (uma pétala de 10 cm numa cena de 8 m não pode herdar a célula da cena).
+  // Em eixos finos, pelo menos 6 camadas, para placas e lâminas não perderem a espessura.
+  const base = partMax / res;
+  // arredondamentos menores que a célula viram ondulações: a célula fica abaixo do menor raio visível
+  // na escala da peça (um detalhe de 2 cm num boneco de 1,75 m não justifica refinar o boneco inteiro)
+  const fillet = Math.min(Infinity, ...fillets(p.shape).filter((r) => r >= partMax / 60));
+  const featureCell = Number.isFinite(fillet) ? Math.max(fillet * 0.6, partMax / 160) : Infinity;
+  let cell = infinite ? dims.map(() => partMax / res) : dims.map((d) => Math.min(base, featureCell, Math.max(d, 1e-4) / 6));
+  const cells = () => dims.reduce((n, d, i) => n * (Math.ceil(d / cell[i]) + 5), 1);
+  while (cells() > 12e6) cell = cell.map((c) => c * 1.25);
+  const { dist, mat: matFn } = buildSceneFns(p.shape);
+  // A textured SDF has a procedural color in the preview; it is baked into a PNG atlas (textured)
+  // or into vertex colors (COLOR_0) so standard viewers show it.
+  let textured = false, bumped = false;
+  const colorAt = (x, y, z) => {
+    const r = matFn(x, y, z);
+    if (r.tx) { textured = true; if (r.tx[3] > 0) bumped = true; }
+    return surfaceColor(r);
+  };
+  // altura do relevo (0..1) com a amplitude e o passo de derivação (em metros) da textura
+  const heightAt = (x, y, z, n) => {
+    const r = matFn(x, y, z);
+    if (!r.tx || !(r.tx[3] > 0) || !r.tp) return { h: 0, amp: 0, e: 1 };
+    return { h: texHeight(r.tp, r.tx, n), amp: r.tx[3] * r.tx[1], e: r.tx[1] * 0.02 };
+  };
+  // peças com textura não podem ganhar triângulos maiores que o padrão (o atlas tem poucos texels
+  // por triângulo); sem textura, a simplificação fica livre
+  const texSize = smallestTexture(p.shape);
+  const simplify = { tolerance: Math.min(...cell) * 0.35, maxEdge: Number.isFinite(texSize) ? texSize * 0.5 : Infinity };
+  let mesh = meshSDF(dist, bb, { cell, colorAt, simplify });
+  // peças finas espalhadas numa parte grande (postes...) passam entre os pontos da grade:
+  // tenta de novo com voxel menor
+  for (let tries = 0; !mesh && tries < 3; tries++) {
+    cell = cell.map((c) => c / 2);
+    if (cells() > 12e6) break;
+    mesh = meshSDF(dist, bb, { cell, colorAt, simplify });
+  }
+  const name = p.name ?? `parte${pi}`;
+  if (!mesh) return { name, empty: true };
+
+  // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0 ou no atlas)
+  const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
+  const glow = Math.min(1, Math.max(0, m0.glow));
+  const materialProps = {
+    name: p.name ?? `material${pi}`,
+    pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: m0.metal, roughnessFactor: Math.max(0.03, m0.rough) },
+    ...(glow > 0 ? { emissiveFactor: m0.c.map((c) => Math.min(1, c * glow * 2)) } : {}),
+  };
+  const triangles = mesh.indices.length / 3;
+  if (!textured) {
+    return { name, kind: p.kind, materialProps, triangles, vertices: mesh.positions.length / 3, chunks: [{ positions: mesh.positions, normals: mesh.normals, colors: mesh.colors, indices: mesh.indices }] };
+  }
+  // Texels por triângulo: com malha fina os triângulos são pequenos, então menos texels mantêm a
+  // mesma densidade de textura por metro (8x8 com ~6 mil triângulos, até 3x3 em malhas densas).
+  const texelsPerTriangle = Math.max(3, Math.min(8, Math.round(8 * Math.sqrt(6000 / Math.max(1, triangles)))));
+  const chunks = [];
+  for (let first = 0; first < mesh.indices.length; first += EXPORT_CHUNK_TRIANGLES * 3) {
+    const triangleIndices = mesh.indices.subarray(first, Math.min(first + EXPORT_CHUNK_TRIANGLES * 3, mesh.indices.length));
+    const vertexCount = triangleIndices.length;
+    const positions = new Float32Array(vertexCount * 3), normals = new Float32Array(vertexCount * 3);
+    for (let i = 0; i < vertexCount; i++) {
+      const source = triangleIndices[i] * 3;
+      positions.set(mesh.positions.subarray(source, source + 3), i * 3);
+      normals.set(mesh.normals.subarray(source, source + 3), i * 3);
+    }
+    const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z, n) => surfaceColor(matFn(x, y, z), n), bumped ? heightAt : null, normals, texelsPerTriangle);
+    chunks.push({ positions, normals, uv: atlas.uv, png: atlas.png, normalPng: atlas.normalPng });
+  }
+  return { name, kind: p.kind, materialProps, triangles, vertices: mesh.indices.length, chunks };
+}
+
+// Buffers de uma geometria (para transferir entre workers sem copiar)
+export function geometryTransfer(geom) {
+  const out = [];
+  for (const c of geom.chunks ?? []) for (const k of ['positions', 'normals', 'colors', 'uv', 'png', 'normalPng', 'indices']) if (c[k]?.buffer) out.push(c[k].buffer);
+  return [...new Set(out)];
+}
+
+/**
+ * Sessão para um worker de peças: roda o script uma vez e malha peças sob demanda.
+ * Os workers rodam o mesmo script (determinístico, inclusive com seed), então a lista de peças e o
+ * contexto da cena são idênticos aos do processo principal.
+ */
+export function partSession(scene, res) {
+  const parts = splitParts(scene.shapes);
+  const ctx = sceneContext(parts, res);
+  return { count: parts.length, build: (i) => partGeometry(parts[i], i, ctx) };
+}
+
 /**
  * Exporta a cena (resultado de runScript) para GLB.
- * opts.res: células na maior dimensão da cena (padrão 128); define o tamanho do voxel.
+ * opts.res: células na maior dimensão de cada peça (padrão 128).
+ * opts.runParts(n, onDone): opcional; malha as n peças em paralelo (workers) e devolve as geometrias em ordem.
  * Devolve { glb: Uint8Array, stats }.
  */
-export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
+export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null } = {}) {
   if (!Number.isInteger(res) || res < 1 || res > 2048) throw new Error('res deve ser um inteiro entre 1 e 2048');
   const { duration = 4, fps = 30 } = scene.anim ?? {};
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
@@ -196,14 +328,23 @@ export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
   const t0 = Date.now();
   const warnings = [];
   const parts = splitParts(scene.shapes);
-  const finite = parts.filter((p) => isFiniteBB(p.shape.bbox)).map((p) => p.shape.bbox);
-  const sceneBB = finite.length ? unionBB(finite) : { min: [-1, 0, -1], max: [1, 1, 1] };
-  const sceneMax = Math.max(...size(sceneBB), 0.01);
-  // mesmo tamanho de voxel para a cena toda: res células na maior dimensão da cena
-  const h = sceneMax / res;
+  const ctx = sceneContext(parts, res);
 
   if (parts.some((p) => p.kind === 'static' && p.shape.animated)) {
     warnings.push('partes animadas com time fora de ossos foram exportadas paradas (t = 0)');
+  }
+
+  // geometria das peças: em paralelo quando há workers, senão aqui mesmo
+  let geoms = null;
+  if (runParts && parts.length > 1) {
+    try { geoms = await runParts(parts.length, onProgress); } catch (e) { warnings.push(`malha em paralelo falhou (${e.message}); usando um núcleo`); geoms = null; }
+  }
+  if (!geoms) {
+    geoms = [];
+    for (let pi = 0; pi < parts.length; pi++) {
+      onProgress?.(pi, parts.length);
+      geoms.push(await partGeometry(parts[pi], pi, ctx));
+    }
   }
 
   const g = new GltfBuilder();
@@ -215,128 +356,57 @@ export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
 
   for (let pi = 0; pi < parts.length; pi++) {
     const p = parts[pi];
-    onProgress?.(pi, parts.length);
-    let bb = p.shape.bbox;
-    const infinite = !isFiniteBB(bb);
-    if (infinite) {
-      // chão infinito: recorta uma região em volta da cena
-      const margin = Math.max(3, sceneMax * 0.25);
-      bb = {
-        min: [sceneBB.min[0] - margin, Math.max(bb.min[1], -0.25), sceneBB.min[2] - margin],
-        max: [sceneBB.max[0] + margin, Math.min(bb.max[1], 0.25), sceneBB.max[2] + margin],
+    const geom = geoms[pi];
+    if (geom.empty) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); continue; }
+    triangles += geom.triangles;
+    vertices += geom.vertices;
+    const skinAttrs = (n) => {
+      if (p.kind !== 'skin') return {};
+      const ji = jointIndex.get(p.bone), big = bones.length > 255;
+      const joints = big ? new Uint16Array(n * 4) : new Uint8Array(n * 4);
+      const weights = new Float32Array(n * 4);
+      for (let v = 0; v < n; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
+      return {
+        JOINTS_0: g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER }),
+        WEIGHTS_0: g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER }),
       };
-    }
-    const dims = size(bb);
-    // voxel de cada eixo: o da cena (peças pequenas ganham pelo menos 12 células), mas no máximo
-    // 1/2.5 da dimensão da parte nesse eixo, senão peças finas somem.
-    // O chão recortado usa o voxel que cabe em res células.
-    // cada peça ganha resolução própria: pelo menos 24 (ou res/4) células na sua maior dimensão, para peças
-    // pequenas numa cena grande não virarem bolhas (antes herdavam a célula da cena inteira)
-    const base = Math.min(h, Math.max(...dims) / Math.max(24, res * 0.25));
-    // arredondamentos menores que a célula viram ondulações: a célula fica abaixo do menor raio da peça
-    // (só contam os visíveis na escala da peça: um detalhe de 2 cm num boneco de 1,75 m não justifica
-    // refinar o boneco inteiro, mas os 3 cm de borda de uma estrela de 1 m sim)
-    const fillet = Math.min(Infinity, ...fillets(p.shape).filter((r) => r >= Math.max(...dims) / 60));
-    const featureCell = Number.isFinite(fillet) ? Math.max(fillet * 0.6, Math.max(...dims) / 100) : Infinity;
-    let cell = infinite ? dims.map(() => Math.max(...dims) / res) : dims.map((d) => Math.min(base, featureCell, Math.max(d, 1e-4) / 2.5));
-    const cells = () => dims.reduce((n, d, i) => n * (Math.ceil(d / cell[i]) + 5), 1);
-    while (cells() > 12e6) cell = cell.map((c) => c * 1.25);
-    const { dist, mat: matFn } = buildSceneFns(p.shape);
-    // Preserve the evaluated material at each mesh vertex. A textured SDF has
-    // a procedural color in the preview; sampling only RGB loses its material
-    // when the GLB is opened in a standard viewer. COLOR_0 is supported by
-    // glTF, so bake the procedural texture into vertex colors.
-    let textured = false, bumped = false;
-    const colorAt = (x, y, z) => {
-      const r = matFn(x, y, z);
-      if (r.tx) { textured = true; if (r.tx[3] > 0) bumped = true; }
-      return surfaceColor(r);
-    };
-    // altura do relevo (0..1) com a amplitude e o passo de derivação (em metros) da textura
-    const heightAt = (x, y, z, n) => {
-      const r = matFn(x, y, z);
-      if (!r.tx || !(r.tx[3] > 0) || !r.tp) return { h: 0, amp: 0, e: 1 };
-      return { h: texHeight(r.tp, r.tx, n), amp: r.tx[3] * r.tx[1], e: r.tx[1] * 0.02 };
-    };
-    let mesh = meshSDF(dist, bb, { cell, colorAt });
-    // peças finas espalhadas numa parte grande (postes...) passam entre os pontos da grade:
-    // tenta de novo com voxel menor
-    for (let tries = 0; !mesh && tries < 3; tries++) {
-      cell = cell.map((c) => c / 2);
-      if (cells() > 12e6) break;
-      mesh = meshSDF(dist, bb, { cell, colorAt });
-    }
-    if (!mesh) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); continue; }
-    const nv = mesh.positions.length / 3;
-    triangles += mesh.indices.length / 3;
-
-    // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0)
-    const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
-    const glow = Math.min(1, Math.max(0, m0.glow));
-    const materialProps = {
-      name: p.name ?? `material${pi}`,
-      pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: m0.metal, roughnessFactor: Math.max(0.03, m0.rough) },
-      ...(glow > 0 ? { emissiveFactor: m0.c.map((c) => Math.min(1, c * glow * 2)) } : {}),
     };
     const primitives = [];
-    if (textured) {
-      vertices += mesh.indices.length;
-      for (let first = 0; first < mesh.indices.length; first += EXPORT_CHUNK_TRIANGLES * 3) {
-        const triangleIndices = mesh.indices.subarray(first, Math.min(first + EXPORT_CHUNK_TRIANGLES * 3, mesh.indices.length));
-        const vertexCount = triangleIndices.length;
-        const positions = new Float32Array(vertexCount * 3), normals = new Float32Array(vertexCount * 3);
-        for (let i = 0; i < vertexCount; i++) {
-          const source = triangleIndices[i] * 3;
-          positions.set(mesh.positions.subarray(source, source + 3), i * 3);
-          normals.set(mesh.normals.subarray(source, source + 3), i * 3);
-        }
-        const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z, n) => surfaceColor(matFn(x, y, z), n), bumped ? heightAt : null, normals);
-        const imageView = g.bufferView(atlas.png);
-        const image = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}.png`, bufferView: imageView, mimeType: 'image/png' });
+    const materialProps = geom.materialProps;
+    for (const chunk of geom.chunks) {
+      if (chunk.uv) {
+        const vertexCount = chunk.positions.length / 3;
+        const image = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}.png`, bufferView: g.bufferView(chunk.png), mimeType: 'image/png' });
         const sampler = g.add('samplers', { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 });
         const texture = g.add('textures', { sampler, source: image });
         const extra = {};
-        if (atlas.normalPng) {
+        if (chunk.normalPng) {
           // normal map no mesmo atlas: o relevo (bump) da textura vai junto no GLB
-          const nImage = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}-normal.png`, bufferView: g.bufferView(atlas.normalPng), mimeType: 'image/png' });
+          const nImage = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}-normal.png`, bufferView: g.bufferView(chunk.normalPng), mimeType: 'image/png' });
           extra.normalTexture = { index: g.add('textures', { sampler, source: nImage }), texCoord: 0 };
         }
         const material = g.add('materials', { ...materialProps, ...extra, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
         const attributes = {
-          POSITION: g.accessor(positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
-          NORMAL: g.accessor(normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-          TEXCOORD_0: g.accessor(atlas.uv, GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }),
+          POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
+          NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+          TEXCOORD_0: g.accessor(chunk.uv, GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }),
+          ...skinAttrs(vertexCount),
         };
-        if (p.kind === 'skin') {
-          const ji = jointIndex.get(p.bone), big = bones.length > 255;
-          const joints = big ? new Uint16Array(vertexCount * 4) : new Uint8Array(vertexCount * 4);
-          const weights = new Float32Array(vertexCount * 4);
-          for (let v = 0; v < vertexCount; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
-          attributes.JOINTS_0 = g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER });
-          attributes.WEIGHTS_0 = g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER });
-        }
         const indices = g.accessor(vertexCount < 65536 ? Uint16Array.from({ length: vertexCount }, (_, i) => i) : Uint32Array.from({ length: vertexCount }, (_, i) => i), vertexCount < 65536 ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
         primitives.push({ attributes, indices, material });
+      } else {
+        const nv = chunk.positions.length / 3;
+        const material = g.add('materials', materialProps);
+        const attributes = {
+          POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
+          NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+          COLOR_0: g.accessor(chunk.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+          ...skinAttrs(nv),
+        };
+        const small = nv < 65536;
+        const indices = g.accessor(small ? Uint16Array.from(chunk.indices) : chunk.indices, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
+        primitives.push({ attributes, indices, material });
       }
-    } else {
-      vertices += nv;
-      const material = g.add('materials', materialProps);
-      const attributes = {
-        POSITION: g.accessor(mesh.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
-        NORMAL: g.accessor(mesh.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-        COLOR_0: g.accessor(mesh.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-      };
-      if (p.kind === 'skin') {
-        const ji = jointIndex.get(p.bone), big = bones.length > 255;
-        const joints = big ? new Uint16Array(nv * 4) : new Uint8Array(nv * 4);
-        const weights = new Float32Array(nv * 4);
-        for (let v = 0; v < nv; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
-        attributes.JOINTS_0 = g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER });
-        attributes.WEIGHTS_0 = g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER });
-      }
-      const small = nv < 65536;
-      const indices = g.accessor(small ? Uint16Array.from(mesh.indices) : mesh.indices, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
-      primitives.push({ attributes, indices, material });
     }
     const meshIndex = g.add('meshes', { name: p.name ?? `parte${pi}`, primitives });
     const node = { name: p.name ?? `parte${pi}`, mesh: meshIndex };

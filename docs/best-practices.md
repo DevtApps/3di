@@ -9,7 +9,19 @@
 - Faça recortes atravessarem a superfície para evitar películas nas aberturas.
 - Termine o script com `show(...)`; não há import, classes ou acesso a arquivos na linguagem.
 
-## Desempenho
+## Escolher a forma
+
+- Use `extrude` para perfis próprios e `lathe` para revolução; confira o plano e
+  a origem do perfil antes de posicionar. `polygon`, `star`, `wedge`, `hemisphere`
+  e `tube` evitam montar manualmente essas formas.
+- Use `taper`, `bend`, `shear` e `elongate` antes do apoio final. Caixas de formas
+  deformadas são aproximações e podem deixar folga nas medidas de contato.
+- Afaste a peça do eixo y antes de `polar`; mova o conjunto depois da repetição.
+- Em `implicit`, mantenha o campo próximo de uma distância e ajuste `lip` conforme
+  "Formas por fórmula". A caixa `size` recorta a forma; comparações e `if` com
+  coordenadas simbólicas não funcionam. Exemplos: `formas.3di` e `formulas.3di`.
+
+## Custo de renderização
 
 - Prefira `mirror` e `repeat` para repetições regulares; não acrescentam primitivas extras.
 - Uniões simples podem usar a BVH, até 16000 instâncias. Booleanas, uniões suaves e
@@ -24,6 +36,9 @@
   são exportadas em t=0. Uniões suaves entre ossos diferentes viram malhas separadas.
 - `res` deve ser inteiro entre 1 e 2048. Comece com resolução baixa para revisar a
   geometria e aumente depois. Confira avisos do exportador e peças finas na malha.
+- A resolução é por peça. Faces planas são simplificadas; texturas procedurais
+  viram atlas PNG embutidos no GLB e `bump` vira normal map. Confira UV, padrão e
+  relevo no destino; PNGs separados não são salvos automaticamente.
 
 ## Fluxo com agentes externos
 

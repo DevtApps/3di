@@ -71,7 +71,7 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `plane()` | chão infinito em y=0 |
 | `segment(a, b, r=0.05)` | cápsula ligando os pontos a e b (membros, canos, galhos) |
 | `polygon(sides=6, r=0.5, h=1, round=0)` | pilar de base poligonal regular (3 a 64 lados), em pé |
-| `star(points=5, r=0.5, inner=None, h=0.2, round=0)` | estrela extrudada (pontas em `r`, vales em `inner`), deitada |
+| `star(points=5, r=0.5, inner=None, h=0.2, round=0)` | estrela extrudada deitada, de 3 a 32 pontas em `r`; vales em `inner` (padrão `0.45*r`) |
 | `wedge(w=1, h=1, d=1)` | rampa: sobe de -x até +x, com profundidade d em z |
 | `extrude(points, h=1, axis="z", round=0)` | polígono qualquer extrudado (veja "Formas por perfil") |
 | `lathe(profile, smooth=0)` | sólido de revolução a partir de um perfil (veja "Formas por perfil") |
@@ -87,6 +87,9 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `a - b` ou `subtract(a, b, ...)` | subtração (recorta b de a) |
 | `a & b` ou `intersect(a, b)` | interseção |
 | `group(..., smooth=0.1)` | união suave (as formas se fundem), também em `subtract`/`intersect` |
+
+`union(a, b, ...)` é um alias de `group`. Também há métodos encadeáveis:
+`a.union(b, smooth=0)`, `a.subtract(b, smooth=0)` e `a.intersect(b, smooth=0)`.
 
 ## Posicionar
 
@@ -113,7 +116,7 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `.shell(espessura)` | deixa oca (aparece quando recortada) |
 | `.twist(graus)` | torce em volta do eixo vertical, de baixo até em cima |
 | `.taper(top=0.5, bottom=1, axis="y")` | afunila: a seção vai de `bottom` (na base) até `top` (no topo) vezes o tamanho original |
-| `.bend(angle, axis="y", toward=None, pivot=None)` | curva a forma: a ponta se inclina `angle` graus para o lado + de `toward` (padrão x), com a base fixa em `pivot` |
+| `.bend(angle, axis="y", toward=None, pivot=None)` | curva a forma: a ponta se inclina `angle` graus para o lado + de `toward`, com a base fixa em `pivot` (veja limites abaixo) |
 | `.shear(x=0, z=0)` | inclina como um baralho: desloca x e z em metros por metro de altura |
 | `.polar(count)` | repete em volta do eixo y (`count` cópias); a forma deve ficar afastada do eixo. Não custa primitivas |
 | `.elongate(x=0, y=0, z=0)` | estica a forma sem deformá-la: acrescenta esse comprimento no meio (esfera vira cápsula) |
@@ -131,6 +134,16 @@ escritas: use `.place()` ou `.ground()` para posicionar.
 `lathe(profile, smooth=0)` gira em volta do eixo y um perfil de pontos `(raio, altura)`, de baixo para cima
 (vasos, colunas, taças, peças de xadrez, rodas). Termine em raio 0 para fechar; senão a ponta vira uma tampa
 plana. `smooth` de 1 a 8 arredonda o perfil com uma curva suave.
+Aceita 2 a 64 pontos com raios não negativos; após suavizar, o perfil fechado deve
+ter no máximo 128 pontos. Reduza pontos ou `smooth` se exceder esse limite.
+
+As deformações `taper`, `bend`, `shear`, `polar` e `elongate` exigem uma forma finita.
+`taper.top` e `bottom` devem ser positivos; `elongate` aceita comprimentos não negativos.
+Em `bend`, `axis` e `toward` devem ser diferentes: `toward` é x por padrão, exceto
+quando `axis="x"`, caso em que é y. `pivot` é uma coordenada numérica ao longo de
+`axis`, por padrão a base nesse eixo. Em `polar`, `count` é inteiro de 2 a 256:
+desloque a peça para longe do eixo y antes de repetir e mova o conjunto depois.
+Em `tube`, `thickness` deve ser positiva e menor que `r`.
 
 ```python
 vaso = lathe([(0, 0), (0.35, 0), (0.45, 0.25), (0.3, 0.6), (0.18, 0.85), (0.26, 1.0), (0, 1.05)], smooth=4)
@@ -310,10 +323,16 @@ node tools/export.mjs examples/boneco.3di out/boneco.glb --res 128
 
 No editor, o botão **GLB** faz o mesmo e baixa o arquivo. O resultado:
 
-- **Malhas:** uma por forma mostrada (ou por parte presa a osso), com normais e cor por vértice
-  (texturas incluídas), geradas do SDF por *surface nets*.
-- **Detalhe:** `--res` são as células na maior dimensão da cena; peças finas ganham voxel menor no eixo
-  em que são finas.
+- **Malhas:** geradas do SDF por *dual contouring*, preservando quinas, e simplificadas
+  por erro quádrico para reduzir triângulos em faces planas. As partes podem ser
+  processadas em paralelo por workers; se isso falhar, há retorno ao processamento sequencial.
+- **Materiais:** peças sem textura usam cor por vértice. Texturas procedurais viram
+  atlas PNG embutidos no GLB, com UV; `bump` também gera normal maps PNG.
+  O GLB contém as imagens: a exportação não grava PNGs separados automaticamente.
+- **Detalhe:** `--res` são as células na maior dimensão de cada peça, independente do
+  tamanho total da cena. Eixos finos buscam pelo menos seis camadas; arredondamentos
+  podem refinar a grade, e um limite de células contém o uso de memória.
+  A simplificação limita o tamanho das arestas em peças texturizadas para preservar o padrão.
 - **Esqueleto:** vira um `skin` glTF (juntas na pose de repouso), e as rotações e movimentos dos ossos
   com `time` viram uma animação amostrada.
 - **O que fica parado:** `time` fora de ossos (ex.: um `rotate(y=time * 90)` direto na forma) é
@@ -340,7 +359,13 @@ vaso = cylinder(0.05, 0.2).place(mesa.right - 0.1, mesa.top, 0)
 
 `def` com valores padrão e `*args`, `return`, `if/elif/else`, `for`, `while`, `break`, `continue`, listas e list comprehensions, tuplas, dicts, `lambda`, f-strings (`{x:.2f}`) e expressões `a if c else b`.
 
-Funções disponíveis: `range`, `len`, `enumerate`, `zip`, `min`, `max`, `sum`, `abs`, `round`, `sqrt`, `sin`, `cos`, `tan`, `atan2`, `radians`, `degrees`, `floor`, `ceil`, `pi`, `lerp`, `clamp`, `linspace`, `print`, `random`, `uniform`, `randint`, `choice` e `seed` (aleatório determinístico).
+Funções disponíveis: `range`, `len`, `enumerate`, `zip`, `min`, `max`, `sum`, `abs`, `round`,
+`sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `log`, `hypot`,
+`sign`, `step`, `radians`, `degrees`, `floor`, `ceil`, `lerp`, `clamp`, `smoothstep`,
+`fract`, `osc`, `linspace`, `print`, `random`, `uniform`, `randint`, `choice`, `seed`
+(aleatório determinístico), `mix`, `hsv` e `vary` (cores). Constantes: `pi` e `tau`.
+As funções aceitas com coordenadas simbólicas estão em "Formas por fórmula";
+isso não inclui automaticamente todas as funções numéricas.
 
 Desempacotamento com `*` também funciona (`porta, *janelas = lista`, `[*a, *b]`), inclusive com
 tuplas aninhadas no `for` (`for (a, b), c in ...`).
@@ -385,9 +410,12 @@ src/compiler.js  árvore → GLSL (mapD: distância, mapM: material) + BVH
 src/expr.js      expressões simbólicas com `time` (viram GLSL)
 src/rig.js       esqueleto, ossos e bind (resolvidos em rotações antes de compilar)
 src/sdf.js       o mesmo SDF avaliado em JavaScript (com BVH), para a exportação
-src/mesh.js      SDF -> malha (surface nets, avaliando só perto da superfície)
+src/profile.js   perfis 2D para extrusão e revolução
+src/mesh.js      SDF -> malha (dual contouring, avaliando só perto da superfície)
+src/simplify.js  simplificação de malhas por erro quádrico
 src/gltf.js      escrita de .glb (buffers, skin, animação)
 src/export.js    cena -> partes -> malhas -> .glb
+src/parallel-*.js e src/parts-worker-*.js: exportação de peças em workers web/Node
 src/renderer.js  WebGL2: raymarching, sombras suaves, AO, PBR simples, texturas.
                  O main é uma máquina de estados que chama a cena em um único ponto: o
                  compilador da GPU copia a função da cena em cada chamada, então isso

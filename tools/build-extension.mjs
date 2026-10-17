@@ -11,6 +11,8 @@ const nodeBundle = {
 };
 await build({ ...nodeBundle, entryPoints: ['extension/extension.ts'], outfile: 'dist/extension.cjs', logLevel: 'info' });
 await build({ entryPoints: ['extension/engine-worker.ts'], outfile: 'dist/engine-worker.cjs', bundle: true, platform: 'node', format: 'cjs', target: 'node22' });
+// malha as peças do export GLB em paralelo (o engine-worker o procura ao lado dele)
+await build({ entryPoints: ['src/parts-worker-node.js'], outfile: 'dist/parts-worker-node.cjs', bundle: true, platform: 'node', format: 'cjs', target: 'node22' });
 await build({ entryPoints: ['extension/preview.ts'], outfile: 'dist/preview.js', bundle: true, platform: 'browser', format: 'iife', target: 'chrome120' });
 await build({ entryPoints: ['extension/project.ts'], outfile: 'dist/project.mjs', bundle: true, platform: 'node', format: 'esm' });
 await build({ ...nodeBundle, entryPoints: ['extension/mcp.ts'], outfile: 'dist/mcp.cjs' });

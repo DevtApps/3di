@@ -8,6 +8,8 @@
 // pseudoinversa. Assim quinas e cantos vivos saem exatos e superfícies lisas continuam lisas.
 // Nas arestas vivas a normal é separada (cada face com a sua), para o sombreamento não "derreter".
 
+import { simplifyMesh } from './simplify.js';
+
 const K = 4;
 const SHARP_COS = Math.cos((40 * Math.PI) / 180); // acima de 40° entre faces, a aresta é viva
 
@@ -60,9 +62,10 @@ function eigenSym3(a) {
  * dist(x, y, z) -> distância; bbox = { min, max }.
  * cell = [hx, hy, hz] tamanho da célula em cada eixo; sem cell, usa res células cúbicas na maior dimensão.
  * colorAt(x, y, z) -> [r, g, b] linear (opcional).
+ * simplify: true (padrão), false ou { tolerance, maxEdge } para a simplificação por erro quádrico.
  * Devolve { positions, normals, colors, indices } (typed arrays) ou null se não houver superfície.
  */
-export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null } = {}) {
+export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null, simplify = true } = {}) {
   const ext = bbox.max.map((v, i) => v - bbox.min[i]);
   const H = cell ?? [0, 1, 2].map(() => Math.max(...ext) / res);
   if (H.length !== 3 || !H.every((v) => Number.isFinite(v) && v > 0) || !ext.every((v) => Number.isFinite(v) && v >= 0)) throw new Error('grade deve ter dimensões finitas e células positivas');
@@ -215,11 +218,11 @@ export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null } =
   if (!P.length) return null;
 
   // passo 4: um quadrado para cada aresta da grade que cruza a superfície
-  const I = [];
+  const Iraw = [];
   const quad = (a, b, c, d, flip) => {
     if (a < 0 || b < 0 || c < 0 || d < 0) return;
-    if (flip) I.push(a, c, b, a, d, c);
-    else I.push(a, b, c, a, c, d);
+    if (flip) Iraw.push(a, c, b, a, d, c);
+    else Iraw.push(a, b, c, a, c, d);
   };
   const cv = (i, j, k) => cellVert[idx(i, j, k)];
   for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -236,19 +239,27 @@ export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null } =
   }
 
   // passo 5: vértices de regiões lisas (posto 1) são projetados na superfície; os de quina ficam onde a QEF pôs
-  const nv = P.length / 3;
-  const base = new Float32Array(P);
-  const smoothN = new Float32Array(nv * 3);
-  for (let v = 0; v < nv; v++) {
+  const nv0 = P.length / 3;
+  let base = new Float32Array(P);
+  for (let v = 0; v < nv0; v++) {
+    if (!rank1[v]) continue;
     let x = base[v * 3], y = base[v * 3 + 1], z = base[v * 3 + 2];
-    let n = grad(x, y, z);
-    if (rank1[v]) {
-      const d = dist(x, y, z);
-      if (Math.abs(d) < hmax) { x -= n[0] * d; y -= n[1] * d; z -= n[2] * d; n = grad(x, y, z); }
-      base.set([x, y, z], v * 3);
-    }
-    smoothN.set(n, v * 3);
+    const n = grad(x, y, z);
+    const d = dist(x, y, z);
+    if (Math.abs(d) < hmax) { x -= n[0] * d; y -= n[1] * d; z -= n[2] * d; }
+    base.set([x, y, z], v * 3);
   }
+  let I = new Uint32Array(Iraw);
+
+  // passo 5b: simplifica onde os triângulos não mudam a forma (faces planas viram poucos triângulos
+  // grandes); a tolerância é uma fração da célula, abaixo do que se enxerga
+  if (simplify) {
+    const opt = typeof simplify === 'object' ? simplify : {};
+    ({ positions: base, indices: I } = simplifyMesh(base, I, opt.tolerance ?? Math.min(hx, hy, hz) * 0.15, { maxEdge: opt.maxEdge ?? Infinity }));
+  }
+  const nv = base.length / 3;
+  const smoothN = new Float32Array(nv * 3);
+  for (let v = 0; v < nv; v++) smoothN.set(grad(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]), v * 3);
 
   // passo 6: normais. Cada triângulo tem a sua normal de face; num vértice, as faces são agrupadas
   // por semelhança (até 40°). Um grupo só: vértice liso, usa a normal do SDF. Mais de um: aresta viva,

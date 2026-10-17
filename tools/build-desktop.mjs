@@ -7,6 +7,7 @@ await build({ ...node, entryPoints: ['desktop/main.ts'], outfile: 'dist-desktop/
 await build({ ...node, entryPoints: ['desktop/runtime.ts'], outfile: 'dist-desktop/desktop/runtime.cjs' });
 await build({ bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['electron'], entryPoints: ['desktop/preload.ts'], outfile: 'dist-desktop/desktop/preload.cjs' });
 await build({ ...node, entryPoints: ['extension/engine-worker.ts'], outfile: 'dist-desktop/desktop/engine-worker.cjs' });
+await build({ ...node, entryPoints: ['src/parts-worker-node.js'], outfile: 'dist-desktop/desktop/parts-worker-node.cjs' });
 await build({ ...node, entryPoints: ['extension/mcp.ts'], outfile: 'dist/mcp.cjs' });
 for (const path of ['src', 'assets', 'examples', 'docs', 'skills', 'index.html']) await cp(path, `dist-desktop/${path}`, { recursive: true });
 await mkdir('dist-desktop/node_modules', { recursive: true });

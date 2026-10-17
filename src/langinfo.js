@@ -29,6 +29,9 @@ const DOCS = {
   implicit: 'Forma por fórmula: `f(x, y, z)` devolve um campo (negativo dentro, zero na superfície), recortado pela caixa `size`. Use sqrt, sin, abs, min, max, hypot, exp, log, step... e time. `lip` (0 a 1) encurta o passo do raio.',
   sign: 'Sinal de `x`: -1, 0 ou 1 (aceita fórmulas e time).',
   step: '`step(edge, x)`: 0 se x < edge, senão 1 (aceita fórmulas e time).',
+  exp: 'Exponencial de x (aceita fórmulas e time).',
+  log: 'Logaritmo natural de x positivo (aceita fórmulas e time).',
+  hypot: 'Comprimento do vetor: sqrt da soma dos quadrados dos argumentos (aceita fórmulas e time).',
   // combinar
   group: 'União de formas (aceita listas). `smooth` funde as formas suavemente.',
   union: 'União de formas (o mesmo que group).',
@@ -86,7 +89,7 @@ const DOCS = {
   shell: 'Deixa a forma oca, com a espessura dada (aparece quando recortada).',
   twist: 'Torce em volta do eixo vertical, de baixo até em cima.',
   taper: 'Afunila: a seção vai de `bottom` (base) até `top` (topo) vezes o tamanho original, ao longo de `axis`.',
-  bend: 'Curva a forma: a ponta se inclina `angle` graus para o lado + de `toward` (padrão x), com a base fixa em `pivot`.',
+  bend: 'Curva a forma: a ponta se inclina `angle` graus para o lado + de `toward` (x por padrão; y se axis="x"). `pivot` é uma coordenada no eixo axis, por padrão a base; toward deve ser outro eixo.',
   shear: 'Inclina como um baralho: desloca x e z em metros por metro de altura.',
   polar: 'Repete `count` cópias em volta do eixo y (a forma deve ficar afastada do eixo). Não custa primitivas.',
   elongate: 'Estica a forma sem deformá-la, acrescentando esse comprimento no meio (esfera vira cápsula).',
