@@ -59,7 +59,7 @@ const profile = join(homedir(), '.config', '3di', 'chrome');
 const child = spawn(browser, [
   `--app=${ide.url}/#${hash}`,
   `--user-data-dir=${profile}`,
-  '--class=3DI',
+  '--class=3DI-dev',
   '--window-size=1440,900',
   '--no-first-run',
   '--no-default-browser-check',
