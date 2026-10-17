@@ -17,7 +17,7 @@ show(plane(), mesa, perna, caneca)
 python3 tools/serve.py
 ```
 
-Abra http://localhost:8317. O editor recompila enquanto você digita (Ctrl+Enter força).
+Abra http://localhost:8327. O editor recompila enquanto você digita (Ctrl+Enter força).
 
 Para exportar para glTF: `node tools/export.mjs cena.3di` (veja "Exportar glTF / GLB").
 
@@ -457,7 +457,7 @@ node tools/install-desktop.mjs     # atalho "3DI" no menu e .3di abrindo no app 
 - **MCP** (`.mcp.json`, `tools/mcp.mjs`): `describe_language`, `check_script`, `get_script`,
   `set_script`, `save_script`, `screenshot` (vista, peça, grade de 4 vistas, instante), `set_camera`,
   `frame`, `list_parts`, `set_time`, `export_glb`. O ponto verde no editor indica a ponte conectada.
-  O app e o MCP compartilham o mesmo servidor (porta 8317).
+  O app e o MCP compartilham o mesmo servidor (porta 8327 rodando do código-fonte; o app instalado usa 8317).
 
 ## Verificação de regressões
 

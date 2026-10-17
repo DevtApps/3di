@@ -107,8 +107,33 @@ function eye() {
 
 let pending = false, interacting = false, settleTimer = null;
 
+// Resolução adaptativa em degraus fixos. Mudar a escala redimensiona o canvas (realoca o
+// framebuffer e limpa a imagem), então ela só troca de degrau com a média de vários quadros
+// e no máximo a cada ~0,6 s; antes ela variava todo quadro, o que deixava cada quadro mais
+// lento, prendia a escala no mínimo e fazia a imagem piscar entre nítida e pixelada.
+function adaptiveScale(levels, start) {
+  let i = Math.max(0, levels.indexOf(start)), avg = 0, last = 0, since = 0;
+  return {
+    get value() { return levels[i]; },
+    reset() { last = 0; avg = 0; },
+    frame(now) {
+      const dt = last ? now - last : 0;
+      last = now;
+      if (dt <= 0 || dt > 250) return levels[i]; // pausa, aba oculta: não conta
+      avg = avg ? avg * 0.85 + dt * 0.15 : dt;
+      since += dt;
+      if (since < 600) return levels[i];
+      // custo estimado no próximo degrau acima ~ proporcional à área
+      const up = i > 0 ? avg * (levels[i - 1] / levels[i]) ** 2 : Infinity;
+      if (avg > 40 && i < levels.length - 1) { i++; since = 0; avg = 0; }
+      else if (up < 28) { i--; since = 0; avg = 0; }
+      return levels[i];
+    },
+  };
+}
+
 // animação: o relógio só anda enquanto a cena usa time e não está pausada
-const anim = { on: false, playing: true, time: 0, last: 0, scale: 1 };
+const anim = { on: false, playing: true, time: 0, last: 0, res: adaptiveScale([1, 0.75, 0.5, 0.35], 1) };
 
 function animLoop(now) {
   if (!anim.on) return;
@@ -116,10 +141,9 @@ function animLoop(now) {
   anim.last = now;
   if (anim.playing) {
     anim.time += Math.min(dt, 0.1);
-    // resolução adaptativa: mantém a animação fluida em cenas pesadas
-    if (dt > 0.04) anim.scale = Math.max(0.35, anim.scale * 0.9);
-    else if (dt > 0 && dt < 0.022) anim.scale = Math.min(1, anim.scale * 1.04);
-    draw(interacting ? Math.min(0.5, anim.scale) : anim.scale);
+    // durante a interação usa o degrau da interação, sem disputar a mesma média
+    if (interacting) draw(interactRes.frame(now));
+    else { interactRes.reset(); draw(anim.res.frame(now)); }
   }
   requestAnimationFrame(animLoop);
 }
@@ -134,16 +158,9 @@ function setAnimated(on) {
   anim.on = on;
 }
 
-// Resolução durante a interação (girar, mover, zoom): se o quadro demora, desce até 22% da
-// tela; se sobra tempo, sobe até 75%. Ao soltar, volta à resolução cheia.
-let interactScale = 0.5, lastInteractFrame = 0;
-function adaptInteractScale(now) {
-  const dt = lastInteractFrame ? now - lastInteractFrame : 0;
-  lastInteractFrame = now;
-  if (dt <= 0 || dt > 250) return;
-  if (dt > 38) interactScale = Math.max(0.22, interactScale * 0.85);
-  else if (dt < 20) interactScale = Math.min(0.75, interactScale * 1.06);
-}
+// Resolução durante a interação (girar, mover, zoom): degraus de 75% a 22% da tela.
+// Ao soltar, volta à resolução cheia.
+const interactRes = adaptiveScale([0.75, 0.5, 0.35, 0.22], 0.5);
 
 function requestRender() {
   if (anim.on && anim.playing) return;
@@ -151,9 +168,8 @@ function requestRender() {
   pending = true;
   requestAnimationFrame((now) => {
     pending = false;
-    if (interacting) adaptInteractScale(now);
-    else lastInteractFrame = 0;
-    draw(interacting ? interactScale : 1);
+    if (interacting) draw(interactRes.frame(now));
+    else { interactRes.reset(); draw(1); }
   });
 }
 
@@ -526,7 +542,8 @@ window.tdi = {
   at(t) { anim.playing = false; anim.time = t; draw(1); },
   status: () => status.textContent,
   // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
-  interactScale: () => interactScale,
+  interactScale: () => interactRes.value,
+  animScale: () => anim.res.value,
   glbCheck,
   // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
   async views({ size = 512, t } = {}) { return (await renderViews({ size, time: t ?? anim.time })).toDataURL('image/png'); },
