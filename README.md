@@ -49,7 +49,8 @@ em `.agents/skills`; para Claude Code, copie-a para `.claude/skills/3di-scenes/S
 
 ```sh
 npm install
-npm run dev                 # ambiente web, http://localhost:8317
+npm run dev                 # ambiente web: IDE em http://localhost:8327, MCP em 127.0.0.1:8328 (portas do dev,
+                            # separadas do app instalado: 8317/8318). THREEDI_MCP=0 desliga o MCP do dev
 npm run typecheck
 npm run build               # bundles da extensão e do preview
 npm test

@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { dirname, resolve, relative, isAbsolute, join } from 'node:path';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 
-export async function startRuntime(root: string, workerFile: string, options: { port?: number; mcpPort?: number; reuseIde?: boolean; log?: (s: string) => void; workspace?: string; onScenePath?: (path: string | null) => void; trash?: (path: string) => Promise<void> } = {}) {
+export async function startRuntime(root: string, workerFile: string, options: { port?: number; mcpPort?: number | null; reuseIde?: boolean; log?: (s: string) => void; workspace?: string; onScenePath?: (path: string | null) => void; trash?: (path: string) => Promise<void> } = {}) {
   const log = options.log ?? console.log;
   const engine = new Engine(workerFile);
   let mcp: Awaited<ReturnType<typeof startMcp>> | undefined;
@@ -23,7 +23,8 @@ export async function startRuntime(root: string, workerFile: string, options: { 
   });
   try {
     if (options.workspace) await workspace.set(options.workspace);
-    mcp = await startMcp({
+    // mcpPort null: sem MCP (o modo dev pode rodar só a IDE)
+    if (options.mcpPort !== null) mcp = await startMcp({
       workspace,
       getScript: () => ide.call('getScript'),
       setScript: async (code) => { await engine.run({ code }); return ide.call('setScript', { code }); },
