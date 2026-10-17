@@ -12,7 +12,7 @@ import { startIdeServer } from './ideserver.mjs';
 import { createRequire } from 'node:module';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = Number(process.env.THREEDI_PORT ?? 8317);
+const PORT = Number(process.env.THREEDI_PORT ?? 8327);
 const log = (...a) => process.stderr.write(`[3di] ${a.join(' ')}\n`);
 
 const CANDIDATES = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'brave-browser'];
@@ -35,7 +35,7 @@ const file = process.argv[2] ? resolve(process.argv[2]) : null;
 if (file && !existsSync(file)) log(`aviso: ${file} não existe (será criado ao salvar)`);
 
 // O launcher web também precisa oferecer o MCP HTTP, como o desktop e npm run dev.
-const mcpPort = Number(process.env.THREEDI_MCP_PORT ?? 8318);
+const mcpPort = Number(process.env.THREEDI_MCP_PORT ?? 8328);
 let runtime = null;
 let existingMcp = false;
 try {

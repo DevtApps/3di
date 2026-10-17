@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Servidor MCP do 3DI.
 //  - stdio: protocolo MCP (JSON-RPC 2.0, uma mensagem por linha) para agentes de IA.
-//  - HTTP (porta 8317 ou --port/THREEDI_PORT): serve a IDE e a ponte com o editor aberto
+//  - HTTP (porta 8327 ou --port/THREEDI_PORT; o app instalado usa 8317): serve a IDE e a ponte com o editor aberto
 //    no navegador ou no app desktop (veja ideserver.mjs). Se a porta já tiver outro servidor
 //    3DI (outra instância ou o app), os comandos são repassados para ele.
-// Uso: node tools/mcp.mjs [--port 8317]
+// Uso: node tools/mcp.mjs [--port 8327]
 import { writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,7 @@ import { documentationResources, readDocumentation } from './documentation.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argPort = process.argv.indexOf('--port');
-const PORT = Number(argPort >= 0 ? process.argv[argPort + 1] : process.env.THREEDI_PORT ?? 8317);
+const PORT = Number(argPort >= 0 ? process.argv[argPort + 1] : process.env.THREEDI_PORT ?? 8327);
 const URL_IDE = `http://localhost:${PORT}`;
 const log = (...a) => process.stderr.write(`[3di-mcp] ${a.join(' ')}\n`);
 
