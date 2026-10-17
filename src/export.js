@@ -120,6 +120,17 @@ async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null
   return { uv, png: await encodePng(width, width, rgba), normalPng: nrgba ? await encodePng(width, width, nrgba) : null };
 }
 
+// Raios de arredondamento de uma forma: .round(), box(round=), cylinder(round=), extrude/polygon/star(round=),
+// corrigidos pelas escalas no caminho.
+function fillets(s, k = 1, out = []) {
+  const P = s.props;
+  if ((s.kind === 'box' || s.kind === 'extrude' || s.kind === 'round') && P.r > 0) out.push(P.r * k);
+  if (s.kind === 'cylinder' && P.round > 0) out.push(P.round * k);
+  const kk = s.kind === 'scale' ? k * Math.min(...P.s.map((v) => Math.abs(val0(v)))) : k;
+  for (const c of s.children) fillets(c, kk, out);
+  return out;
+}
+
 const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const isIdent = (m, t) => m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => Math.abs(v) < 1e-12);
 const hasBound = (s) => (s._hasBound ??= s.kind === 'bound' || s.children.some(hasBound));
@@ -219,8 +230,15 @@ export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
     // voxel de cada eixo: o da cena (peças pequenas ganham pelo menos 12 células), mas no máximo
     // 1/2.5 da dimensão da parte nesse eixo, senão peças finas somem.
     // O chão recortado usa o voxel que cabe em res células.
-    const base = Math.min(h, Math.max(...dims) / 12);
-    let cell = infinite ? dims.map(() => Math.max(...dims) / res) : dims.map((d) => Math.min(base, Math.max(d, 1e-4) / 2.5));
+    // cada peça ganha resolução própria: pelo menos 24 (ou res/4) células na sua maior dimensão, para peças
+    // pequenas numa cena grande não virarem bolhas (antes herdavam a célula da cena inteira)
+    const base = Math.min(h, Math.max(...dims) / Math.max(24, res * 0.25));
+    // arredondamentos menores que a célula viram ondulações: a célula fica abaixo do menor raio da peça
+    // (só contam os visíveis na escala da peça: um detalhe de 2 cm num boneco de 1,75 m não justifica
+    // refinar o boneco inteiro, mas os 3 cm de borda de uma estrela de 1 m sim)
+    const fillet = Math.min(Infinity, ...fillets(p.shape).filter((r) => r >= Math.max(...dims) / 60));
+    const featureCell = Number.isFinite(fillet) ? Math.max(fillet * 0.6, Math.max(...dims) / 100) : Infinity;
+    let cell = infinite ? dims.map(() => Math.max(...dims) / res) : dims.map((d) => Math.min(base, featureCell, Math.max(d, 1e-4) / 2.5));
     const cells = () => dims.reduce((n, d, i) => n * (Math.ceil(d / cell[i]) + 5), 1);
     while (cells() > 12e6) cell = cell.map((c) => c * 1.25);
     const { dist, mat: matFn } = buildSceneFns(p.shape);

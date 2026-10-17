@@ -397,3 +397,47 @@ test('new primitives, modifiers and implicit shapes: geometry is right on the CP
     assert.match(`${run.error.toString()} ${run.error.hint ?? ''}`, re, src);
   }
 });
+
+test('mesher keeps sharp edges and corners exact, even on a coarse grid, and smooth shapes stay smooth', async () => {
+  const { meshSDF } = await import('../src/mesh.js');
+  const meshOf = (src, cell) => {
+    const run = runScript(src);
+    const fns = buildSceneFns(run.scene.shapes[0]);
+    const b = run.scene.shapes[0].bbox;
+    return { mesh: meshSDF(fns.dist, b, { cell: [cell, cell, cell] }), dist: fns.dist };
+  };
+  // cubo de 1 m numa grade de ~12 células: os 8 cantos têm de existir exatos e todo vértice fica na superfície
+  const { mesh, dist } = meshOf('show(box(1))', 1 / 11.7);
+  const P = mesh.positions;
+  const corners = [];
+  for (const x of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) corners.push([x, y, z]);
+  for (const c of corners) {
+    let best = Infinity;
+    for (let v = 0; v < P.length; v += 3) best = Math.min(best, Math.hypot(P[v] - c[0], P[v + 1] - c[1], P[v + 2] - c[2]));
+    assert.ok(best < 2e-3, `canto ${c} deve existir na malha (mais perto: ${best.toFixed(4)} m)`);
+  }
+  let worst = 0;
+  for (let v = 0; v < P.length; v += 3) worst = Math.max(worst, Math.abs(dist(P[v], P[v + 1], P[v + 2])));
+  assert.ok(worst < 2e-3, `todo vértice fica na superfície (pior: ${worst.toFixed(4)} m)`);
+  // normais: nas faces de um cubo só existem as 6 direções dos eixos (nenhuma misturada nas arestas)
+  const N = mesh.normals;
+  let blended = 0;
+  for (let v = 0; v < N.length; v += 3) if (Math.max(Math.abs(N[v]), Math.abs(N[v + 1]), Math.abs(N[v + 2])) < 0.999) blended++;
+  assert.equal(blended, 0, `nenhuma normal deve misturar faces de um cubo (achou ${blended})`);
+
+  // hexágono e estrela também têm quinas vivas; esfera continua lisa e redonda
+  const hex = meshOf('show(polygon(6, 0.5, 0.5))', 1 / 11.7);
+  let tip = Infinity;
+  for (let v = 0; v < hex.mesh.positions.length; v += 3) tip = Math.min(tip, Math.hypot(hex.mesh.positions[v] - 0.5, hex.mesh.positions[v + 1] - 0.25, hex.mesh.positions[v + 2]));
+  // aresta oblíqua à grade: o canto fica a menos de 1/4 de célula (o surface nets antigo errava ~1/2 célula)
+  assert.ok(tip < 0.02, `o vértice do hexágono em (0.5, 0.25, 0) deve existir (mais perto: ${tip.toFixed(4)})`);
+  const sph = meshOf('show(sphere(0.5))', 1 / 24);
+  let dev = 0;
+  for (let v = 0; v < sph.mesh.positions.length; v += 3) dev = Math.max(dev, Math.abs(Math.hypot(sph.mesh.positions[v], sph.mesh.positions[v + 1], sph.mesh.positions[v + 2]) - 0.5));
+  assert.ok(dev < 3e-3, `a esfera continua redonda (desvio ${dev.toFixed(4)} m)`);
+  let split = 0;
+  const nv = sph.mesh.positions.length / 3;
+  const seen = new Set();
+  for (let v = 0; v < nv; v++) { const k = [0, 1, 2].map((a) => sph.mesh.positions[v * 3 + a].toFixed(5)).join(); if (seen.has(k)) split++; seen.add(k); }
+  assert.ok(split < nv * 0.01, `superfícies lisas não devem ganhar arestas vivas (${split} vértices duplicados)`);
+});
