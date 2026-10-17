@@ -120,6 +120,22 @@ const TOOLS = [
     },
   },
   {
+    name: 'check_glb',
+    description: 'Confere a conversão para GLB: o editor exporta a cena, abre o resultado num motor padrão (three.js) no ângulo atual e devolve uma imagem da malha exportada mais um relatório por peça (triângulos, desvio da malha em relação à forma exata em mm, veredito). Use depois de mudar formas, resolução ou texturas. res = detalhe (padrão 128); style: solid, wire (mostra os triângulos) ou normals (sombreamento); mode: glb (só a malha), shader (só a forma exata) ou split (lado a lado).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        res: { type: 'number', default: 128 },
+        style: { type: 'string', enum: ['solid', 'wire', 'normals'], default: 'solid' },
+        mode: { type: 'string', enum: ['glb', 'shader', 'split'], default: 'glb' },
+      },
+    },
+    run: async (args) => {
+      const r = await callEditor('glbCheck', args);
+      return { content: [{ type: 'image', data: r.png, mimeType: 'image/png' }, { type: 'text', text: r.report }] };
+    },
+  },
+  {
     name: 'set_camera',
     description: 'Posiciona a câmera do editor: pos (x, y, z) olhando para look (padrão: centro da cena), com fov em graus.',
     inputSchema: { type: 'object', properties: { pos: vec3, look: vec3, fov: { type: 'number' } }, required: ['pos'] },

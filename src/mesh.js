@@ -255,7 +255,9 @@ export function meshSDF(dist, bbox, { res = 128, cell = null, colorAt = null, si
   // grandes); a tolerância é uma fração da célula, abaixo do que se enxerga
   if (simplify) {
     const opt = typeof simplify === 'object' ? simplify : {};
-    ({ positions: base, indices: I } = simplifyMesh(base, I, opt.tolerance ?? Math.min(hx, hy, hz) * 0.15, { maxEdge: opt.maxEdge ?? Infinity }));
+    const cellMin = Math.min(hx, hy, hz);
+    // triângulos com aresta acima de 3 células são conferidos contra a forma (evita pontes entre faces)
+    ({ positions: base, indices: I } = simplifyMesh(base, I, opt.tolerance ?? cellMin * 0.15, { maxEdge: opt.maxEdge ?? Infinity, surfaceDist: dist, checkEdge: cellMin * 3 }));
   }
   const nv = base.length / 3;
   const smoothN = new Float32Array(nv * 3);

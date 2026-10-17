@@ -79,7 +79,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
   let nextId = 1;
   let onClients = () => {};
 
-  const callLocal = (cmd, args = {}, timeoutMs = 30000) => {
+  const callLocal = (cmd, args = {}, timeoutMs = cmd === 'glbCheck' ? 180000 : 30000) => {
     const client = [...clients].at(-1);
     if (!client) return Promise.reject(new Error(`nenhum editor conectado: abra http://localhost:${port} no navegador ou o app 3DI`));
     const id = nextId++;

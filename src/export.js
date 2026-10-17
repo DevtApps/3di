@@ -263,6 +263,7 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
   }
   const name = p.name ?? `parte${pi}`;
   if (!mesh) return { name, empty: true };
+  const quality = meshQuality(mesh, dist, cell, dims, infinite ? null : bb);
 
   // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0 ou no atlas)
   const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
@@ -274,7 +275,7 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
   };
   const triangles = mesh.indices.length / 3;
   if (!textured) {
-    return { name, kind: p.kind, materialProps, triangles, vertices: mesh.positions.length / 3, chunks: [{ positions: mesh.positions, normals: mesh.normals, colors: mesh.colors, indices: mesh.indices }] };
+    return { name, kind: p.kind, materialProps, quality, triangles, vertices: mesh.positions.length / 3, chunks: [{ positions: mesh.positions, normals: mesh.normals, colors: mesh.colors, indices: mesh.indices }] };
   }
   // Texels por triângulo: com malha fina os triângulos são pequenos, então menos texels mantêm a
   // mesma densidade de textura por metro (8x8 com ~6 mil triângulos, até 3x3 em malhas densas).
@@ -292,7 +293,60 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
     const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z, n) => surfaceColor(matFn(x, y, z), n), bumped ? heightAt : null, normals, texelsPerTriangle);
     chunks.push({ positions, normals, uv: atlas.uv, png: atlas.png, normalPng: atlas.normalPng });
   }
-  return { name, kind: p.kind, materialProps, triangles, vertices: mesh.indices.length, chunks };
+  return { name, kind: p.kind, materialProps, quality, triangles, vertices: mesh.indices.length, chunks };
+}
+
+// Relatório de qualidade de uma malha em relação à forma de origem (a distância assinada):
+// desvio dos vértices (devem estar na superfície) e, nas faces, o desvio dos centros dos triângulos.
+// Os valores são em metros; `cell` é o tamanho da célula usada, para dar escala ao desvio.
+function meshQuality(mesh, dist, cell, dims, bbox = null) {
+  const P = mesh.positions, I = mesh.indices;
+  const nv = P.length / 3, nt = I.length / 3;
+  const stride = Math.max(1, Math.floor(nv / 4000));
+  let max = 0, sum = 0, n = 0;
+  for (let v = 0; v < nv; v += stride) {
+    const d = Math.abs(dist(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]));
+    if (d > max) max = d;
+    sum += d;
+    n++;
+  }
+  // centros de triângulos: pegam faces simplificadas que se afastaram da superfície entre os vértices
+  const ts = Math.max(1, Math.floor(nt / 4000));
+  let faceMax = 0;
+  for (let t = 0; t < nt; t += ts) {
+    const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+    const d = Math.abs(dist((P[a] + P[b] + P[c]) / 3, (P[a + 1] + P[b + 1] + P[c + 1]) / 3, (P[a + 2] + P[b + 2] + P[c + 2]) / 3));
+    if (d > faceMax) faceMax = d;
+  }
+  const cellMin = Math.min(...cell);
+
+  // Cobertura: peças mais finas que a célula somem na conversão e os vértices que sobram continuam "certos".
+  // Compara o volume da malha (soma de tetraedros) com o volume da forma, estimado por pontos aleatórios.
+  let volumeRatio = null, reason = null;
+  if (bbox) {
+    let vm = 0;
+    for (let t = 0; t < nt; t++) {
+      const a = I[t * 3] * 3, b = I[t * 3 + 1] * 3, c = I[t * 3 + 2] * 3;
+      vm += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]);
+    }
+    vm = Math.abs(vm / 6);
+    const ext = bbox.max.map((v, i) => v - bbox.min[i]);
+    let seed = 123456789, inside = 0;
+    const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const N = 24000;
+    for (let i = 0; i < N; i++) if (dist(bbox.min[0] + rnd() * ext[0], bbox.min[1] + rnd() * ext[1], bbox.min[2] + rnd() * ext[2]) < 0) inside++;
+    // poucos pontos dentro = estimativa ruidosa: não conclui nada
+    if (inside >= 150) volumeRatio = vm / ((inside / N) * ext[0] * ext[1] * ext[2]);
+  }
+  const rank = { ok: 0, 'atenção': 1, ruim: 2 };
+  let status = Math.max(max, faceMax) <= cellMin * 0.6 ? 'ok' : Math.max(max, faceMax) <= cellMin ? 'atenção' : 'ruim';
+  if (status !== 'ok') reason = 'desvio';
+  if (volumeRatio !== null) {
+    const lost = 1 - volumeRatio;
+    const vs = lost > 0.3 ? 'ruim' : lost > 0.12 ? 'atenção' : 'ok';
+    if (rank[vs] > rank[status]) { status = vs; reason = 'volume'; }
+  }
+  return { maxError: max, meanError: n ? sum / n : 0, faceError: faceMax, cell: cellMin, size: Math.max(...dims), volumeRatio, status, reason };
 }
 
 // Buffers de uma geometria (para transferir entre workers sem copiar)
@@ -353,11 +407,13 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
   const jointIndex = new Map(bones.map((b, i) => [b, i]));
   const skinParts = parts.filter((p) => p.kind === 'skin');
   let vertices = 0, triangles = 0;
+  const partReports = [];
 
   for (let pi = 0; pi < parts.length; pi++) {
     const p = parts[pi];
     const geom = geoms[pi];
-    if (geom.empty) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); continue; }
+    if (geom.empty) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); partReports.push({ name: geom.name, empty: true }); continue; }
+    partReports.push({ name: geom.name, kind: geom.kind, triangles: geom.triangles, textured: !!geom.chunks[0]?.uv, ...geom.quality });
     triangles += geom.triangles;
     vertices += geom.vertices;
     const skinAttrs = (n) => {
@@ -485,6 +541,6 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
   const glb = g.toGLB();
   return {
     glb,
-    stats: { parts: parts.length, vertices, triangles, bones: bones.length, animated, bytes: glb.byteLength, ms: Date.now() - t0, warnings },
+    stats: { parts: parts.length, partReports, vertices, triangles, bones: bones.length, animated, bytes: glb.byteLength, ms: Date.now() - t0, warnings },
   };
 }

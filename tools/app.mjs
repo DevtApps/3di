@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { startIdeServer } from './ideserver.mjs';
+import { createRequire } from 'node:module';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.THREEDI_PORT ?? 8317);
@@ -33,7 +34,25 @@ if (!browser) {
 const file = process.argv[2] ? resolve(process.argv[2]) : null;
 if (file && !existsSync(file)) log(`aviso: ${file} não existe (será criado ao salvar)`);
 
-const ide = await startIdeServer({ root: ROOT, port: PORT, log, fallbackPort: true });
+// O launcher web também precisa oferecer o MCP HTTP, como o desktop e npm run dev.
+const mcpPort = Number(process.env.THREEDI_MCP_PORT ?? 8318);
+let runtime = null;
+let existingMcp = false;
+try {
+  const response = await fetch(`http://127.0.0.1:${mcpPort}/health`, { signal: AbortSignal.timeout(2000) });
+  const health = await response.json();
+  existingMcp = response.ok && health.name === '3di' && health.endpoint === `http://127.0.0.1:${mcpPort}/mcp`;
+} catch {}
+if (!existingMcp) {
+  const require = createRequire(import.meta.url);
+  const { startRuntime } = require('../dist-desktop/desktop/runtime.cjs');
+  runtime = await startRuntime(ROOT, join(ROOT, 'dist-desktop/desktop/engine-worker.cjs'), {
+    port: PORT, mcpPort, reuseIde: true, log,
+  });
+}
+const ide = runtime?.ide ?? await startIdeServer({ root: ROOT, port: PORT, log, fallbackPort: true });
+async function stop() { await runtime?.stop(); process.exit(0); }
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => void stop());
 const hash = new URLSearchParams({ token: ide.token, ...(file ? { file } : {}) });
 const profile = join(homedir(), '.config', '3di', 'chrome');
 
@@ -51,12 +70,19 @@ child.on('error', (e) => { log(`não abriu o navegador: ${e.message}`); process.
 // por isso o servidor só fecha quando nenhum editor estiver conectado (com uma folga inicial
 // para a janela repassada se conectar).
 child.on('exit', () => {
-  if (ide.relay) process.exit(0);
+  if (ide.relay && !runtime) process.exit(0);
   const started = Date.now();
   let idleChecks = 0;
-  setInterval(() => {
-    if (ide.clientCount() > 0) { idleChecks = 0; return; }
+  let checking = false;
+  setInterval(async () => {
+    if (checking) return;
+    checking = true;
+    try {
+    if (ide.relay) {
+      try { await ide.call('fileState'); idleChecks = 0; return; } catch {}
+    } else if (ide.clientCount() > 0) { idleChecks = 0; return; }
     if (Date.now() - started < 8000) return;
-    if (++idleChecks >= 2) { log('nenhuma janela aberta; encerrando'); process.exit(0); }
+    if (++idleChecks >= 2) { log('nenhuma janela aberta; encerrando'); await stop(); }
+    } finally { checking = false; }
   }, 2000);
 });

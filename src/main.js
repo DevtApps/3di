@@ -3,6 +3,7 @@ import { ScriptError } from './parser.js';
 import { Renderer } from './renderer.js';
 import { fmtNum } from './runtime.js';
 import { sceneTask } from './ide/tasks.js';
+import { createGlbPreview } from './ide/glbpreview.js';
 import { createEditor } from './ide/editor.js';
 import { createFiles } from './ide/files.js';
 import { connectBridge } from './ide/bridge.js';
@@ -160,14 +161,17 @@ function requestRender() {
 function draw(scale, opts = {}) {
   const sc = sceneInfo.scene;
   const r = radiusOf(sceneInfo.bbox);
+  // opts.view = { eye, target, fov } desenha de outro ângulo sem mexer na câmera do editor
+  const v = opts.view;
+  const dist = v ? Math.hypot(v.eye[0] - v.target[0], v.eye[1] - v.target[1], v.eye[2] - v.target[2]) : cam.dist;
   // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
-  const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(cam.dist, r, 1) * 14) : 0);
+  const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(dist, r, 1) * 14) : 0);
   renderer.render({
-    eye: eye(),
-    target: cam.target,
-    fov: cam.fov,
+    eye: v ? v.eye : eye(),
+    target: v ? v.target : cam.target,
+    fov: v ? v.fov : cam.fov,
     fog,
-    maxDist: sceneInfo.hasPlane ? Math.max(80, cam.dist * 30) : cam.dist + r * 4,
+    maxDist: sceneInfo.hasPlane ? Math.max(80, dist * 30) : dist + r * 4,
     sun: sc?.sun?.dir ?? [0.6, 1, 0.4],
     sunColor: sc?.sun?.color ?? [1, 0.95, 0.88],
     sky: sc?.sky ?? [0.3, 0.5, 0.82],
@@ -473,6 +477,31 @@ $('btnGlb').onclick = () => {
   }, 30);
 };
 
+// ---------- Conferir GLB: o resultado do export ao lado do shader ----------
+
+// o shader num ângulo qualquer, para comparar com a malha exportada (a câmera do editor não muda)
+async function renderShaderAt(view, w, h) {
+  draw(1, { size: [w, h], view });
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  out.getContext('2d').drawImage(canvas, 0, 0);
+  draw(1);
+  return out.toDataURL('image/png');
+}
+
+const glbCheck = createGlbPreview({
+  getView: () => ({ eye: eye(), target: [...cam.target], fov: cam.fov }),
+  getSun: () => sceneInfo.scene?.sun?.dir ?? [0.6, 1, 0.4],
+  getTime: () => anim.time,
+  getCode: () => editor.getValue(),
+  renderShader: renderShaderAt,
+  saveGlb: async (glb) => {
+    const name = await files.saveBinary(new Blob([glb], { type: 'model/gltf-binary' }), `${baseName()}.glb`, 'Modelo glTF binário', '.glb', 'model/gltf-binary');
+    if (name) { status.className = 'ok'; status.textContent = `✓ ${name} salvo`; }
+  },
+});
+$('btnGlbCheck').onclick = () => glbCheck.open();
+
 const sel = $('examples');
 sel.innerHTML = '<option value="">exemplos…</option>' + EXAMPLES.map((n) => `<option>${n}</option>`).join('');
 sel.onchange = async () => {
@@ -498,6 +527,7 @@ window.tdi = {
   status: () => status.textContent,
   // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
   interactScale: () => interactScale,
+  glbCheck,
   // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
   async views({ size = 512, t } = {}) { return (await renderViews({ size, time: t ?? anim.time })).toDataURL('image/png'); },
   // tempo médio de um quadro em resolução cheia (ms)
@@ -554,6 +584,13 @@ connectBridge({
     anim.last = 0;
     draw(1);
     return `t = ${anim.time.toFixed(2)} s, ${anim.playing ? 'tocando' : 'pausada'}${anim.on ? '' : ' (a cena não usa time)'}`;
+  },
+  // exporta, abre o painel Conferir GLB e devolve a imagem da malha + o relatório por peça
+  glbCheck: async ({ res = 128, style = 'solid', mode = 'glb' } = {}) => {
+    await glbCheck.open(Number(res) || 128);
+    const report = glbCheck.reportText();
+    if (!glbCheck.hasModel()) throw new Error(report);
+    return { png: await glbCheck.capture({ style, mode: mode === 'split' ? 'split' : mode }), report };
   },
   screenshot: async ({ view = 'current', target, time }) => {
     const t = time ?? anim.time;
