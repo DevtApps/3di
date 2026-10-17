@@ -2,6 +2,7 @@
 import { ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
 import { isExpr, val0, sym as esym } from './expr.js';
+import { parsePoints, regularPolygon, starPoints, smoothOpen, lathePolygon, boundsOf } from './profile.js';
 
 export const INF = 1e4;
 
@@ -17,7 +18,7 @@ export class Shape {
   // as próprias propriedades dependem de time?
   get selfAnimated() {
     const p = this.props;
-    return [p.v, p.angles, p.s].some((a) => Array.isArray(a) && a.some(isExpr)) || isExpr(p.glow);
+    return [p.v, p.angles, p.s].some((a) => Array.isArray(a) && a.some(isExpr)) || isExpr(p.glow) || (isExpr(p.f) && p.f.usesTime());
   }
   get animated() {
     return (this._anim ??= this.selfAnimated || this.children.some((c) => c.animated));
@@ -140,6 +141,39 @@ function computeBBox(s) {
       const R = Math.max(...corners(b).map((c) => Math.hypot(c[0], c[2])));
       return bb([-R, b.min[1], -R], [R, b.max[1], R]);
     }
+    case 'taper': {
+      // a seção perpendicular ao eixo é multiplicada pelo fator local, que no máximo vale max(top, bottom)
+      const f = Math.max(p.top, p.bottom);
+      const b = c0.bbox;
+      return bb(b.min.map((v, i) => (i === p.axis ? v : v * f)), b.max.map((v, i) => (i === p.axis ? v : v * f)));
+    }
+    case 'bend': {
+      // deflexão máxima ~ L * angulo / 2; expande o plano da curvatura com folga
+      const b = c0.bbox;
+      const d = Math.abs(p.k) * p.len * p.len * 0.5 * 1.15;
+      return bb(b.min.map((v, i) => (i === p.axis || i === p.toward ? v - d : v)), b.max.map((v, i) => (i === p.axis || i === p.toward ? v + d : v)));
+    }
+    case 'shear': {
+      const b = c0.bbox;
+      const sh = [p.sx, 0, p.sz];
+      const lo = (b.min[1] - p.y0), hi = (b.max[1] - p.y0);
+      return bb(b.min.map((v, i) => v + Math.min(sh[i] * lo, sh[i] * hi)), b.max.map((v, i) => v + Math.max(sh[i] * lo, sh[i] * hi)));
+    }
+    case 'polar': {
+      const b = c0.bbox;
+      const R = Math.max(...corners(b).map((c) => Math.hypot(c[0], c[2])));
+      return bb([-R, b.min[1], -R], [R, b.max[1], R]);
+    }
+    case 'elongate': {
+      const b = c0.bbox;
+      return bb(b.min.map((v, i) => v - p.h[i]), b.max.map((v, i) => v + p.h[i]));
+    }
+    case 'extrude': {
+      const b = boundsOf(p.pts);
+      return p.axis === 'z' ? bb([b.minX, b.minY, -p.h / 2], [b.maxX, b.maxY, p.h / 2]) : bb([b.minX, -p.h / 2, b.minY], [b.maxX, p.h / 2, b.maxY]);
+    }
+    case 'lathe': return bb([-p.rmax, p.y0, -p.rmax], [p.rmax, p.y1, p.rmax]);
+    case 'implicit': return sym(...p.half);
     case 'repeat': {
       const b = c0.bbox;
       const ext = p.n.map((n, i) => ((n - 1) * p.s[i]) / 2);
@@ -338,6 +372,12 @@ function bottomCenter(b) {
   return [c[0], b.min[1], c[2]];
 }
 
+function axisIndex(v, what) {
+  const i = { x: 0, y: 1, z: 2 }[String(v).toLowerCase()];
+  if (i === undefined) throw new ScriptError(`${what}(): eixo inválido '${v}'`, null, 'use "x", "y" ou "z"');
+  return i;
+}
+
 const METHODS = {
   at: [['x=0', 'y=0', 'z=0'], (s, a) => translate(s, xyzArgsT(a, 'at'))],
   move: [['x=0', 'y=0', 'z=0'], (s, a) => translate(s, xyzArgsT(a, 'move'))],
@@ -415,6 +455,43 @@ const METHODS = {
     const h = size(s.bbox)[1] || 1;
     const k = (num(a.degrees, 'twist') * Math.PI) / 180 / h;
     return aroundPivot(s, center(s.bbox), (q) => new Shape('twist', { k }, [q]));
+  }],
+  // ---- deformações (customizam qualquer forma finita) ----
+  taper: [['top=0.5', 'bottom=1', 'axis="y"'], (s, a) => {
+    needFinite(s, 'taper()');
+    const axis = axisIndex(a.axis, 'taper');
+    const top = num(a.top, 'top'), bottom = num(a.bottom, 'bottom');
+    if (!(top > 0) || !(bottom > 0)) throw new ScriptError('taper(): top e bottom devem ser maiores que zero', null, 'top=0.5 afina a ponta pela metade; top=2 alarga');
+    return new Shape('taper', { top, bottom, axis, lo: s.bbox.min[axis], hi: s.bbox.max[axis] }, [s]);
+  }],
+  bend: [['angle', 'axis="y"', 'toward=None', 'pivot=None'], (s, a) => {
+    needFinite(s, 'bend()');
+    const axis = axisIndex(a.axis, 'bend');
+    // curva para +x quando o eixo é y ou z, e para +y quando o eixo é x
+    const toward = a.toward === null ? (axis === 0 ? 1 : 0) : axisIndex(a.toward, 'bend');
+    if (toward === axis) throw new ScriptError('bend(): toward deve ser outro eixo que axis', null, 'ex.: bend(60, axis="y", toward="x")');
+    const pivot = a.pivot === null ? s.bbox.min[axis] : num(a.pivot, 'pivot');
+    const len = Math.max(1e-6, s.bbox.max[axis] - pivot);
+    // sinal: ângulo positivo curva a ponta para o lado + de `toward`
+    const k = -(num(a.angle, 'angle') * Math.PI) / 180 / len;
+    return new Shape('bend', { k, axis, toward, pivot, len }, [s]);
+  }],
+  shear: [['x=0', 'z=0'], (s, a) => {
+    needFinite(s, 'shear()');
+    const sx = num(a.x, 'x'), sz = num(a.z, 'z');
+    return new Shape('shear', { sx, sz, y0: s.bbox.min[1] }, [s]);
+  }],
+  polar: [['count'], (s, a) => {
+    needFinite(s, 'polar()');
+    const n = num(a.count, 'count');
+    if (!Number.isInteger(n) || n < 2 || n > 256) throw new ScriptError('polar() precisa de um inteiro de 2 a 256', null, 'a forma deve ficar afastada do eixo y; polar(6) faz 6 cópias em volta dele');
+    return new Shape('polar', { n }, [s]);
+  }],
+  elongate: [['x=0', 'y=0', 'z=0'], (s, a) => {
+    needFinite(s, 'elongate()');
+    const h = [num(a.x, 'x'), num(a.y, 'y'), num(a.z, 'z')];
+    if (h.some((v) => v < 0)) throw new ScriptError('elongate() não aceita valores negativos', null);
+    return new Shape('elongate', { h: h.map((v) => v / 2) }, [s]);
   }],
   color: [['c'], (s, a) => material(s, { color: a.c })],
   material: [['color=None', 'rough=None', 'metal=None', 'glow=None'], (s, a) => material(s, a)],
@@ -534,6 +611,12 @@ function positive(v, what) {
   return x;
 }
 
+function extrudeShape(pts, h, axis, round, what) {
+  if (axis !== 'z' && axis !== 'y') throw new ScriptError(`${what}: axis deve ser "z" (perfil em x,y) ou "y" (perfil em x,z)`, null);
+  if (round < 0) throw new ScriptError(`${what}: round não pode ser negativo`, null);
+  return new Shape('extrude', { pts, h, axis, r: Math.min(round, h / 2) }, []);
+}
+
 export function shapeBuiltins(scene) {
   const N = (name, params, fn) => new Native(name, params, fn);
   return {
@@ -562,6 +645,51 @@ export function shapeBuiltins(scene) {
     pyramid: N('pyramid', ['w=1', 'h=1'], (a) => new Shape('pyramid', { w: positive(a.w, 'w'), h: positive(a.h, 'h') })),
     prism: N('prism', ['w=1', 'h=0.5', 'd=1'], (a) => new Shape('prism', { w: positive(a.w, 'w'), h: positive(a.h, 'h'), d: positive(a.d, 'd') })),
     plane: N('plane', [], () => new Shape('plane')),
+    // ---- formas a partir de perfis 2D ----
+    extrude: N('extrude', ['points', 'h=1', 'axis="z"', 'round=0'], (a) => {
+      const pts = parsePoints(a.points, 'extrude()');
+      return extrudeShape(pts, positive(a.h, 'h'), String(a.axis).toLowerCase(), num(a.round, 'round'), 'extrude()');
+    }),
+    polygon: N('polygon', ['sides=6', 'r=0.5', 'h=1', 'round=0'], (a) => {
+      const n = num(a.sides, 'sides');
+      if (!Number.isInteger(n) || n < 3 || n > 64) throw new ScriptError('polygon(): sides deve ser um inteiro de 3 a 64', null);
+      return extrudeShape(regularPolygon(n, positive(a.r, 'r')), positive(a.h, 'h'), 'y', num(a.round, 'round'), 'polygon()');
+    }),
+    star: N('star', ['points=5', 'r=0.5', 'inner=None', 'h=0.2', 'round=0'], (a) => {
+      const n = num(a.points, 'points');
+      if (!Number.isInteger(n) || n < 3 || n > 32) throw new ScriptError('star(): points deve ser um inteiro de 3 a 32', null);
+      const r = positive(a.r, 'r');
+      const inner = a.inner === null ? r * 0.45 : positive(a.inner, 'inner');
+      return extrudeShape(starPoints(n, r, inner), positive(a.h, 'h'), 'y', num(a.round, 'round'), 'star()');
+    }),
+    wedge: N('wedge', ['w=1', 'h=1', 'd=1'], (a) => {
+      const w = positive(a.w, 'w'), h = positive(a.h, 'h');
+      // rampa: sobe de -x até +x; a profundidade segue z
+      return extrudeShape([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2]], positive(a.d, 'd'), 'z', 0, 'wedge()');
+    }),
+    lathe: N('lathe', ['profile', 'smooth=0'], (a) => {
+      let prof = parsePoints(a.profile, 'lathe()', { min: 2, max: 64 });
+      if (prof.some((p) => p[0] < 0)) throw new ScriptError('lathe(): o raio (primeiro valor de cada ponto) não pode ser negativo', null, 'perfil de (raio, altura), de baixo para cima');
+      const sm = num(a.smooth, 'smooth');
+      if (!Number.isInteger(sm) || sm < 0 || sm > 8) throw new ScriptError('lathe(): smooth deve ser um inteiro de 0 a 8', null, 'smooth=4 arredonda o perfil');
+      prof = smoothOpen(prof, sm).map((p) => [Math.max(0, p[0]), p[1]]);
+      const pts = lathePolygon(prof);
+      if (pts.length > 128) throw new ScriptError('lathe(): perfil com pontos demais depois de suavizar', null, 'use menos pontos ou um smooth menor');
+      const b = boundsOf(prof);
+      if (!(b.maxX > 0)) throw new ScriptError('lathe(): o perfil precisa ter algum raio maior que zero', null);
+      return new Shape('lathe', { pts, rmax: b.maxX, y0: b.minY, y1: b.maxY }, []);
+    }),
+    // ---- formas compostas ----
+    hemisphere: N('hemisphere', ['r=0.5'], (a) => {
+      const r = positive(a.r, 'r');
+      const cap = intersect([new Shape('sphere', { r }), translate(new Shape('box', { size: [2 * r + 0.01, r, 2 * r + 0.01], r: 0 }), [0, r / 2, 0])]);
+      return translate(cap, [0, -r / 2, 0]);
+    }),
+    tube: N('tube', ['r=0.5', 'thickness=0.1', 'h=1'], (a) => {
+      const r = positive(a.r, 'r'), t = positive(a.thickness, 'thickness'), h = positive(a.h, 'h');
+      if (t >= r) throw new ScriptError('tube(): thickness deve ser menor que r', null);
+      return subtract(new Shape('cylinder', { r, h, round: 0 }), [new Shape('cylinder', { r: r - t, h: h + 0.02, round: 0 })]);
+    }),
     segment: N('segment', ['a', 'b', 'r=0.05'], (a) => segmentShape(vec3(a.a, 'a'), vec3(a.b, 'b'), positive(a.r, 'r'))),
     group: N('group', ['*shapes', 'smooth=0'], (a) => {
       const list = flatten(a.shapes, 'group()');

@@ -2,7 +2,7 @@
 import { parse, ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, typeName, repr, str, tuple, fmtNum } from './runtime.js';
 import { Shape, shapeBuiltins, getShapeAttr, shapeBinary } from './shapes.js';
-import { isExpr, sym, TIME, EXPR_FUNCS } from './expr.js';
+import { isExpr, sym, TIME, EXPR_FUNCS, POS_VARS } from './expr.js';
 import { toSrgb, hsvToRgb, rgbToHsv, isColorLike } from './color.js';
 import { makeRng } from './lib/rand.js';
 import { libBuiltins } from './lib/index.js';
@@ -32,7 +32,7 @@ class ReturnSignal { constructor(v) { this.v = v; } }
 const BREAK = { signal: 'break' };
 const CONTINUE = { signal: 'continue' };
 
-const TIME_HINT = 'para variar com o tempo use contas e funções: sin, cos, abs, min, max, clamp, lerp, smoothstep, osc';
+const TIME_HINT = 'para variar com o tempo (ou numa fórmula de implicit) use contas e funções: sin, cos, abs, min, max, clamp, lerp, smoothstep, step, osc';
 
 export function truthy(v) {
   if (isExpr(v)) throw new ScriptError('valores com time não podem ser usados em if/while/and/or', null, TIME_HINT);
@@ -55,7 +55,7 @@ function eq(a, b) {
 }
 
 function compare(op, a, b) {
-  if (isExpr(a) || isExpr(b)) throw new ScriptError(`não é possível comparar valores com time usando ${op}`, null, TIME_HINT);
+  if (isExpr(a) || isExpr(b)) throw new ScriptError(`não é possível comparar valores que variam (time, ou x, y, z numa fórmula) usando ${op}`, null, TIME_HINT);
   switch (op) {
     case '==': return eq(a, b);
     case '!=': return !eq(a, b);
@@ -198,8 +198,23 @@ export class Interpreter {
       ceil: math1('ceil', Math.ceil),
       radians: math1('radians', (x) => (x * Math.PI) / 180),
       degrees: math1('degrees', (x) => (x * 180) / Math.PI),
-      atan2: N('atan2', ['y', 'x'], ({ y, x }) => Math.atan2(y, x)),
-      hypot: N('hypot', ['*xs'], ({ xs }) => Math.hypot(...xs)),
+      atan2: N('atan2', ['y', 'x'], ({ y, x }) => (isExpr(y) || isExpr(x) ? sym('atan2', y, x) : Math.atan2(y, x))),
+      hypot: N('hypot', ['*xs'], ({ xs }) => (anyT(xs) ? sym('hypot', ...xs) : Math.hypot(...xs))),
+      sign: N('sign', ['x'], ({ x }) => (isExpr(x) ? sym('sign', x) : Math.sign(x))),
+      step: N('step', ['edge', 'x'], ({ edge, x }) => (isExpr(edge) || isExpr(x) ? sym('step', edge, x) : x < edge ? 0 : 1)),
+      // Forma por fórmula: f(x, y, z) devolve um campo que é negativo dentro e positivo fora (distância
+      // aproximada). A fórmula é recortada pela caixa `size` e multiplicada por `lip` (use menos de 1 em
+      // campos que crescem rápido: passos menores deixam o raio mais seguro).
+      implicit: N('implicit', ['f', 'size=2', 'lip=0.5'], ({ f, size, lip }, node) => {
+        if (!(f instanceof Native || f instanceof UserFunc)) throw new ScriptError('implicit() espera uma função (x, y, z), por exemplo lambda x, y, z: sqrt(x*x + y*y + z*z) - 0.5', null);
+        const sz = Array.isArray(size) ? size : [size, size, size];
+        if (sz.length !== 3 || sz.some((v) => typeof v !== 'number' || !(v > 0))) throw new ScriptError('implicit(): size deve ser um número positivo ou (largura, altura, profundidade)', null);
+        const k = this.toNum(lip, 'lip');
+        if (!(k > 0 && k <= 1)) throw new ScriptError('implicit(): lip deve estar entre 0 (exclusivo) e 1', null, 'lip=0.5 é seguro; 1 só para campos que já são distâncias exatas');
+        const field = this.call(f, [POS_VARS.x, POS_VARS.y, POS_VARS.z], [], node);
+        if (!isExpr(field) || !field.usesPosition()) throw new ScriptError('implicit(): a fórmula precisa depender de x, y ou z', null, 'use funções como sqrt, sin, abs, min, max, clamp; comparações (<, >) não funcionam: use min/max/step');
+        return new Shape('implicit', { f: field, half: sz.map((v) => v / 2), lip: k }, []);
+      }),
       round: N('round', ['x', 'n=0'], ({ x, n }) => Math.round(x * 10 ** n) / 10 ** n),
       min: N('min', ['*xs'], ({ xs }) => {
         const a = xs.length === 1 ? xs[0] : xs;

@@ -8,7 +8,7 @@ import { createFiles } from './ide/files.js';
 import { connectBridge } from './ide/bridge.js';
 import { setupWorkspace } from './ide/workspace.js';
 
-const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos'];
+const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
 const STORAGE_KEY = '3di.code';
 const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
 chao = plane().color("lightgray")

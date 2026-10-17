@@ -70,6 +70,14 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `prism(w=1, h=0.5, d=1)` | prisma triangular (telhado de duas águas): triângulo de base w e altura h, estendido em z |
 | `plane()` | chão infinito em y=0 |
 | `segment(a, b, r=0.05)` | cápsula ligando os pontos a e b (membros, canos, galhos) |
+| `polygon(sides=6, r=0.5, h=1, round=0)` | pilar de base poligonal regular (3 a 64 lados), em pé |
+| `star(points=5, r=0.5, inner=None, h=0.2, round=0)` | estrela extrudada (pontas em `r`, vales em `inner`), deitada |
+| `wedge(w=1, h=1, d=1)` | rampa: sobe de -x até +x, com profundidade d em z |
+| `extrude(points, h=1, axis="z", round=0)` | polígono qualquer extrudado (veja "Formas por perfil") |
+| `lathe(profile, smooth=0)` | sólido de revolução a partir de um perfil (veja "Formas por perfil") |
+| `hemisphere(r=0.5)` | meia esfera (cúpula), centrada como as outras formas |
+| `tube(r=0.5, thickness=0.1, h=1)` | cano: cilindro oco atravessado |
+| `implicit(f, size=2, lip=0.5)` | forma definida por fórmula (veja "Formas por fórmula") |
 
 ## Combinar
 
@@ -104,9 +112,52 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `.round(r)` | arredonda (e engorda) a forma em r |
 | `.shell(espessura)` | deixa oca (aparece quando recortada) |
 | `.twist(graus)` | torce em volta do eixo vertical, de baixo até em cima |
+| `.taper(top=0.5, bottom=1, axis="y")` | afunila: a seção vai de `bottom` (na base) até `top` (no topo) vezes o tamanho original |
+| `.bend(angle, axis="y", toward=None, pivot=None)` | curva a forma: a ponta se inclina `angle` graus para o lado + de `toward` (padrão x), com a base fixa em `pivot` |
+| `.shear(x=0, z=0)` | inclina como um baralho: desloca x e z em metros por metro de altura |
+| `.polar(count)` | repete em volta do eixo y (`count` cópias); a forma deve ficar afastada do eixo. Não custa primitivas |
+| `.elongate(x=0, y=0, z=0)` | estica a forma sem deformá-la: acrescenta esse comprimento no meio (esfera vira cápsula) |
 | `.color(c)` | nome (`"red"`, `"wood"`, `"stone"`, `"vermelho"`…), `"#rrggbb"` ou `(r, g, b)` |
 | `.material(color, rough, metal, glow)` | rugosidade 0..1, metal 0..1, brilho próprio |
 | `.name("texto")` | nomeia a peça (aparece no painel Peças e no `check.mjs`) |
+
+## Formas por perfil
+
+`extrude(points, h=1, axis="z", round=0)` extruda um polígono qualquer (3 a 128 pontos, côncavo vale). Com
+`axis="z"` os pontos `(x, y)` são o perfil visto de frente e `h` a profundidade; com `axis="y"` os pontos
+`(x, z)` ficam no chão e `h` é a altura. `round` arredonda as quinas. As coordenadas dos pontos valem como
+escritas: use `.place()` ou `.ground()` para posicionar.
+
+`lathe(profile, smooth=0)` gira em volta do eixo y um perfil de pontos `(raio, altura)`, de baixo para cima
+(vasos, colunas, taças, peças de xadrez, rodas). Termine em raio 0 para fechar; senão a ponta vira uma tampa
+plana. `smooth` de 1 a 8 arredonda o perfil com uma curva suave.
+
+```python
+vaso = lathe([(0, 0), (0.35, 0), (0.45, 0.25), (0.3, 0.6), (0.18, 0.85), (0.26, 1.0), (0, 1.05)], smooth=4)
+seta = extrude([(0, 0), (0.7, 0), (0.7, 0.35), (1, 0.35), (0.35, 1), (-0.3, 0.35), (0, 0.35)], h=0.25)
+coluna = cylinder(0.25, 2).taper(top=0.7).twist(30)
+```
+
+## Formas por fórmula
+
+`implicit(f, size=2, lip=0.5)` cria uma forma a partir de uma função de posição. `f(x, y, z)` devolve um
+campo: negativo dentro, positivo fora, zero na superfície. O resultado é recortado pela caixa `size` (um
+número ou `(largura, altura, profundidade)`). Dentro de `f` valem contas, `**`, `sqrt`, `sin`, `cos`, `tan`,
+`abs`, `min`, `max`, `exp`, `log`, `hypot`, `atan2`, `sign`, `step`, `clamp`, `lerp`, `smoothstep`, `floor`,
+`fract` e `time` (a forma anima). Comparações (`<`, `>`) e `if` não funcionam, porque `x`, `y` e `z` são
+expressões e não números: use `min`, `max` e `step`.
+
+O campo deve se parecer com uma distância (inclinação perto de 1 na superfície). `lip` multiplica o campo para
+encurtar o passo do raio: `lip=1` só para distâncias exatas, `0.5` é um padrão seguro, `0.2` para campos que
+crescem rápido (giroide). Polinômios de grau alto são quase planos perto da superfície e aparecem com cascas
+ou buracos: componha distâncias (`hypot`, `abs`, `min`, `max`) em vez de equações algébricas.
+
+```python
+giroide = implicit(lambda x, y, z: abs(sin(x*7)*cos(y*7) + sin(y*7)*cos(z*7) + sin(z*7)*cos(x*7)) - 0.4, size=1.2, lip=0.25)
+furada = implicit(lambda x, y, z: max(hypot(x, y, z) - 0.5, -(hypot(x, z) - 0.17)), size=1.1, lip=0.9)
+```
+
+Veja `formas.3di` (todas as primitivas e modificadores novos) e `formulas.3di`.
 
 **Atenção com recortes rentes:** se a face do recorte coincide com a face da forma, sobra uma película
 invisível na abertura. Faça o recorte atravessar a superfície (ex.: janela com profundidade maior e

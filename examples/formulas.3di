@@ -1,0 +1,38 @@
+# Formas definidas por fórmula: implicit(f, size, lip).
+# f(x, y, z) devolve um campo: negativo dentro da forma, positivo fora, zero na superfície.
+# A fórmula é recortada pela caixa `size`. Use sqrt, sin, cos, abs, min, max, exp, log, hypot, atan2,
+# clamp, smoothstep, step, ** e contas; comparações (<, >) não valem aqui: use min, max e step.
+# lip (0 a 1) encurta o passo do raio: use menos em campos que crescem rápido.
+# O campo deve parecer uma distância (inclinação perto de 1). Polinômios de grau alto são planos perto da
+# superfície e falham: prefira compor distâncias (hypot, abs, min, max) em vez de equações algébricas.
+
+# giroide: superfície periódica, aqui como uma casca grossa dentro de um cubo
+k = 7
+giroide = implicit(lambda x, y, z: abs(sin(x * k) * cos(y * k) + sin(y * k) * cos(z * k) + sin(z * k) * cos(x * k)) - 0.4,
+                   size=1.2, lip=0.25).color("#e8a04a").material(rough=0.4)
+
+# metabolas: três esferas que se fundem (mínimo suave com exp e log)
+def bolas(x, y, z):
+    d1 = hypot(x - 0.25, y, z) - 0.25
+    d2 = hypot(x + 0.2, y - 0.1, z - 0.15) - 0.22
+    d3 = hypot(x, y + 0.25, z + 0.2) - 0.2
+    return -log(exp(-14 * d1) + exp(-14 * d2) + exp(-14 * d3)) / 14
+metabolas = implicit(bolas, size=1.1, lip=0.8).color("#5bc0de").material(rough=0.2)
+
+# superquádrica: entre esfera e cubo, o expoente 4 arredonda as quinas
+superq = implicit(lambda x, y, z: (abs(x) ** 4 + abs(y) ** 4 + abs(z) ** 4) ** 0.25 - 0.5, size=1.2, lip=0.6).color("#d9534f")
+
+# esfera furada: booleanas escritas com max (interseção) e min (união) sobre distâncias exatas
+furada = implicit(lambda x, y, z: max(hypot(x, y, z) - 0.5, -min(hypot(x, z) - 0.17, hypot(y, z) - 0.17, hypot(x, y) - 0.17)),
+                  size=1.1, lip=0.9).color("#e0457b").material(rough=0.3)
+
+# esfera ondulada
+ondas = implicit(lambda x, y, z: hypot(x, y, z) - 0.4 - 0.04 * sin(x * 22) * sin(y * 22) * sin(z * 22), size=1.1, lip=0.5).color("#8fbf5f")
+
+# usa time: pulsa
+pulso = implicit(lambda x, y, z: hypot(x, y, z) - 0.3 - 0.1 * sin(time * 3 + y * 9) * sin(x * 7), size=1.1, lip=0.5).color("#b07be0")
+
+formas = [giroide, metabolas, superq, furada, ondas, pulso]
+show(plane().color("#ece8de"), [f.place((i - 2.5) * 1.35, 0, 0) for i, f in enumerate(formas)])
+sun(0.5, 1, 0.7)
+camera(pos=(0, 2.4, 5.2), look=(0, 0.5, 0), fov=44)

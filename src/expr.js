@@ -9,9 +9,12 @@ export class Expr {
   }
 
   glsl() {
+    // variáveis de posição (x, y, z) viram campos de `ip`, o parâmetro das funções de formas implícitas
+    if (this.op === 'var') return `ip.${this.args[0]}`;
     const a = this.args.map(glslOf);
     switch (this.op) {
       case 'time': return 'uTime';
+      case 'hypot': return `sqrt(${a.map((x) => `${x} * ${x}`).join(' + ')})`;
       case '+': case '-': case '*': case '/': return `(${a[0]} ${this.op} ${a[1]})`;
       case '%': return `mod(${a[0]}, ${a[1]})`;
       case '**': return `pow(${a[0]}, ${a[1]})`;
@@ -20,8 +23,9 @@ export class Expr {
     }
   }
 
-  eval(t) {
-    const a = this.args.map((x) => (x instanceof Expr ? x.eval(t) : x));
+  eval(t, env) {
+    if (this.op === 'var') return env[this.args[0]];
+    const a = this.args.map((x) => (x instanceof Expr ? x.eval(t, env) : x));
     switch (this.op) {
       case 'time': return t;
       case '+': return a[0] + a[1];
@@ -35,14 +39,47 @@ export class Expr {
     }
   }
 
-  describe() { return `<expressão com time: ${this.glsl().replace(/uTime/g, 'time')}>`; }
+  describe() { return `<expressão: ${this.glsl().replace(/uTime/g, 'time').replace(/ip\./g, '')}>`; }
+
+  usesTime() {
+    return this.op === 'time' || this.args.some((x) => x instanceof Expr && x.usesTime());
+  }
+
+  usesPosition() {
+    return this.op === 'var' || this.args.some((x) => x instanceof Expr && x.usesPosition());
+  }
+
+  // Compila para uma função (x, y, z, t) => número, sem eval(): usada na exportação, que
+  // chama a fórmula milhões de vezes.
+  compile() {
+    const node = (e) => {
+      if (!(e instanceof Expr)) return () => e;
+      if (e.op === 'var') { const i = { x: 0, y: 1, z: 2 }[e.args[0]]; return (v) => v[i]; }
+      if (e.op === 'time') return (v) => v[3];
+      const k = e.args.map(node);
+      switch (e.op) {
+        case '+': return (v) => k[0](v) + k[1](v);
+        case '-': return (v) => k[0](v) - k[1](v);
+        case '*': return (v) => k[0](v) * k[1](v);
+        case '/': return (v) => k[0](v) / k[1](v);
+        case '%': return (v) => { const a = k[0](v), b = k[1](v); return a - b * Math.floor(a / b); };
+        case '**': return (v) => k[0](v) ** k[1](v);
+        case 'neg': return (v) => -k[0](v);
+        default: { const f = JS_FN[e.op]; return (v) => f(...k.map((c) => c(v))); }
+      }
+    };
+    const fn = node(this);
+    return (x, y, z, t = 0) => fn([x, y, z, t]);
+  }
 }
 
-const GLSL_FN = { lerp: 'mix', fract: 'fract' };
+const GLSL_FN = { lerp: 'mix', fract: 'fract', atan2: 'atan' };
 
 const JS_FN = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs, sqrt: Math.sqrt,
   floor: Math.floor, exp: Math.exp, min: Math.min, max: Math.max,
+  log: Math.log, ceil: Math.ceil, sign: Math.sign, atan2: Math.atan2, hypot: Math.hypot,
+  step: (e, x) => (x < e ? 0 : 1),
   fract: (x) => x - Math.floor(x),
   clamp: (x, lo, hi) => Math.min(hi, Math.max(lo, x)),
   lerp: (a, b, t) => a + (b - a) * t,
@@ -86,3 +123,5 @@ export function sym(op, ...args) {
 }
 
 export const TIME = new Expr('time');
+// variáveis de posição para formas implícitas: implicit(lambda x, y, z: ...)
+export const POS_VARS = { x: new Expr('var', ['x']), y: new Expr('var', ['y']), z: new Expr('var', ['z']) };

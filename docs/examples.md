@@ -25,6 +25,8 @@ Os arquivos estão em `examples/` no projeto e também no seletor Exemplos da ID
 | pessoas-poses.3di | Poses e roupas do `person()` |
 | veiculos.3di | Gerador `vehicle()`: dez tipos de veículo |
 | veiculos-estilos.3di | O mesmo veículo em três estilos, com rodas girando |
+| formas.3di | Primitivas novas (extrude, polygon, star, wedge, lathe, hemisphere, tube) e modificadores (taper, bend, shear, polar, elongate) |
+| formulas.3di | Formas por fórmula com `implicit()`: giroide, metabolas, superquádrica... |
 | campo.3di | Campo estilizado denso em quatro paletas: lâminas achatadas em camadas de `repeat` recortadas por `&`, poucas primitivas |
 
 ## Cena inicial
