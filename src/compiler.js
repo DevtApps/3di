@@ -5,6 +5,7 @@
 import { ScriptError } from './parser.js';
 import { isExpr, glslOf } from './expr.js';
 import { resolveRig } from './rig.js';
+import { polygonGlsl } from './profile.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
 export const MAX_LEAVES = 2000;        // primitivas compiladas como código
@@ -115,6 +116,11 @@ vec3 bumpNormal(vec3 n, float amp, float dhx, float dhy, vec3 dpx, vec3 dpy, flo
   vec3 g = sign(det) * (dhx * r1 + dhy * r2);
   return normalize(abs(det) * n - amp * g);
 }
+// extrusão de uma distância 2D d2: altura total 2*hh centrada em 0, quinas arredondadas por r
+float sdExt(float d2, float hz, float hh, float r) {
+  vec2 w = vec2(d2 + r, abs(hz) - (hh - r));
+  return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)) - r;
+}
 float sdBox(vec3 p, vec3 b) { vec3 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); }
 float sdCyl(vec3 p, float r, float h) { vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); }
 float sdCone(vec3 p, float h, float r1, float r2) {
@@ -192,7 +198,7 @@ const v4 = (v) => `vec4(${v.map(f).join(', ')})`;
 
 // Nós caros de avaliar (ruído, repetição, torção) valem uma checagem de caixa antes, mesmo sozinhos:
 // um bloco com displace chama fbm (5 oitavas) em todo passo do raio se não for pulado de longe.
-const HEAVY = new Set(['displace', 'repeat', 'twist']);
+const HEAVY = new Set(['displace', 'repeat', 'twist', 'bend', 'taper', 'polar', 'extrude', 'lathe', 'implicit']);
 function isHeavy(sh) {
   return (sh._heavy ??= HEAVY.has(sh.kind) || sh.children.some(isHeavy));
 }
@@ -201,8 +207,15 @@ function isHeavy(sh) {
 class Gen {
   constructor() {
     this.lines = [];
+    this.funcs = []; // funções GLSL geradas por forma (polígonos de extrude/lathe)
     this.n = 0;
     this.indent = 1;
+  }
+  // registra uma função GLSL com nome único e devolve o nome
+  fn(prefix, make) {
+    const name = `${prefix}${this.n++}`;
+    this.funcs.push(make(name));
+    return name;
   }
   line(s) { this.lines.push('  '.repeat(this.indent) + s); }
   tmp(prefix) { return `${prefix}${this.n++}`; }
@@ -296,6 +309,55 @@ class Gen {
         const lip = 1 / Math.sqrt(1 + (P.k * R) ** 2);
         const r = this.emit(c0, q, mat);
         return this.mapDist(r, (d) => `${d} * ${f(lip)}`);
+      }
+      case 'taper': {
+        const ax = P.axis, X = 'xyz';
+        const t = this.tmp('tp'), sc = this.tmp('sc');
+        this.line(`float ${t} = clamp((${p}.${X[ax]} - ${f(P.lo)}) / ${f(Math.max(1e-6, P.hi - P.lo))}, 0.0, 1.0);`);
+        this.line(`float ${sc} = mix(${f(P.bottom)}, ${f(P.top)}, ${t});`);
+        const q = this.vec(`vec3(${[0, 1, 2].map((i) => (i === ax ? `${p}.${X[i]}` : `${p}.${X[i]} / ${sc}`)).join(', ')})`);
+        const b = c0.bbox;
+        const R = Math.max(...[0, 1, 2].filter((i) => i !== ax).map((i) => Math.max(Math.abs(b.min[i]), Math.abs(b.max[i])))) * Math.SQRT2;
+        const smin = Math.min(P.top, P.bottom), slope = Math.abs(P.top - P.bottom) / Math.max(1e-6, P.hi - P.lo);
+        const lip = smin / Math.sqrt(1 + ((slope * R) / smin) ** 2);
+        return this.mapDist(this.emit(c0, q, mat), (d) => `${d} * ${f(lip)}`);
+      }
+      case 'bend': {
+        const X = 'xyz', c = this.tmp('c'), sn = this.tmp('s');
+        const u = `(${p}.${X[P.axis]} - ${f(P.pivot)})`, v = `${p}.${X[P.toward]}`;
+        this.line(`float ${c} = cos(${f(P.k)} * ${u}), ${sn} = sin(${f(P.k)} * ${u});`);
+        const q = this.vec(`vec3(${[0, 1, 2].map((i) => (i === P.axis ? `${c} * ${u} - ${sn} * ${v} + ${f(P.pivot)}` : i === P.toward ? `${sn} * ${u} + ${c} * ${v}` : `${p}.${X[i]}`)).join(', ')})`);
+        const b = c0.bbox;
+        const R = Math.hypot(Math.max(Math.abs(b.min[P.axis] - P.pivot), Math.abs(b.max[P.axis] - P.pivot)), Math.max(Math.abs(b.min[P.toward]), Math.abs(b.max[P.toward])));
+        return this.mapDist(this.emit(c0, q, mat), (d) => `${d} / sqrt(1.0 + ${f((P.k * R) ** 2)})`);
+      }
+      case 'shear': {
+        const q = this.vec(`vec3(${p}.x - ${f(P.sx)} * (${p}.y - ${f(P.y0)}), ${p}.y, ${p}.z - ${f(P.sz)} * (${p}.y - ${f(P.y0)}))`);
+        return this.mapDist(this.emit(c0, q, mat), (d) => `${d} / sqrt(${f(1 + P.sx * P.sx + P.sz * P.sz)})`);
+      }
+      case 'polar': {
+        const sec = this.tmp('sec'), an = this.tmp('an'), rr = this.tmp('rr');
+        this.line(`float ${sec} = ${f((2 * Math.PI) / P.n)}, ${rr} = length(${p}.xz);`);
+        this.line(`float ${an} = mod(atan(${p}.z, ${p}.x) + 0.5 * ${sec}, ${sec}) - 0.5 * ${sec};`);
+        return this.emit(c0, this.vec(`vec3(${rr} * cos(${an}), ${p}.y, ${rr} * sin(${an}))`), mat);
+      }
+      case 'elongate': {
+        const hv = v3(P.h);
+        return this.emit(c0, this.vec(`${p} - clamp(${p}, -${hv}, ${hv})`), mat);
+      }
+      case 'extrude': {
+        const name = this.fn('sdPoly', (n) => polygonGlsl(n, P.pts));
+        const d2 = P.axis === 'z' ? `${name}(${p}.xy)` : `${name}(${p}.xz)`;
+        return this.leaf(`sdExt(${d2}, ${P.axis === 'z' ? `${p}.z` : `${p}.y`}, ${f(P.h / 2)}, ${f(P.r)})`, mat);
+      }
+      case 'implicit': {
+        // a fórmula vira uma função GLSL de ip (x, y, z); o resultado é recortado pela caixa de tamanho `size`
+        const name = this.fn('sdImpl', (n) => `float ${n}(vec3 ip) {\n  return ${glslOf(P.f)};\n}`);
+        return this.leaf(`max(${name}(${p}) * ${f(P.lip)}, sdBox(${p}, ${v3(P.half)}))`, mat);
+      }
+      case 'lathe': {
+        const name = this.fn('sdPoly', (n) => polygonGlsl(n, P.pts));
+        return this.leaf(`${name}(vec2(length(${p}.xz), ${p}.y))`, mat);
       }
       case 'round': return this.mapDist(this.emit(c0, p, mat), (d) => `${d} - ${f(P.r)}`);
       case 'shell': return this.mapDist(this.emit(c0, p, mat), (d) => `abs(${d}) - ${f(P.t / 2)}`);
@@ -589,17 +651,19 @@ export function compileScene(scene) {
   }
 
   let mBody = `  return ${M_FAR};`;
+  let funcs = '';
   if (codeRoot) {
     const Mg = new Gen();
     const mOut = Mg.emit(codeRoot, 'p', {});
     mBody = `${Mg.lines.join('\n')}\n  return ${mOut};`;
+    funcs = Mg.funcs.length ? `\n${Mg.funcs.join('\n')}\n` : '';
   }
 
   let glsl, data = null;
   if (useBVH) {
     const { bvh, nodeCount, order } = buildBVH(instances);
     data = { inst: packInstances(order.map((i) => instances[i])), instCount: instances.length, bvh, nodeCount, instW: INST_W, bvhW: BVH_W };
-    glsl = `${GLSL_LIB}${GLSL_BVH}
+    glsl = `${GLSL_LIB}${GLSL_BVH}${funcs}
 M codeM(vec3 p) {
 ${mBody}
 }
@@ -620,7 +684,7 @@ M mapAll(vec3 p, bool wantMat) {
 }
 `;
   } else {
-    glsl = `${GLSL_LIB}
+    glsl = `${GLSL_LIB}${funcs}
 M mapAll(vec3 p, bool wantMat) {
 ${mBody}
 }

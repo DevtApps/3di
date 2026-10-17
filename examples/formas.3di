@@ -1,0 +1,31 @@
+# Formas novas e modificadores. Linha de trás: formas a partir de perfis 2D; frente: deformações.
+#   extrude(pontos) · polygon(lados) · star(pontas) · wedge · lathe(perfil) · hemisphere · tube
+#   taper (afunila) · bend (curva) · shear (inclina) · polar (matriz radial) · elongate (estica)
+cor = "#c9a46a"
+
+# ---- perfis 2D ----
+seta = extrude([(0, 0), (0.7, 0), (0.7, 0.35), (1.0, 0.35), (0.35, 1.0), (-0.3, 0.35), (0, 0.35)], h=0.25).color("#d9534f")
+hexa = polygon(6, 0.5, 0.5).color("#5b8def")
+estrela = star(5, 0.5, inner=0.22, h=0.2, round=0.03).color("#f0c040")
+rampa = wedge(1, 0.6, 0.8).color("#7bbf7b")
+vaso = lathe([(0, 0), (0.35, 0), (0.45, 0.25), (0.3, 0.6), (0.18, 0.85), (0.26, 1.0), (0.2, 1.05), (0, 1.05)], smooth=4).color("#4a90b8")
+cupula = hemisphere(0.5).color("#b87bd0")
+cano = tube(0.4, 0.08, 0.8).color("#888")
+
+fundo = [seta.place(-3.0, 0, -2.2), hexa.place(-1.8, 0, -2.2), estrela.place(-0.6, 0, -2.2), rampa.place(0.6, 0, -2.2),
+         vaso.place(1.8, 0, -2.2), cupula.place(3.0, 0, -2.2), cano.place(4.1, 0, -2.2)]
+
+# ---- deformações ----
+coluna = cylinder(0.25, 1.4).color(cor).taper(top=0.45)
+braco = cylinder(0.14, 1.4).color("#a0522d").ground().bend(80)
+placa = box(0.5, 1.2, 0.2).color("#6a8").shear(x=0.5)
+petalas = ellipsoid(0.12, 0.05, 0.3).at(0.45, 0.1, 0).color("#e87aa0").polar(8)
+capsula = sphere(0.3).elongate(y=0.9).color("#d98c3f")
+torre = box(0.6, 1.4, 0.6).color("#9aa").taper(top=0.5).twist(60)
+
+frente = [coluna.place(-3.0, 0, 1.9), braco.place(-1.8, 0, 1.9), placa.place(-0.6, 0, 1.9), petalas.place(0.7, 0, 1.9),
+          capsula.place(1.9, 0, 1.9), torre.place(3.1, 0, 1.9)]
+
+show(plane().color("#e6e2d8"), fundo, frente)
+sun(0.5, 1, 0.7)
+camera(pos=(0.5, 5.2, 8.6), look=(0.5, 0.4, -0.2), fov=48)

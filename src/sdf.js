@@ -6,6 +6,7 @@ import { center } from './shapes.js';
 import { isExpr, val0 } from './expr.js';
 import { rotMatrix, texOffset } from './shapes.js';
 import { splitScene, inv3 } from './compiler.js';
+import { polygonSDF, extrudeDist } from './profile.js';
 
 const at = (v, t) => (isExpr(v) ? v.eval(t) : v);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -221,6 +222,48 @@ function pointMap(s, t) {
       const rep = (v, i) => v - sp[i] * (clamp(Math.round(v / sp[i] + h[i]), 0, P.n[i] - 1) - h[i]);
       return [(x, y, z) => [rep(x, 0), rep(y, 1), rep(z, 2)], 1];
     }
+    case 'taper': {
+      const { axis, top, bottom, lo, hi } = P;
+      const b = s.children[0].bbox;
+      const R = Math.max(...[0, 1, 2].filter((i) => i !== axis).map((i) => Math.max(Math.abs(b.min[i]), Math.abs(b.max[i])))) * Math.SQRT2;
+      const smin = Math.min(top, bottom), slope = Math.abs(top - bottom) / Math.max(1e-6, hi - lo);
+      return [(x, y, z) => {
+        const c = [x, y, z];
+        const t = clamp((c[axis] - lo) / Math.max(1e-6, hi - lo), 0, 1);
+        const sc = mix(bottom, top, t);
+        return c.map((v, i) => (i === axis ? v : v / sc));
+      }, smin / Math.sqrt(1 + ((slope * R) / smin) ** 2)];
+    }
+    case 'bend': {
+      const { k, axis, toward, pivot } = P;
+      const b = s.children[0].bbox;
+      const R = Math.hypot(Math.max(Math.abs(b.min[axis] - pivot), Math.abs(b.max[axis] - pivot)), Math.max(Math.abs(b.min[toward]), Math.abs(b.max[toward])));
+      return [(x, y, z) => {
+        const c = [x, y, z];
+        const u = c[axis] - pivot, v = c[toward];
+        const co = Math.cos(k * u), sn = Math.sin(k * u);
+        const out = [x, y, z];
+        out[axis] = co * u - sn * v + pivot;
+        out[toward] = sn * u + co * v;
+        return out;
+      }, 1 / Math.sqrt(1 + (k * R) ** 2)];
+    }
+    case 'shear': {
+      const { sx, sz, y0 } = P;
+      return [(x, y, z) => [x - sx * (y - y0), y, z - sz * (y - y0)], 1 / Math.sqrt(1 + sx * sx + sz * sz)];
+    }
+    case 'polar': {
+      const sec = (2 * Math.PI) / P.n;
+      return [(x, y, z) => {
+        const r = Math.hypot(x, z);
+        const a = ((((Math.atan2(z, x) + 0.5 * sec) % sec) + sec) % sec) - 0.5 * sec;
+        return [r * Math.cos(a), y, r * Math.sin(a)];
+      }, 1];
+    }
+    case 'elongate': {
+      const [hx, hy, hz] = P.h;
+      return [(x, y, z) => [x - clamp(x, -hx, hx), y - clamp(y, -hy, hy), z - clamp(z, -hz, hz)], 1];
+    }
     case 'twist': {
       const b = s.children[0].bbox;
       const R = Math.max(Math.abs(b.min[0]), Math.abs(b.max[0]), Math.abs(b.min[2]), Math.abs(b.max[2])) * Math.SQRT2;
@@ -246,6 +289,18 @@ function primDist(s) {
     case 'pyramid': return (x, y, z) => sdPyramid(x / P.w, (y + P.h / 2) / P.w, z / P.w, P.h / P.w) * P.w;
     case 'prism': return (x, y, z) => sdPrism(x, y, z, P.w / 2, P.h, P.d / 2);
     case 'plane': return (x, y) => y;
+    case 'extrude': {
+      const poly = polygonSDF(P.pts), half = P.h / 2;
+      return P.axis === 'z' ? (x, y, z) => extrudeDist(poly(x, y), z, half, P.r) : (x, y, z) => extrudeDist(poly(x, z), y, half, P.r);
+    }
+    case 'implicit': {
+      const f = P.f.compile(), [hx, hy, hz] = P.half, k = P.lip;
+      return (x, y, z, t) => Math.max(f(x, y, z, 0) * k, sdBox(x, y, z, hx, hy, hz));
+    }
+    case 'lathe': {
+      const poly = polygonSDF(P.pts);
+      return (x, y, z) => poly(Math.hypot(x, z), y);
+    }
   }
   return null;
 }

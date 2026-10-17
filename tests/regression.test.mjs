@@ -311,3 +311,89 @@ test('person and vehicle generators: every combination compiles light, sizes are
   }
   assert.match(runScript('show(vehicle(kind="carro"))').error.toString(), /car|bus/);
 });
+
+test('new primitives, modifiers and implicit shapes: geometry is right on the CPU evaluator, errors explain themselves', async () => {
+  const dist = (src, ...pts) => {
+    const run = runScript(src);
+    assert.equal(run.ok, true, `${src}: ${run.error?.toString()}`);
+    compileScene(run.scene); // também precisa gerar GLSL
+    const f = buildSceneFns(run.scene.shapes[0]);
+    return pts.map((p) => f.dist(...p));
+  };
+  const bbox = (src) => runScript(src).scene.shapes[0].bbox;
+
+  // polígono e estrela: dentro < 0, fora > 0, e as dimensões batem
+  let [inside, outside] = dist('show(polygon(6, 0.5, 1))', [0, 0, 0], [1, 0, 0]);
+  assert.ok(inside < -0.4 && outside > 0.4);
+  // pontas em 0°, 72°...; os vales (raio interno 0.2) ficam em 36°, 108°...
+  const star = dist('show(star(5, 0.5, inner=0.2, h=0.2))', [0.45, 0, 0], [0.3 * Math.cos(Math.PI / 5), 0, 0.3 * Math.sin(Math.PI / 5)]);
+  assert.ok(star[0] < 0.01, 'a ponta da estrela está dentro');
+  assert.ok(star[1] > 0.02, 'o vale entre as pontas está fora');
+  assert.ok(Math.abs(bbox('show(polygon(6, 0.5, 2))').max[1] - 1) < 1e-9);
+
+  // extrude côncavo (L) com os dois eixos
+  const L = '[(0, 0), (1, 0), (1, 0.4), (0.4, 0.4), (0.4, 1), (0, 1)]';
+  const [inArm, inHole] = dist(`show(extrude(${L}, h=0.2))`, [0.2, 0.8, 0], [0.8, 0.8, 0]);
+  assert.ok(inArm < 0 && inHole > 0.1, 'o canto vazio do L fica fora');
+  assert.ok(dist(`show(extrude(${L}, h=0.2, axis="y"))`, [0.2, 0, 0.8])[0] < 0, 'axis y usa (x, z)');
+
+  // wedge: rampa sobe para +x
+  const [lowX, highX] = dist('show(wedge(1, 1, 1))', [-0.4, 0.3, 0], [0.4, 0.3, 0]);
+  assert.ok(lowX > 0 && highX < 0, 'a rampa é alta em +x e baixa em -x');
+
+  // lathe: dentro do vaso < 0, no eixo (sem aresta falsa) e fora > 0; suavizar não passa do raio máximo
+  const vase = 'show(lathe([(0, 0), (0.4, 0), (0.3, 0.6), (0.1, 1), (0, 1)], smooth=3))';
+  const [onAxis, nearWall, far] = dist(vase, [0, 0.5, 0], [0.3, 0.2, 0], [0.9, 0.5, 0]);
+  assert.ok(onAxis < -0.2 && nearWall < 0 && far > 0.4);
+  assert.ok(bbox(vase).max[0] <= 0.41, 'o perfil suavizado não ultrapassa o raio máximo');
+
+  // hemisphere e tube
+  const [domeIn, domeBelow] = dist('show(hemisphere(0.5))', [0, 0.1, 0], [0, -0.4, 0]);
+  assert.ok(domeIn < 0 && domeBelow > 0, 'a meia esfera só existe na metade de cima');
+  assert.ok(dist('show(tube(0.5, 0.1, 1))', [0, 0, 0], [0.45, 0, 0]).every((d, i) => (i === 0 ? d > 0 : d < 0)), 'o cano é oco');
+
+  // taper: a seção encolhe para o topo
+  const [wideBase, narrowTop] = dist('show(cylinder(0.4, 2).taper(top=0.25))', [0.35, -0.9, 0], [0.35, 0.9, 0]);
+  assert.ok(wideBase < 0 && narrowTop > 0, 'taper afina o topo');
+  // bend: a ponta curva para +x
+  const bent = dist('show(cylinder(0.1, 2).ground().bend(90))', [0, 1.95, 0], [0.9, 1.7, 0]);
+  assert.ok(bent[0] > 0.1, 'a ponta saiu do eixo original');
+  assert.ok(bbox('show(cylinder(0.1, 2).ground().bend(90))').max[0] > 0.5, 'a caixa acompanha a curva');
+  // shear: o deslocamento cresce a partir da base (y = -0.5): em y = 0.4 a caixa fica em x de 0.25 a 0.65
+  assert.ok(dist('show(box(0.4, 1, 0.4).shear(x=0.5))', [0.45, 0.4, 0], [-0.25, 0.4, 0]).every((d, i) => (i === 0 ? d < 0 : d > 0)));
+  // polar: oito cópias em volta do eixo, uma por setor
+  const ring = 'show(box(0.1, 0.1, 0.1).at(1, 0, 0).polar(8))';
+  const around = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => dist(ring, [Math.cos((i * Math.PI) / 4), 0, Math.sin((i * Math.PI) / 4)])[0]);
+  assert.ok(around.every((d) => d < 0), 'há uma cópia em cada um dos 8 setores');
+  assert.ok(dist(ring, [Math.cos(Math.PI / 8), 0, Math.sin(Math.PI / 8)])[0] > 0, 'e há vazio entre elas');
+  // elongate: esfera vira cápsula
+  const [capMid, capEnd] = dist('show(sphere(0.3).elongate(y=1))', [0, 0.45, 0], [0, 0.9, 0]);
+  assert.ok(capMid < 0 && capEnd > 0);
+  assert.ok(Math.abs(bbox('show(sphere(0.3).elongate(y=1))').max[1] - 0.8) < 1e-9);
+
+  // implicit: a fórmula vira distância na CPU e GLSL; respeita size e time anima
+  const [core, surface] = dist('show(implicit(lambda x, y, z: hypot(x, y, z) - 0.5, size=1.4, lip=1))', [0, 0, 0], [0.5, 0, 0]);
+  assert.ok(Math.abs(core + 0.5) < 1e-9 && Math.abs(surface) < 1e-9);
+  assert.ok(Math.abs(bbox('show(implicit(lambda x, y, z: x, size=(2, 1, 3)))').max[2] - 1.5) < 1e-9);
+  assert.equal(compileScene(runScript('show(implicit(lambda x, y, z: hypot(x, y, z) - 0.4 - 0.1 * sin(time), size=1))').scene).animated, true);
+  const blobs = 'def f(x, y, z):\n    return -log(exp(-9 * (hypot(x - 0.2, y, z) - 0.2)) + exp(-9 * (hypot(x + 0.2, y, z) - 0.2))) / 9\nshow(implicit(f, size=1, lip=0.8))';
+  assert.ok(dist(blobs, [0, 0, 0], [0.9, 0, 0]).every((d, i) => (i === 0 ? d < 0 : d > 0)), 'as metabolas se fundem no meio');
+
+  // as formas novas exportam malha de verdade
+  const { glb, stats } = await exportGLB(runScript('show(lathe([(0, 0), (0.4, 0), (0.1, 1), (0, 1)], smooth=2), star(5, 0.5).at(1.2, 0.3, 0), implicit(lambda x, y, z: hypot(x, y, z) - 0.4, size=1).at(-1.2, 0.5, 0))').scene, { res: 48 });
+  assert.ok(glb.length > 5000 && stats.triangles > 500, `a exportação deve gerar malha (achou ${stats.triangles} triângulos)`);
+
+  // erros com dica
+  const errs = [
+    ['polygon(2)', /sides/], ['star(2)', /points/], ['extrude([(0, 0), (1, 1)])', /pelo menos 3/], ['extrude(5)', /lista de pontos/],
+    ['extrude([(0,0),(1,0),(0,1)], axis="x")', /axis/], ['lathe([(-1, 0), (1, 1)])', /negativo/], ['lathe([(0, 0)])', /pelo menos 2/],
+    ['tube(0.5, 0.6)', /thickness/], ['cylinder(1, 1).taper(top=0)', /maiores que zero/], ['cylinder(1, 1).bend(30, axis="y", toward="y")', /outro eixo/],
+    ['box(1).polar(1)', /inteiro/], ['sphere(1).elongate(x=-1)', /negativos/], ['implicit(5)', /função/], ['implicit(lambda x, y, z: 1.0)', /depender de x/],
+    ['implicit(lambda x, y, z: x, lip=2)', /lip/], ['implicit(lambda x, y, z: x if x > 0 else y)', /comparar/],
+  ];
+  for (const [src, re] of errs) {
+    const run = runScript(`show(${src})`);
+    assert.equal(run.ok, false, src);
+    assert.match(`${run.error.toString()} ${run.error.hint ?? ''}`, re, src);
+  }
+});
