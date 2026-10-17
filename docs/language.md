@@ -447,7 +447,7 @@ tools/render.mjs Chrome headless (protocolo DevTools por pipe, sem npm) → tdi.
 ```bash
 npm install                        # Monaco local (o editor funciona offline)
 node tools/app.mjs cena.3di        # abre a IDE numa janela do Chrome em modo app
-node tools/install-desktop.mjs     # atalho "3DI" no menu e .3di abrindo no app (--uninstall remove)
+node tools/install-desktop.mjs     # atalho "3DI (dev)" no menu, sem encobrir o app instalado (--default associa os .3di; --uninstall remove)
 ```
 
 - **Editor (Monaco):** cores, autocomplete pelo contexto (métodos de forma, de osso e de esqueleto,
