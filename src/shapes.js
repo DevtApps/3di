@@ -1,6 +1,6 @@
 // Modelo de cena: formas imutáveis, transformações, layout semântico e caixas envolventes.
 import { ScriptError } from './parser.js';
-import { Native, bindArgs, didYouMean, num, numT, vec3, tuple, typeName, fmtNum } from './runtime.js';
+import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
 import { isExpr, val0, sym as esym } from './expr.js';
 
 export const INF = 1e4;
@@ -307,8 +307,19 @@ const TEXTURES = {
   stripes: 4, listras: 4,
   checker: 5, xadrez: 5,
   bricks: 6, tijolos: 6,
+  gradient: 7, 'degradê': 7, degrade: 7,
+  mottle: 8, manchas: 8,
+  relief: 9, relevo: 9,
 };
-const TEXTURE_NAMES = ['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks'];
+const TEXTURE_NAMES = ['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'];
+
+// Deslocamento da origem da textura (só o degradê tem): o começo do degradê fica em tex.off ao longo do eixo.
+export function texOffset(tex) {
+  if (!tex || !tex.off) return null;
+  const v = [0, 0, 0];
+  v[tex.offAxis] = tex.off;
+  return v;
+}
 
 const SIDES = {
   right: [0, 1], direita: [0, 1], '+x': [0, 1],
@@ -412,7 +423,7 @@ const METHODS = {
     if (!a.bone?.isBone) throw new ScriptError('bind() espera um osso', null, 'crie com esq = skeleton(); osso = esq.bone("nome", head=(x, y, z))');
     return new Shape('bound', { bone: a.bone }, [s]);
   }],
-  texture: [['kind', 'color2=None', 'size=None', 'axis="y"'], (s, a) => {
+  texture: [['kind', 'color2=None', 'size=None', 'axis="y"', 'bump=0', 'triplanar=False', 'range=None'], (s, a) => {
     const kind = TEXTURES[String(a.kind).toLowerCase()];
     if (!kind) {
       throw new ScriptError(`textura desconhecida '${a.kind}'`, null,
@@ -420,9 +431,27 @@ const METHODS = {
     }
     const axis = { x: 0, y: 1, z: 2 }[String(a.axis).toLowerCase()];
     if (axis === undefined) throw new ScriptError(`eixo inválido '${a.axis}'`, null, 'use "x", "y" ou "z"');
-    const sz = a.size === null ? null : num(a.size, 'size');
+    let sz = a.size === null ? null : num(a.size, 'size');
     if (sz !== null && sz <= 0) throw new ScriptError('size da textura deve ser maior que zero', null);
-    return material(s, { tex: { kind, c2: a.color2 === null ? null : parseColor(a.color2), size: sz, axis } });
+    const bump = num(a.bump, 'bump');
+    if (bump < 0) throw new ScriptError('bump deve ser 0 ou maior', null, 'bump=0.3 já dá um relevo bem visível');
+    let off = 0;
+    if (kind === 7) {
+      // degradê: da cor da forma (começo) até color2 (fim), ao longo do eixo; por padrão cobre a caixa da forma
+      needFinite(s, 'texture("gradient")');
+      let lo = s.bbox.min[axis], hi = s.bbox.max[axis];
+      if (a.range !== null) {
+        const r = vec2(a.range, 'range');
+        [lo, hi] = r;
+      } else if (sz !== null) {
+        hi = lo + sz;
+      }
+      if (!(hi > lo)) throw new ScriptError('o degradê precisa de extensão positiva', null, 'use range=(de, até) com até > de');
+      off = lo;
+      sz = hi - lo;
+    }
+    const tex = { kind, c2: a.color2 === null ? null : parseColor(a.color2), size: sz, axis: a.triplanar ? 3 : axis, bump, off, offAxis: axis };
+    return material(s, { tex });
   }],
   displace: [['amount=0.05', 'size=0.3'], (s, a) => {
     const amt = num(a.amount, 'amount'), sz = num(a.size, 'size');

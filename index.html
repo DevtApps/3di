@@ -15,7 +15,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
-  #app { display: grid; grid-template-columns: minmax(320px, 42%) 1fr; grid-template-rows: minmax(0, 1fr); height: 100vh; }
+  #app { display: grid; grid-template-columns: minmax(320px, 42%) 1fr; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
   #left { display: flex; flex-direction: column; border-right: 1px solid var(--border); min-width: 0; }
   header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--panel); }
   header h1 { font-size: 14px; margin: 0 6px 0 0; letter-spacing: .5px; }
@@ -49,38 +49,103 @@
   #views { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(10,11,14,.88); cursor: zoom-out; }
   #views[hidden] { display: none; }
   #views img { max-width: 100%; max-height: 100%; border: 1px solid var(--border); border-radius: 6px; }
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  [hidden] { display: none !important; }
+  #appHeader { flex-wrap: wrap; padding: 10px 16px; gap: 12px; }
+  .brand, .header-group, .connection { display: flex; align-items: center; gap: 6px; }
+  .brand h1 { font-size: 18px; color: var(--text); }
+  .header-group + .header-group { border-left: 1px solid var(--border); padding-left: 12px; }
+  button { min-height: 30px; }
+  button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .primary { background: #28456d; border-color: #3e6498; }
+  .connection { color: var(--muted); font-size: 11px; }
+  #sceneToolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 7px 16px; border-bottom: 1px solid var(--border); }
+  .toolbar-label, .eyebrow { color: var(--muted); font-size: 10px; letter-spacing: 1.2px; margin-right: 6px; }
+  #left { min-height: 0; }
+  #codePanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .workspace-tabs { display: flex; gap: 16px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .workspace-tabs button { border: 0; border-radius: 0; background: transparent; padding: 12px 0; color: var(--muted); border-bottom: 2px solid transparent; }
+  .workspace-tabs [aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  #app.preview-only { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  #app.preview-only #left { display: none; }
+  #integrations { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+  .panel-intro h2 { font-size: 23px; margin: 8px 0; letter-spacing: -.6px; }
+  .panel-intro p, .muted { color: var(--muted); }
+  .integration-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 24px 0 20px; }
+  .integration-tabs [aria-pressed="true"] { background: #28456d; border-color: var(--accent); }
+  .integration-settings { padding: 14px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; }
+  .integration-settings label { display: block; margin-bottom: 8px; }
+  .integration-settings input { width: 100%; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 9px; font: 12px var(--mono); }
+  .integration-settings p { font-size: 11px; margin-bottom: 0; }
+  .guide-card { border-top: 1px solid var(--border); padding: 18px 0; }
+  .guide-card h3 { margin: 0 0 8px; font-size: 14px; }
+  .guide-card p { line-height: 1.65; }
+  .guide-card pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; border: 1px solid var(--border); background: #101217; border-radius: 7px; font: 11px/1.65 var(--mono); }
+  .guide-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  #integrations a { color: var(--accent); text-underline-offset: 3px; }
+  #integrationFeedback { color: var(--accent); min-height: 20px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   @media (max-width: 760px) {
-    #app { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
+    #app { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+    #appHeader { padding: 8px; gap: 8px; }
+    #fileName { max-width: 110px; }
+    .connection #bridgeLabel { display: none; }
+    #integrations { padding: 16px; }
     #left { border-right: 0; border-bottom: 1px solid var(--border); }
   }
 </style>
 </head>
 <body>
+<header id="appHeader">
+  <div class="brand"><img src="assets/icon.svg" alt="" width="28" height="28"><h1>3DI</h1></div>
+  <div class="header-group" aria-label="Arquivo">
+    <button id="btnNew" title="Novo arquivo (Ctrl+Alt+N)">Novo</button>
+    <button id="btnOpen" title="Abrir arquivo .3di (Ctrl+O)">Abrir</button>
+    <button id="btnSave" class="primary" title="Salvar (Ctrl+S)">Salvar</button>
+  </div>
+  <span id="fileName"></span>
+  <div class="header-group"><label class="sr-only" for="examples">Exemplos</label><select id="examples" title="Exemplos"></select></div>
+  <div class="spacer"></div>
+  <div class="connection" title="Estado da ponte com o editor"><span id="mcpState"></span><span id="bridgeLabel">Ponte offline</span></div>
+  <button id="btnIntegrations" aria-controls="integrations">Integrações</button>
+  <button id="btnToggleCode" aria-controls="left" aria-expanded="true">Ocultar código</button>
+</header>
+<div id="sceneToolbar" role="toolbar" aria-label="Cena e exportação">
+  <div class="header-group"><span class="toolbar-label">CENA</span>
+    <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
+    <button id="btnParts">Peças</button><button id="btnViews">Vistas</button><button id="btnFrame">Enquadrar</button>
+  </div>
+  <div class="header-group"><span class="toolbar-label">EXPORTAR</span><button id="btnPng">PNG</button><button id="btnGlb">GLB</button></div>
+</div>
 <div id="app">
   <div id="left">
-    <header>
-      <h1><span>3DI</span></h1>
-      <button id="btnNew" title="Novo arquivo (Ctrl+Alt+N)">Novo</button>
-      <button id="btnOpen" title="Abrir arquivo .3di (Ctrl+O)">Abrir</button>
-      <button id="btnSave" title="Salvar (Ctrl+S) · Salvar como (Ctrl+Shift+S)">Salvar</button>
-      <span id="fileName"></span>
-      <div class="spacer"></div>
-      <select id="examples" title="Exemplos"></select>
-      <span id="mcpState" title="sem servidor MCP"></span>
-    </header>
-    <header>
-      <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
-      <button id="btnParts" title="Mostrar peças nomeadas e medidas">Peças</button>
-      <button id="btnViews" title="Ver frente, lado, topo e perspectiva lado a lado">Vistas</button>
-      <button id="btnFrame" title="Reenquadrar a câmera (duplo clique na vista)">Enquadrar</button>
-      <button id="btnPng" title="Baixar imagem PNG">PNG</button>
-      <button id="btnGlb" title="Exportar a cena como .glb (malhas, cores, esqueleto e animação)">GLB</button>
-    </header>
+    <nav class="workspace-tabs" role="tablist" aria-label="Área de trabalho">
+      <button id="tabCode" role="tab" aria-selected="true" aria-controls="codePanel">Código</button>
+      <button id="tabIntegrations" role="tab" aria-selected="false" aria-controls="integrations" tabindex="-1">Integrações</button>
+    </nav>
+    <div id="codePanel" role="tabpanel" aria-labelledby="tabCode">
     <div id="editorWrap">
       <div id="gutter"></div>
       <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
     </div>
-    <div id="status"></div>
+    <div id="status" role="status"></div>
+    </div>
+    <section id="integrations" role="tabpanel" aria-labelledby="tabIntegrations" hidden>
+      <div class="panel-intro"><span class="eyebrow">TOOLBOX</span><h2>Seu agente, sua cena.</h2><p>Conecte o Codex ou Claude Code que você já usa ao 3DI.</p></div>
+      <nav class="integration-tabs" aria-label="Guias de integração">
+        <button data-guide="codex" aria-pressed="true">Codex</button>
+        <button data-guide="claude" aria-pressed="false">Claude Code</button>
+        <button data-guide="skills" aria-pressed="false">Skills</button>
+        <button data-guide="docs" aria-pressed="false">Documentação</button>
+      </nav>
+      <div class="integration-settings">
+        <span>MCP HTTP local · sem autenticação</span>
+        <p><code id="mcpEndpoint"></code></p>
+        <p class="muted">No VS Code, consulte o endpoint ativo pelo comando 3DI: Integrações MCP e skills.</p>
+      </div>
+      <div id="integrationContent"></div>
+      <p id="integrationFeedback" role="status" aria-live="polite"></p>
+    </section>
   </div>
   <div id="right">
     <canvas id="view"></canvas>

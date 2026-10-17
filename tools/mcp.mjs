@@ -15,6 +15,7 @@ import { languageSummary } from '../src/langinfo.js';
 import { collectBones } from '../src/rig.js';
 import { ScriptError } from '../src/parser.js';
 import { startIdeServer } from './ideserver.mjs';
+import { documentationResources, readDocumentation } from './documentation.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argPort = process.argv.indexOf('--port');
@@ -64,6 +65,12 @@ function text(t, isError = false) {
 }
 
 const TOOLS = [
+  {
+    name: 'get_documentation',
+    description: 'Documentação e boas práticas do 3DI. Funciona sem editor aberto. Tópicos: language, best-practices, examples e skill.',
+    inputSchema: { type: 'object', properties: { topic: { type: 'string', enum: ['language', 'best-practices', 'examples', 'skill'] } }, required: ['topic'] },
+    run: async ({ topic }) => text((await readDocumentation(topic)).text),
+  },
   {
     name: 'describe_language',
     description: 'Referência resumida da linguagem 3DI (primitivas, métodos, layout, rig, animação, cores, texturas). Leia antes de escrever cenas.',
@@ -136,7 +143,7 @@ const TOOLS = [
   },
   {
     name: 'export_glb',
-    description: 'Exporta para .glb (glTF binário com malhas, cores, esqueleto e animação). Usa o code dado ou o do editor. path relativo ao projeto (padrão out/cena.glb); res = detalhe (células na maior dimensão).',
+    description: 'Exporta para .glb (glTF binário com malhas, texturas procedurais assadas em PNG embutido, esqueleto e animação). Usa o code dado ou o do editor. path relativo ao projeto (padrão out/cena.glb); res = detalhe (células na maior dimensão).',
     inputSchema: { type: 'object', properties: { code: { type: 'string' }, path: { type: 'string' }, res: { type: 'number', default: 128 } } },
     run: async ({ code, path = 'out/cena.glb', res = 128 }) => {
       const src = code ?? await callEditor('getScript');
@@ -145,7 +152,7 @@ const TOOLS = [
       const out = resolve(ROOT, path);
       const rel = relative(ROOT, out);
       if (isAbsolute(rel) || rel.startsWith('..')) return text('path deve ficar dentro do projeto', true);
-      const { glb, stats } = exportGLB(run.scene, { res });
+      const { glb, stats } = await exportGLB(run.scene, { res });
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, glb);
       return text(`ok: ${rel} (${(stats.bytes / 1024).toFixed(0)} KB) · ${stats.parts} partes · ${stats.triangles} triângulos` +
@@ -161,6 +168,7 @@ const SUPPORTED = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
 
 async function handle(msg) {
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) { send({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'requisição inválida' } }); return; }
   const { id, method, params } = msg;
   const reply = (result) => id !== undefined && send({ jsonrpc: '2.0', id, result });
   const fail = (code, message) => id !== undefined && send({ jsonrpc: '2.0', id, error: { code, message } });
@@ -168,12 +176,17 @@ async function handle(msg) {
     case 'initialize':
       return reply({
         protocolVersion: SUPPORTED.includes(params?.protocolVersion) ? params.protocolVersion : SUPPORTED[0],
-        capabilities: { tools: {} },
-        serverInfo: { name: '3di', version: '0.2.0' },
-        instructions: 'Ferramentas para criar e conferir cenas 3D na linguagem 3DI. Comece com describe_language. ' +
+        capabilities: { tools: {}, resources: {} },
+        serverInfo: { name: '3di', version: '0.3.0' },
+        instructions: 'Ferramentas para criar e conferir cenas 3D na linguagem 3DI. Comece consultando os recursos 3di://docs/language e 3di://docs/best-practices ou get_documentation. describe_language fornece um resumo. ' +
           `Valide com check_script; para ver o resultado, a IDE precisa estar aberta (app 3DI ou ${URL_IDE}): set_script, screenshot, frame.`,
       });
     case 'ping': return reply({});
+    case 'resources/list': return reply({ resources: documentationResources });
+    case 'resources/read': {
+      try { return reply({ contents: [await readDocumentation(params?.uri)] }); }
+      catch (e) { return fail(-32602, e.message); }
+    }
     case 'tools/list': return reply({ tools: TOOLS.map(({ run, ...t }) => t) });
     case 'tools/call': {
       const tool = TOOLS.find((t) => t.name === params?.name);

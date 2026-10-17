@@ -1,0 +1,14 @@
+# Pessoas: cada linha é um ESTILO de desenho (lowpoly, stylized, realistic), cada coluna um BIOTIPO
+# (slim, average, stocky, child, elder). Pele, cabelo e roupa saem do seed; veja pessoas-poses.3di
+# para poses e roupas. height, skin, hair, outfit e pose ajustam cada pessoa.
+estilos = ["lowpoly", "stylized", "realistic"]
+tipos = ["slim", "average", "stocky", "child", "elder"]
+
+gente = []
+for j, estilo in enumerate(estilos):
+    for i, tipo in enumerate(tipos):
+        gente.append(person(style=estilo, build=tipo, seed=i * 7 + j + 1).at((i - 2) * 0.95, 0, (1 - j) * 1.7))
+
+show(plane().color("#8f9a86"), gente)
+sun(0.5, 1, 0.7)
+camera(pos=(0, 3.2, 6.8), look=(0, 0.8, 0), fov=44)

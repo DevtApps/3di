@@ -1,16 +1,14 @@
 // Editor + visualizador: compila o script a cada edição e renderiza.
-import { runScript } from './interp.js';
-import { compileScene } from './compiler.js';
 import { ScriptError } from './parser.js';
 import { Renderer } from './renderer.js';
 import { fmtNum } from './runtime.js';
-import { exportGLB } from './export.js';
-import { withTime } from './expr.js';
+import { sceneTask } from './ide/tasks.js';
 import { createEditor } from './ide/editor.js';
 import { createFiles } from './ide/files.js';
 import { connectBridge } from './ide/bridge.js';
+import { setupWorkspace } from './ide/workspace.js';
 
-const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo'];
+const EXAMPLES = ['boneco', 'animacao', 'materiais', 'vila', 'pinguim', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos'];
 const STORAGE_KEY = '3di.code';
 const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
 chao = plane().color("lightgray")
@@ -21,6 +19,7 @@ show(chao, objeto)
 
 const $ = (id) => document.getElementById(id);
 const status = $('status'), canvas = $('view'), partsEl = $('parts');
+setupWorkspace();
 
 let renderer;
 try {
@@ -184,23 +183,18 @@ function viewCameras(b) {
 
 // Caixa usada para enquadrar as vistas. Em cenas animadas, roda o script de novo com o
 // layout no instante t (a bbox normal é a de t = 0). Com chão, ignora o que fica abaixo dele.
-function viewBBox(time) {
+async function viewBBox(time) {
   let b = sceneInfo.bbox;
   if (anim.on && time) {
-    try {
-      b = withTime(time, () => {
-        const res = runScript(sceneInfo.src);
-        return res.ok ? compileScene(res.scene).bbox : b;
-      });
-    } catch {}
+    try { b = (await sceneTask('compile', sceneInfo.src, { time }).promise).out.bbox; } catch {}
   }
   if (sceneInfo.hasPlane && b.max[1] > 0.05) b = { min: [b.min[0], Math.max(0, b.min[1]), b.min[2]], max: b.max };
   return b;
 }
 
 // Desenha as 4 vistas numa grade 2x2 (quadros de size px) com rótulos; devolve um canvas 2D.
-function renderViews({ size = 512, time = anim.time, bbox = null } = {}) {
-  const b = bbox ?? viewBBox(time);
+async function renderViews({ size = 512, time = anim.time, bbox = null } = {}) {
+  const b = bbox ?? await viewBBox(time);
   const out = document.createElement('canvas');
   out.width = out.height = size * 2;
   const g = out.getContext('2d');
@@ -291,7 +285,7 @@ function markLine() {
   editor.setError(null);
 }
 
-let compileId = 0;
+let compileId = 0, compileTask = null;
 
 // Executa o script e compila a cena. O shader compila em segundo plano; a cena anterior
 // fica na tela até o novo ficar pronto. Devolve uma promise com o texto final do status.
@@ -300,20 +294,17 @@ async function compile() {
   const src = editor.getValue();
   try { localStorage.setItem(STORAGE_KEY, src); } catch {}
   const t0 = performance.now();
-  const res = runScript(src);
-  const logs = res.logs.map((l) => `› ${l}`).join('\n');
-  if (!res.ok) {
-    setError(res.error);
-    if (logs) status.textContent += `\n${logs}`;
+  compileTask?.cancel();
+  compileTask = sceneTask('compile', src);
+  let result;
+  try { result = await compileTask.promise; }
+  catch (e) {
+    if (id === compileId && e.name !== 'AbortError') setError(e);
     return status.textContent;
   }
-  let out;
-  try {
-    out = compileScene(res.scene);
-  } catch (e) {
-    setError(e);
-    return status.textContent;
-  }
+  if (id !== compileId) return status.textContent;
+  const { out, logs: scriptLogs, scene } = result;
+  const logs = scriptLogs.map((l) => `› ${l}`).join('\n');
   const tScript = performance.now() - t0;
   const summary = `${out.leaves} primitivas${out.instances ? ` (${out.instances} em BVH)` : ''} · script ${tScript.toFixed(0)} ms`;
   const pending = setTimeout(() => {
@@ -335,9 +326,9 @@ async function compile() {
   // substituída por uma edição mais nova, ou um erro de script apareceu enquanto compilava
   if (tShader === null || id !== compileId) return status.textContent;
 
-  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene: res.scene, src, parts: out.parts, animated: out.animated, leaves: out.leaves };
-  const camKey = JSON.stringify(res.scene.camera);
-  if (res.scene.camera && camKey !== lastCameraKey) applyScriptCamera(res.scene.camera);
+  sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene, src, parts: out.parts, animated: out.animated, leaves: out.leaves };
+  const camKey = JSON.stringify(scene.camera);
+  if (scene.camera && camKey !== lastCameraKey) applyScriptCamera(scene.camera);
   else if (lastCameraKey === null) frame();
   lastCameraKey = camKey;
 
@@ -390,6 +381,7 @@ const editor = await createEditor({
 const files = createFiles({
   getText: () => editor.getValue(),
   setText: (t) => { editor.setValue(t); lastCameraKey = null; },
+  onOpen: () => compile(),
   template: TEMPLATE,
   onState: ({ name, dirty, where }) => {
     $('fileName').textContent = `${dirty ? '• ' : ''}${name}`;
@@ -416,10 +408,10 @@ $('btnPlay').onclick = () => {
   anim.last = 0;
   if (!anim.playing) requestRender();
 };
-$('btnViews').onclick = () => {
+$('btnViews').onclick = async () => {
   const box = $('views');
   const img = box.querySelector('img');
-  img.src = renderViews({ size: 640 }).toDataURL('image/png');
+  img.src = (await renderViews({ size: 640 })).toDataURL('image/png');
   box.hidden = false;
 };
 $('views').onclick = () => { $('views').hidden = true; };
@@ -447,14 +439,13 @@ partsEl.addEventListener('click', (e) => {
 });
 
 $('btnGlb').onclick = () => {
-  const res = runScript(editor.getValue());
-  if (!res.ok) { setError(res.error); return; }
+  const code = editor.getValue();
   status.className = 'ok';
   status.textContent = '⧗ gerando malhas para o .glb…';
   // deixa o status aparecer antes do trabalho pesado
   setTimeout(async () => {
     try {
-      const { glb, stats } = exportGLB(res.scene, { res: 128 });
+      const { glb, stats } = await sceneTask('export', code, { res: 128 }).promise;
       const name = await files.saveBinary(new Blob([glb], { type: 'model/gltf-binary' }), `${baseName()}.glb`, 'Modelo glTF binário', '.glb', 'model/gltf-binary');
       if (!name) { status.textContent = 'exportação cancelada'; return; }
       status.textContent = `✓ ${name}: ${(stats.bytes / 1024).toFixed(0)} KB · ${stats.parts} partes · ${stats.triangles} triângulos` +
@@ -491,7 +482,7 @@ window.tdi = {
   at(t) { anim.playing = false; anim.time = t; draw(1); },
   status: () => status.textContent,
   // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
-  views({ size = 512, t } = {}) { return renderViews({ size, time: t ?? anim.time }).toDataURL('image/png'); },
+  async views({ size = 512, t } = {}) { return (await renderViews({ size, time: t ?? anim.time })).toDataURL('image/png'); },
   // tempo médio de um quadro em resolução cheia (ms)
   bench(n = 5) {
     const gl = renderer.gl, px = new Uint8Array(4);
@@ -517,6 +508,9 @@ connectBridge({
     await files.save();
     return `salvo: ${st.path ?? st.name}`;
   },
+  fileState: () => ({ path: files.state().path, dirty: files.state().dirty }),
+  openScene: ({ path, name, text }) => { files.loadFile({ path, name, text }); compile(); return { opened: path }; },
+  detachScene: () => { files.detach(); return { detached: true }; },
   parts: () => {
     const r = (a) => `(${a.map((x) => +x.toFixed(3)).join(', ')})`;
     const ps = sceneInfo.parts ?? [];
@@ -544,10 +538,10 @@ connectBridge({
     draw(1);
     return `t = ${anim.time.toFixed(2)} s, ${anim.playing ? 'tocando' : 'pausada'}${anim.on ? '' : ' (a cena não usa time)'}`;
   },
-  screenshot: ({ view = 'current', target, time }) => {
+  screenshot: async ({ view = 'current', target, time }) => {
     const t = time ?? anim.time;
     if (view === 'grid') {
-      const png = renderViews({ size: 512, time: t, bbox: target ? partBox(target) : null }).toDataURL('image/png').split(',')[1];
+      const png = (await renderViews({ size: 512, time: t, bbox: target ? partBox(target) : null })).toDataURL('image/png').split(',')[1];
       return { png, info: `4 vistas${target ? ` de '${target}'` : ''}${anim.on ? `, t = ${t.toFixed(2)} s` : ''}` };
     }
     const saved = { ...cam };
@@ -562,7 +556,8 @@ connectBridge({
   },
 }, (on) => {
   $('mcpState').classList.toggle('on', on);
-  $('mcpState').title = on ? 'conectado ao servidor MCP: agentes de IA podem ver e controlar esta cena' : 'sem servidor MCP (rode node tools/mcp.mjs ou o app 3DI)';
+  $('bridgeLabel').textContent = on ? 'Ponte ativa' : 'Ponte offline';
+  $('mcpState').title = on ? 'ponte do editor conectada; confira o estado do agente externo no próprio cliente' : 'sem servidor MCP (rode node tools/mcp.mjs ou o app 3DI)';
 });
 
 // ---------- início: arquivo da linha de comando, rascunho salvo ou exemplo ----------

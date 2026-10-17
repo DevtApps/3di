@@ -1,0 +1,12 @@
+# Poses (stand, walk, sit, arms_up) nas colunas e roupas (casual, suit, sport, dress, uniform) nas linhas.
+poses = ["stand", "walk", "sit", "arms_up"]
+roupas = ["casual", "suit", "sport", "dress", "uniform"]
+
+gente = []
+for j, roupa in enumerate(roupas):
+    for i, pose in enumerate(poses):
+        gente.append(person(style="stylized", outfit=roupa, pose=pose, seed=j * 4 + i + 3).at((i - 1.5) * 1.0, 0, (2 - j) * 1.5))
+
+show(plane().color("#8f9a86"), gente)
+sun(0.5, 1, 0.7)
+camera(pos=(0, 4.6, 8.2), look=(0, 0.7, 0), fov=44)

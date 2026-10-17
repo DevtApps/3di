@@ -5,7 +5,7 @@
 import { ScriptError } from './parser.js';
 import { isExpr, glslOf } from './expr.js';
 import { resolveRig } from './rig.js';
-import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints } from './shapes.js';
+import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
 export const MAX_LEAVES = 2000;        // primitivas compiladas como código
 export const MAX_INSTANCES = 16000;    // primitivas guardadas como dados (BVH)
@@ -13,7 +13,7 @@ export const INSTANCE_THRESHOLD = 40;  // abaixo disso, tudo vira código (mais 
 
 export const GLSL_LIB = /* glsl */ `
 // d: distância, c: cor, m: (rough, metal, glow), c2: 2ª cor da textura,
-// tx: (tipo, tamanho, eixo, 0) da textura, tp: posição no espaço da textura
+// tx: (tipo, tamanho, eixo (3 = triplanar), relevo) da textura, tp: posição no espaço da textura
 struct M { float d; vec3 c; vec3 m; vec3 c2; vec4 tx; vec3 tp; };
 float hash31(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vnoise(vec3 x) {
@@ -36,41 +36,84 @@ mat3 rotEuler(vec3 deg) {
   return Rz * Ry * Rx;
 }
 vec3 axisY(vec3 p, float axis) { return axis < 0.5 ? p.yxz : (axis < 1.5 ? p : p.xzy); }
-vec3 texColor(vec3 p, vec3 c1, vec3 c2, vec4 tx) {
-  int k = int(tx.x + 0.5);
-  float s = tx.y;
-  vec3 q = axisY(p, tx.z);
-  if (k == 1) return mix(c1, c2, smoothstep(0.3, 0.75, fbm(p / s)));
+// Padrões planares (listras, xadrez, tijolos) em coordenadas 2D g: x = fator de mistura (ou
+// argamassa), y = variação por tijolo. Servem tanto à projeção normal quanto à triplanar.
+vec2 planar(int k, vec2 g, float s) {
+  if (k == 4) return vec2(step(0.5, fract(g.y / s)), 0.0);
+  if (k == 5) return vec2(mod(floor(g.x / s + 0.5) + floor(g.y / s + 0.5), 2.0), 0.0);
+  // tijolos: comprimento s, altura 0.4 s, fiadas desencontradas
+  float bh = s * 0.4;
+  float row = floor(g.y / bh + 0.02);
+  float u = g.x / s + 0.5 * mod(row, 2.0);
+  vec2 c = vec2(fract(u) * s, fract(g.y / bh + 0.02) * bh);
+  float mortar = min(s, bh) * 0.08;
+  return vec2(1.0 - step(mortar, c.x) * step(mortar, c.y), hash31(vec3(floor(u), row, 3.0)));
+}
+// fator de mistura entre as duas cores (x) e variação por tijolo (y) da textura k no ponto p
+vec2 texField(vec3 p, int k, float s, float axis, vec3 n) {
+  vec3 q = axisY(p, axis);
+  if (k == 1) return vec2(smoothstep(0.3, 0.75, fbm(p / s)), 0.0);
   if (k == 2) {
     // madeira: anéis em volta do eixo, deformados por ruído, mais veios finos
     float r = length(q.xz + (vec2(fbm(q * vec3(1.0, 0.08, 1.0) / s), fbm(q * vec3(1.0, 0.08, 1.0) / s + 7.0)) - 0.5) * s * 3.0) / s;
     float ring = pow(fract(r), 4.0);
     float grain = fbm(q * vec3(25.0, 1.0, 25.0) / s);
-    return mix(c1, c2, clamp(ring * 0.75 + (grain - 0.5) * 0.5 + 0.1, 0.0, 1.0));
+    return vec2(clamp(ring * 0.75 + (grain - 0.5) * 0.5 + 0.1, 0.0, 1.0), 0.0);
   }
   if (k == 3) {
     // mármore: veios finos ao longo de uma senoide turbulenta
-    float n = fbm(p / s);
-    float v = abs(sin((p.x + p.y * 0.6 + p.z * 0.3) / s * 1.4 + n * 7.0));
+    float nz = fbm(p / s);
+    float v = abs(sin((p.x + p.y * 0.6 + p.z * 0.3) / s * 1.4 + nz * 7.0));
     float vein = 1.0 - smoothstep(0.0, 0.14, v);
     float soft = smoothstep(0.4, 0.9, fbm(p / s * 2.3 + 3.0));
-    return mix(c1, c2, clamp(vein * 0.9 + soft * 0.2, 0.0, 1.0));
+    return vec2(clamp(vein * 0.9 + soft * 0.2, 0.0, 1.0), 0.0);
   }
-  if (k == 4) return mix(c1, c2, step(0.5, fract(q.y / s)));
-  if (k == 5) { vec3 c = floor(p / s + 0.5); return mix(c1, c2, mod(c.x + c.y + c.z, 2.0)); }
+  if (k == 4 || k == 5 || k == 6) {
+    if (axis > 2.5) {
+      // triplanar: projeta nos 3 planos e mistura pelo peso da normal (faces x, y e z)
+      vec3 w = pow(abs(n), vec3(6.0));
+      w /= (w.x + w.y + w.z + 1e-6);
+      vec2 f = vec2(0.0);
+      if (w.x > 0.02) f += planar(k, p.zy, s) * w.x;
+      if (w.y > 0.02) f += planar(k, p.xz, s) * w.y;
+      if (w.z > 0.02) f += planar(k, p.xy, s) * w.z;
+      return f;
+    }
+    if (k == 4) return planar(4, vec2(0.0, q.y), s);
+    if (k == 5) return vec2(mod(floor(p.x / s + 0.5) + floor(p.y / s + 0.5) + floor(p.z / s + 0.5), 2.0), 0.0);
+    return planar(6, vec2(p.x + p.z, p.y), s);
+  }
+  if (k == 7) return vec2(clamp(q.y / s, 0.0, 1.0), 0.0);           // degradê ao longo do eixo
+  if (k == 8) return vec2(fbm(p / s), 0.0);                          // manchas suaves
+  if (k == 9) return vec2(fbm(p / s), 0.0);                          // relevo puro (c2 = c1)
+  return vec2(0.0);
+}
+vec3 texColor(vec3 p, vec3 c1, vec3 c2, vec4 tx, vec3 n) {
+  int k = int(tx.x + 0.5);
+  vec2 f = texField(p, k, tx.y, tx.z, n);
   if (k == 6) {
-    // tijolos: comprimento s, altura 0.4 s, fiadas desencontradas, argamassa = c2
-    float bh = s * 0.4;
-    float row = floor(p.y / bh + 0.02);
-    float u = (p.x + p.z) / s + 0.5 * mod(row, 2.0);
-    vec2 g = vec2(fract(u) * s, fract(p.y / bh + 0.02) * bh);
-    float mortar = min(s, bh) * 0.08;
-    float m = 1.0 - step(mortar, g.x) * step(mortar, g.y);
-    float var = hash31(vec3(floor(u), row, 3.0));
-    vec3 brick = c1 * (0.75 + 0.4 * var) * (0.85 + 0.3 * vnoise(p * 40.0 / s));
-    return mix(brick, c2, m);
+    vec3 brick = c1 * (0.75 + 0.4 * f.y) * (0.85 + 0.3 * vnoise(p * 40.0 / tx.y));
+    return mix(brick, c2, f.x);
   }
-  return c1;
+  return mix(c1, c2, f.x);
+}
+// altura da textura (0..1) para o relevo (bump): tijolos e veios ficam rebaixados
+float texHeight(vec3 p, vec4 tx, vec3 n) {
+  int k = int(tx.x + 0.5);
+  if (k == 0 || tx.w <= 0.0 || k == 7) return 0.0;
+  vec2 f = texField(p, k, tx.y, tx.z, n);
+  if (k == 6) return 1.0 - f.x + 0.12 * f.y;
+  if (k == 3) return 1.0 - f.x;
+  return f.x;
+}
+// Relevo em espaço de tela (Mikkelsen): usa as derivadas da altura e da posição, então não
+// depende da orientação do sistema de coordenadas da textura.
+vec3 bumpNormal(vec3 n, float amp, float dhx, float dhy, vec3 dpx, vec3 dpy, float px) {
+  vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
+  float det = dot(dpx, r1);
+  if (abs(det) < 1e-14 || length(dpx) > 12.0 * px || length(dpy) > 12.0 * px) return n;
+  vec3 g = sign(det) * (dhx * r1 + dhy * r2);
+  return normalize(abs(det) * n - amp * g);
 }
 float sdBox(vec3 p, vec3 b) { vec3 q = abs(p) - b; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0); }
 float sdCyl(vec3 p, float r, float h) { vec2 d = abs(vec2(length(p.xz), p.y)) - vec2(r, h); return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)); }
@@ -136,13 +179,14 @@ const M_FAR = 'M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec
 const DEFAULT_MAT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null };
 
 // tamanho padrão de cada textura (m) e segunda cor padrão
-const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25 };
+const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25, 7: 1, 8: 0.3, 9: 0.1 };
 function texParams(tex, color) {
   if (!tex) return { c2: [0, 0, 0], tx: [0, 1, 1, 0] };
   const mortar = [0.69, 0.65, 0.58];
   const k = tex.kind;
-  const c2 = tex.c2 ?? (k === 6 ? mortar : color.map((c) => c * (k === 3 ? 0.25 : k === 5 || k === 4 ? 0.35 : 0.5)));
-  return { c2, tx: [k, tex.size ?? TEX_SIZE[k], tex.axis, 0] };
+  // relevo puro não muda a cor (c2 = c1); o degradê e as manchas clareiam por padrão
+  const c2 = tex.c2 ?? (k === 9 ? color : k === 6 ? mortar : k === 8 ? color.map((c) => c * 0.55) : k === 7 ? color.map((c) => Math.min(1, c * 1.6 + 0.04)) : color.map((c) => c * (k === 3 ? 0.25 : k === 5 || k === 4 ? 0.35 : 0.5)));
+  return { c2, tx: [k, tex.size ?? TEX_SIZE[k], tex.axis, tex.bump ?? 0] };
 }
 const v4 = (v) => `vec4(${v.map(f).join(', ')})`;
 
@@ -259,7 +303,10 @@ class Gen {
         // a cor mais interna vence: .color() externo só pinta o que ainda não tem cor
         for (const k of ['color', 'rough', 'metal', 'glow', 'tex']) if (P[k] !== null && P[k] !== undefined) merged[k] = P[k];
         // a textura usa o sistema de coordenadas do nó onde foi aplicada
-        if (P.tex) merged.texP = p;
+        if (P.tex) {
+          const off = texOffset(P.tex);
+          merged.texP = off ? `(${p} - ${v3(off)})` : p;
+        }
         return this.emit(c0, p, merged);
       }
       case 'label': return this.emit(c0, p, mat);
@@ -295,14 +342,15 @@ class Gen {
       if (bounded) {
         const half = size(b).map((x) => x / 2 + 0.01);
         this.line(`if (sdBox(${p} - ${v3(center(b))}, ${v3(half)}) < ${acc}.d) {`);
-        this.indent++;
+      } else {
+        // bloco próprio: os temporários de cada filho morrem ao fim dele (compila mais rápido)
+        this.line('{');
       }
+      this.indent++;
       const d = this.emit(c, p, mat);
       this.line(`${acc} = mU(${acc}, ${d});`);
-      if (bounded) {
-        this.indent--;
-        this.line('}');
-      }
+      this.indent--;
+      this.line('}');
     }
     return acc;
   }
@@ -361,7 +409,12 @@ export function splitScene(shapes) {
       }
       case 'material': {
         const merged = mergeMat(mat, s.props);
-        if (s.props.tex) merged.texFrame = { m, t };
+        if (s.props.tex) {
+          // o início do degradê desloca a origem da textura (no espaço do nó onde ela foi aplicada)
+          const off = texOffset(s.props.tex);
+          const shift = off ? mulMV(m, off) : null;
+          merged.texFrame = { m, t: shift ? t.map((v, i) => v + shift[i]) : t };
+        }
         visit(c0, m, t, ds, merged);
         return;
       }
@@ -398,7 +451,7 @@ function packInstances(list) {
     const full = { ...DEFAULT_MAT, ...matProps };
     const tp = texParams(full.tex, full.color);
     data.set([PRIM_IDS[it.s.kind], pr[0], pr[1], pr[2]], o);
-    data.set([pr[3], it.ds, 0, 0], o + 4);
+    data.set([pr[3], it.ds, tp.tx[3], 0], o + 4);
     for (let r = 0; r < 3; r++) data.set([mi[r * 3], mi[r * 3 + 1], mi[r * 3 + 2], -mt[r]], o + 8 + r * 4);
     data.set([...full.color, full.rough], o + 20);
     data.set([full.metal, full.glow, tp.tx[0], tp.tx[1]], o + 24);
@@ -548,12 +601,13 @@ M mapAll(vec3 p, bool wantMat) {
   int hit;
   r.d = bvhD(p, r.d, hit);
   if (hit >= 0 && wantMat) {
+    vec4 bb = texelFetch(uInst, ivec2(1, hit), 0);
     vec4 c = texelFetch(uInst, ivec2(5, hit), 0);
     vec4 e = texelFetch(uInst, ivec2(6, hit), 0);
     vec4 c2 = texelFetch(uInst, ivec2(7, hit), 0);
     vec4 t0 = texelFetch(uInst, ivec2(8, hit), 0), t1 = texelFetch(uInst, ivec2(9, hit), 0), t2 = texelFetch(uInst, ivec2(10, hit), 0);
     vec3 tp = vec3(dot(t0.xyz, p) + t0.w, dot(t1.xyz, p) + t1.w, dot(t2.xyz, p) + t2.w);
-    r = M(r.d, c.rgb, vec3(c.a, e.x, e.y), c2.rgb, vec4(e.z, e.w, c2.a, 0.0), tp);
+    r = M(r.d, c.rgb, vec3(c.a, e.x, e.y), c2.rgb, vec4(e.z, e.w, c2.a, bb.z), tp);
   }
   return r;
 }

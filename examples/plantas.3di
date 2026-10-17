@@ -1,0 +1,15 @@
+# Plantas: cada coluna é um TIPO (kind), cada linha um ESTILO de desenho (style).
+#   flower flor · daisy margarida · lavender lavanda · fern samambaia · bush arbusto
+#   cactus cacto · mushroom cogumelo
+# density faz touceiras (mais flores, hastes, frondes), color muda a cor de destaque, height o tamanho.
+estilos = ["lowpoly", "stylized", "realistic"]
+tipos = ["flower", "daisy", "lavender", "fern", "bush", "cactus", "mushroom"]
+
+plantas = []
+for j, estilo in enumerate(estilos):
+    for i, tipo in enumerate(tipos):
+        plantas.append(plant(kind=tipo, style=estilo, density=2, seed=i * 5 + j).at((i - 3) * 1.25, 0, (1 - j) * 1.5))
+
+show(plane().color("#5f7f3e"), plantas)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 4.4, 8.4), look=(0, 0.3, 0), fov=46)

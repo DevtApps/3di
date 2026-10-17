@@ -3,3 +3,9 @@ node_modules/
 *.png
 out/
 *.glb
+
+dist/
+*.vsix
+
+dist-desktop/
+release/

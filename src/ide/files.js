@@ -32,10 +32,11 @@ async function serverWrite(path, body) {
 /**
  * getText/setText: conteúdo do editor; onState({ name, dirty, where }) atualiza título e status.
  */
-export function createFiles({ getText, setText, onState = () => {}, template = '' }) {
+export function createFiles({ getText, setText, onState = () => {}, onOpen = () => {}, template = '', desktop = window.desktop3di }) {
   const st = { name: 'sem título.3di', handle: null, path: null, dirty: false, saved: '' };
   const emit = () => {
     document.title = `${st.dirty ? '• ' : ''}${st.name} — 3DI`;
+    desktop?.state(st.dirty);
     onState({ name: st.name, dirty: st.dirty, where: st.path ?? (st.handle ? 'disco' : null) });
   };
   const confirmDiscard = () => !st.dirty || confirm(`Descartar as alterações em ${st.name}?`);
@@ -47,7 +48,11 @@ export function createFiles({ getText, setText, onState = () => {}, template = '
   };
 
   const write = async (text) => {
-    if (st.handle) {
+    if (desktop) {
+      const saved = await desktop.save(text, st.name, false);
+      if (!saved) return false;
+      Object.assign(st, { path: saved.path, handle: null, name: saved.name, saved: text, dirty: false });
+    } else if (st.handle) {
       const w = await st.handle.createWritable();
       await w.write(text);
       await w.close();
@@ -69,6 +74,11 @@ export function createFiles({ getText, setText, onState = () => {}, template = '
       if (d !== st.dirty) { st.dirty = d; emit(); }
     },
     async open() {
+      if (desktop) {
+        const file = await desktop.open();
+        if (file) setFile(file);
+        return;
+      }
       if (!confirmDiscard()) return;
       if (canPick) {
         let handle;
@@ -90,6 +100,13 @@ export function createFiles({ getText, setText, onState = () => {}, template = '
     },
     async saveAs() {
       const text = getText();
+      if (desktop) {
+        const saved = await desktop.save(text, st.name, true);
+        if (!saved) return null;
+        Object.assign(st, { path: saved.path, handle: null, name: saved.name, saved: text, dirty: false });
+        emit();
+        return st.name;
+      }
       if (canPick) {
         let handle;
         try { handle = await window.showSaveFilePicker({ suggestedName: st.name, types: TYPES_3DI }); } catch { return null; }
@@ -103,14 +120,21 @@ export function createFiles({ getText, setText, onState = () => {}, template = '
       emit();
       return st.name;
     },
-    newFile() {
+    async newFile() {
       if (!confirmDiscard()) return;
+      if (desktop) await desktop.reset();
       setFile({ name: 'sem título.3di', text: template });
+    },
+    loadFile(file) { setFile(file); },
+    detach() {
+      Object.assign(st, { path: null, handle: null, saved: '', dirty: getText() !== '' });
+      emit();
     },
     // exemplo ou texto sem arquivo ligado (salvar pede um lugar)
     loadUntitled(name, text) { setFile({ name, text }); },
     // PNG / GLB: seletor de "salvar como" quando houver, senão download
     async saveBinary(blob, suggestedName, description, ext, mime) {
+      if (desktop) return desktop.export(new Uint8Array(await blob.arrayBuffer()), suggestedName, ext);
       if (canPick) {
         let handle;
         try { handle = await window.showSaveFilePicker({ suggestedName, types: [{ description, accept: { [mime]: [ext] } }] }); } catch { return null; }
@@ -124,6 +148,13 @@ export function createFiles({ getText, setText, onState = () => {}, template = '
     },
     // abre o arquivo pedido na linha de comando do app (#file=/caminho/cena.3di)
     async openFromHash() {
+      if (desktop) {
+        desktop.onOpen((opened) => { setFile(opened); onOpen(opened); });
+        const file = await desktop.initialFile();
+        if (!file) return false;
+        setFile(file);
+        return true;
+      }
       const path = hash.get('file');
       if (!path || !token) return false;
       try {

@@ -1,0 +1,15 @@
+# O mesmo veículo em três estilos de desenho, do low poly ao realista, e rodas girando no estilo realista:
+#   lowpoly   carroceria em caixas, cores chapadas
+#   stylized  caixas bem arredondadas, tinta brilhante
+#   realistic proporções reais, caixas de roda, para-choques, grade, retrovisores e aros com raios
+estilos = ["lowpoly", "stylized", "realistic"]
+tipos = ["car", "suv", "truck"]
+
+frota = []
+for j, tipo in enumerate(tipos):
+    for i, estilo in enumerate(estilos):
+        frota.append(vehicle(kind=tipo, style=estilo, seed=j * 3 + 2, wheels_angle=time * 200).at((i - 1) * 5.2, 0, (1 - j) * 5.6))
+
+show(plane().color("#6d7078"), frota)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 11, 16), look=(0, 0.8, 0), fov=50)

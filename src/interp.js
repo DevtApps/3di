@@ -3,6 +3,9 @@ import { parse, ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, typeName, repr, str, tuple, fmtNum } from './runtime.js';
 import { Shape, shapeBuiltins, getShapeAttr, shapeBinary } from './shapes.js';
 import { isExpr, sym, TIME, EXPR_FUNCS } from './expr.js';
+import { toSrgb, hsvToRgb, rgbToHsv, isColorLike } from './color.js';
+import { makeRng } from './lib/rand.js';
+import { libBuiltins } from './lib/index.js';
 import { rigBuiltins } from './rig.js';
 
 class Scope {
@@ -135,16 +138,6 @@ function formatSpec(v, spec) {
   return str(v);
 }
 
-function makeRng(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export class Interpreter {
   constructor({ maxSteps = 3e6 } = {}) {
@@ -225,6 +218,22 @@ export class Interpreter {
       sum: N('sum', ['xs', 'start=0'], ({ xs, start }) => iterate(xs).reduce((acc, x) => binary('+', acc, x), start)),
       clamp: N('clamp', ['x', 'lo=0', 'hi=1'], ({ x, lo, hi }) => sym('clamp', x, lo, hi)),
       lerp: N('lerp', ['a', 'b', 't'], ({ a, b, t }) => sym('lerp', a, b, t)),
+      // mistura de cores (nomes, "#rrggbb" ou tuplas) ou de números; devolve uma cor (r, g, b) em 0..1
+      mix: N('mix', ['a', 'b', 't=0.5'], ({ a, b, t }) => {
+        if (isColorLike(a) && isColorLike(b) && !(typeof a === 'number')) {
+          const ca = toSrgb(a), cb = toSrgb(b);
+          return tuple(ca.map((x, i) => x + (cb[i] - x) * t));
+        }
+        return sym('lerp', a, b, t);
+      }),
+      // cor a partir de matiz (0 a 360), saturação e brilho (0 a 1)
+      hsv: N('hsv', ['h', 's=1', 'v=1'], ({ h, s, v }) => tuple(hsvToRgb(h, s, v))),
+      // cor com variação aleatória (reprodutível com seed): hue em graus, sat e val em 0..1
+      vary: N('vary', ['color', 'hue=0', 'sat=0', 'val=0'], ({ color, hue, sat, val }) => {
+        const [h, s, v] = rgbToHsv(toSrgb(color));
+        const j = (r) => (this.rng() * 2 - 1) * r;
+        return tuple(hsvToRgb(h + j(hue), Math.min(1, Math.max(0, s + j(sat))), Math.min(1, Math.max(0, v + j(val)))));
+      }),
       int: N('int', ['x'], ({ x }) => (typeof x === 'string' ? parseInt(x, 10) : Math.trunc(x))),
       float: N('float', ['x'], ({ x }) => Number(x)),
       str: N('str', ['x'], ({ x }) => str(x)),
@@ -254,7 +263,7 @@ export class Interpreter {
       randint: N('randint', ['a', 'b'], ({ a, b }) => a + Math.floor((b - a + 1) * this.rng())),
       choice: N('choice', ['xs'], ({ xs }) => { const a = iterate(xs); return a[Math.floor(this.rng() * a.length)]; }),
     };
-    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene) };
+    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
   }
 
   toNum(x, what) {

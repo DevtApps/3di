@@ -1,0 +1,16 @@
+# O mesmo tipo de grama em três estilos de desenho, do low poly ao realista:
+#   lowpoly   poucas lâminas grandes e facetadas, cores chapadas
+#   stylized  lâminas limpas com degradê da base para a ponta
+#   realistic lâminas finas e arqueadas, mais camadas, variação natural de cor
+estilos = ["lowpoly", "stylized", "realistic"]
+tipos = ["meadow", "dry"]
+
+canteiros = []
+for j, tipo in enumerate(tipos):
+    for i, estilo in enumerate(estilos):
+        g = grass(1.0, 1.0, kind=tipo, style=estilo, seed=j * 3 + i, soil="#4a3a28")
+        canteiros.append(g.at((i - 1) * 1.12, 0, (j - 0.5) * 1.12))
+
+show(plane().color("#2d241a"), canteiros)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 2.3, 3.1), look=(0, 0.1, -0.2), fov=50)

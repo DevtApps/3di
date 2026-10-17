@@ -4,7 +4,7 @@
 //   buildMat(s, t)(x, y, z)  -> { d, c, rough, metal, glow } com a textura já aplicada
 import { center } from './shapes.js';
 import { isExpr, val0 } from './expr.js';
-import { rotMatrix } from './shapes.js';
+import { rotMatrix, texOffset } from './shapes.js';
 import { splitScene, inv3 } from './compiler.js';
 
 const at = (v, t) => (isExpr(v) ? v.eval(t) : v);
@@ -95,51 +95,91 @@ export function fbm(x, y, z) {
 const smoothstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
 const mix3 = (a, b, h) => [mix(a[0], b[0], h), mix(a[1], b[1], h), mix(a[2], b[2], h)];
 
-function texColor(p, c1, c2, tx) {
-  const [k, s, axis] = tx;
+// Mesmas fórmulas do shader: texField devolve [fator de mistura, variação por tijolo]
+function planar(k, gx, gy, s) {
+  if (k === 4) return [fract(gy / s) >= 0.5 ? 1 : 0, 0];
+  if (k === 5) return [(((Math.floor(gx / s + 0.5) + Math.floor(gy / s + 0.5)) % 2) + 2) % 2, 0];
+  const bh = s * 0.4;
+  const row = Math.floor(gy / bh + 0.02);
+  const u = gx / s + 0.5 * (((row % 2) + 2) % 2);
+  const cx = fract(u) * s, cy = fract(gy / bh + 0.02) * bh;
+  const mortar = Math.min(s, bh) * 0.08;
+  return [cx >= mortar && cy >= mortar ? 0 : 1, hash31(Math.floor(u), row, 3)];
+}
+
+function texField(p, k, s, axis, n) {
   // eixo principal vira y (como axisY no shader)
   const q = axis < 0.5 ? [p[1], p[0], p[2]] : axis < 1.5 ? p : [p[0], p[2], p[1]];
-  if (k === 1) return mix3(c1, c2, smoothstep(0.3, 0.75, fbm(p[0] / s, p[1] / s, p[2] / s)));
+  if (k === 1) return [smoothstep(0.3, 0.75, fbm(p[0] / s, p[1] / s, p[2] / s)), 0];
   if (k === 2) {
     const nx = fbm(q[0] / s, (q[1] * 0.08) / s, q[2] / s) - 0.5;
     const nz = fbm(q[0] / s + 7, (q[1] * 0.08) / s + 7, q[2] / s + 7) - 0.5;
     const r = Math.hypot(q[0] + nx * s * 3, q[2] + nz * s * 3) / s;
     const ring = fract(r) ** 4;
     const grain = fbm((q[0] * 25) / s, q[1] / s, (q[2] * 25) / s);
-    return mix3(c1, c2, clamp(ring * 0.75 + (grain - 0.5) * 0.5 + 0.1, 0, 1));
+    return [clamp(ring * 0.75 + (grain - 0.5) * 0.5 + 0.1, 0, 1), 0];
   }
   if (k === 3) {
-    const n = fbm(p[0] / s, p[1] / s, p[2] / s);
-    const v = Math.abs(Math.sin(((p[0] + p[1] * 0.6 + p[2] * 0.3) / s) * 1.4 + n * 7));
+    const nz = fbm(p[0] / s, p[1] / s, p[2] / s);
+    const v = Math.abs(Math.sin(((p[0] + p[1] * 0.6 + p[2] * 0.3) / s) * 1.4 + nz * 7));
     const vein = 1 - smoothstep(0, 0.14, v);
     const soft = smoothstep(0.4, 0.9, fbm((p[0] / s) * 2.3 + 3, (p[1] / s) * 2.3 + 3, (p[2] / s) * 2.3 + 3));
-    return mix3(c1, c2, clamp(vein * 0.9 + soft * 0.2, 0, 1));
+    return [clamp(vein * 0.9 + soft * 0.2, 0, 1), 0];
   }
-  if (k === 4) return mix3(c1, c2, fract(q[1] / s) >= 0.5 ? 1 : 0);
-  if (k === 5) {
-    const c = p.map((v) => Math.floor(v / s + 0.5));
-    return mix3(c1, c2, ((c[0] + c[1] + c[2]) % 2 + 2) % 2);
+  if (k === 4 || k === 5 || k === 6) {
+    if (axis > 2.5) {
+      // triplanar: sem normal conhecida, cai na projeção do plano y
+      const nn = n ?? [0, 1, 0];
+      const w = nn.map((c) => Math.abs(c) ** 6);
+      const sum = w[0] + w[1] + w[2] + 1e-6;
+      const f = [0, 0];
+      const add = (r, wt) => { f[0] += r[0] * wt / sum; f[1] += r[1] * wt / sum; };
+      if (w[0] / sum > 0.02) add(planar(k, p[2], p[1], s), w[0]);
+      if (w[1] / sum > 0.02) add(planar(k, p[0], p[2], s), w[1]);
+      if (w[2] / sum > 0.02) add(planar(k, p[0], p[1], s), w[2]);
+      return f;
+    }
+    if (k === 4) return planar(4, 0, q[1], s);
+    if (k === 5) {
+      const c = p.map((v) => Math.floor(v / s + 0.5));
+      return [(((c[0] + c[1] + c[2]) % 2) + 2) % 2, 0];
+    }
+    return planar(6, p[0] + p[2], p[1], s);
   }
+  if (k === 7) return [clamp(q[1] / s, 0, 1), 0];
+  if (k === 8 || k === 9) return [fbm(p[0] / s, p[1] / s, p[2] / s), 0];
+  return [0, 0];
+}
+
+function texColor(p, c1, c2, tx, n) {
+  const [k, s, axis] = tx;
+  const f = texField(p, k, s, axis, n);
   if (k === 6) {
-    const bh = s * 0.4;
-    const row = Math.floor(p[1] / bh + 0.02);
-    const u = (p[0] + p[2]) / s + 0.5 * (((row % 2) + 2) % 2);
-    const gx = fract(u) * s, gy = fract(p[1] / bh + 0.02) * bh;
-    const mortar = Math.min(s, bh) * 0.08;
-    const m = gx >= mortar && gy >= mortar ? 0 : 1;
-    const v = hash31(Math.floor(u), row, 3);
-    const f = (0.75 + 0.4 * v) * (0.85 + 0.3 * vnoise((p[0] * 40) / s, (p[1] * 40) / s, (p[2] * 40) / s));
-    return mix3(c1.map((x) => x * f), c2, m);
+    const v = (0.75 + 0.4 * f[1]) * (0.85 + 0.3 * vnoise((p[0] * 40) / s, (p[1] * 40) / s, (p[2] * 40) / s));
+    return mix3(c1.map((x) => x * v), c2, f[0]);
   }
-  return c1;
+  return mix3(c1, c2, f[0]);
+}
+
+// altura da textura (0..1) para o relevo; igual ao shader
+export function texHeight(p, tx, n) {
+  const [k, s, axis, bump] = tx;
+  if (k === 0 || !(bump > 0) || k === 7) return 0;
+  const f = texField(p, k, s, axis, n);
+  if (k === 6) return 1 - f[0] + 0.12 * f[1];
+  if (k === 3) return 1 - f[0];
+  return f[0];
 }
 
 // mesmos valores padrão do compilador
 const DEFAULT = { color: [0.6, 0.6, 0.62], rough: 0.6, metal: 0, glow: 0, tex: null };
-const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25 };
+const TEX_SIZE = { 1: 0.25, 2: 0.06, 3: 0.3, 4: 0.1, 5: 0.25, 6: 0.25, 7: 1, 8: 0.3, 9: 0.1 };
 function texC2(tex, color) {
   if (tex.c2) return tex.c2;
   const k = tex.kind;
+  if (k === 9) return color;
+  if (k === 8) return color.map((c) => c * 0.55);
+  if (k === 7) return color.map((c) => Math.min(1, c * 1.6 + 0.04));
   return k === 6 ? [0.69, 0.65, 0.58] : color.map((c) => c * (k === 3 ? 0.25 : k === 5 || k === 4 ? 0.35 : 0.5));
 }
 
@@ -301,7 +341,7 @@ export function buildMat(s, t = 0, mat = {}) {
     for (const k of Object.keys(DEFAULT)) if (mat[k] !== null && mat[k] !== undefined) full[k] = mat[k];
     const glow = at(full.glow, t);
     const tex = full.tex;
-    const tx = tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis] : null;
+    const tx = tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis, tex.bump ?? 0] : null;
     const c2 = tex ? texC2(tex, full.color) : null;
     return (x, y, z, tp) => ({ d: prim(x, y, z), c: full.color, rough: full.rough, metal: full.metal, glow, c2, tx, tp });
   }
@@ -311,7 +351,11 @@ export function buildMat(s, t = 0, mat = {}) {
     const c = buildMat(s.children[0], t, merged);
     // Match compiler.js: texture coordinates are fixed at the node where the
     // material is applied, then transformed by child transforms as needed.
-    return P.tex ? (x, y, z, tp) => c(x, y, z, tp ?? [x, y, z]) : c;
+    const off = texOffset(P.tex);
+    return P.tex ? (x, y, z, tp) => {
+      const q = tp ?? [x, y, z];
+      return c(x, y, z, off ? [q[0] - off[0], q[1] - off[1], q[2] - off[2]] : q);
+    } : c;
   }
   const kids = s.children.map((c) => buildMat(c, t, mat));
   const pm = pointMap(s, t);
@@ -365,9 +409,9 @@ export function buildMat(s, t = 0, mat = {}) {
 }
 
 // cor final (linear) com a textura aplicada
-export function surfaceColor(r) {
+export function surfaceColor(r, n) {
   if (!r.tx || !r.tp) return r.c;
-  return texColor(r.tp, r.c, r.c2, r.tx);
+  return texColor(r.tp, r.c, r.c2, r.tx, n);
 }
 
 export { val0 };
@@ -418,7 +462,7 @@ function makeInstance(it) {
   };
   const mat = (x, y, z, dd) => ({
     d: dd, c: full.color, rough: full.rough, metal: full.metal, glow: at(full.glow, 0),
-    c2: tex ? texC2(tex, full.color) : null, tx: tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis] : null,
+    c2: tex ? texC2(tex, full.color) : null, tx: tex ? [tex.kind, tex.size ?? TEX_SIZE[tex.kind], tex.axis, tex.bump ?? 0] : null,
     tp: tex ? texPoint(x, y, z) : null,
   });
   return { d, mat, min, max, c: min.map((v, i) => (v + max[i]) / 2), local };

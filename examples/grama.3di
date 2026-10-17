@@ -1,0 +1,106 @@
+# Grama estilizada em vários tipos, cada um num canteiro de 2 x 2 m:
+#   1 gramado curto   2 capim alto ao vento   3 espigas de trigo   4 trevo com florzinhas   5 tufos redondos
+# Uma lâmina é uma curva de 2 segmentos que afina e clareia da base para a ponta.
+# seed() deixa a cena reproduzível: mude o número para outro "sorteio" de grama.
+seed(11)
+
+def mistura(a, b, t):
+    return (lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t))
+
+# Lâmina curva: altura h, espessura w na base, curvatura (m de deslocamento na ponta), direção em graus.
+def lamina(h, w, curva, direcao, base, ponta):
+    a = radians(direcao)
+    pts = []
+    for k in range(3):
+        t = k / 2
+        d = curva * t * t
+        pts.append((cos(a) * d, h * t, sin(a) * d))
+    partes = []
+    for k in range(2):
+        partes.append(segment(pts[k], pts[k + 1], w * (1 - k * 0.55)).color(mistura(base, ponta, (k + 1) / 2)))
+    return group(*partes)
+
+# Tufo: n lâminas saindo do mesmo ponto, abrindo para fora; a curvatura acompanha a direção.
+def tufo(h, n, w, abre, base, ponta, vento=0):
+    folhas = []
+    for i in range(n):
+        giro = i * 360 / n + uniform(-25, 25)
+        altura = h * uniform(0.6, 1.2)
+        folhas.append(lamina(altura, w, altura * uniform(abre * 0.5, abre) + vento, giro, base, ponta))
+    return group(*folhas)
+
+
+# ---------- 1. gramado curto: muitos tufos baixos, verde vivo ----------
+def gramado(cx, cz):
+    campo = []
+    for i in range(8):
+        for j in range(8):
+            x = cx + (i - 3.5) * 0.22 + uniform(-0.07, 0.07)
+            z = cz + (j - 3.5) * 0.22 + uniform(-0.07, 0.07)
+            campo.append(tufo(uniform(0.12, 0.2), 4, 0.02, 0.9, (0.1, 0.38, 0.1), (0.6, 0.9, 0.25)).at(x, 0, z))
+    return campo
+
+# ---------- 2. capim alto: lâminas longas que pendem, tons de verde e dourado ----------
+def capim(cx, cz):
+    campo = []
+    for i in range(6):
+        for j in range(6):
+            x = cx + (i - 2.5) * 0.32 + uniform(-0.1, 0.1)
+            z = cz + (j - 2.5) * 0.32 + uniform(-0.1, 0.1)
+            seca = random()
+            ponta = mistura((0.55, 0.8, 0.3), (0.95, 0.8, 0.35), seca)
+            campo.append(tufo(uniform(0.45, 0.75), 5, 0.02, 0.75, (0.18, 0.4, 0.12), ponta, 0.1).at(x, 0, z))
+    return campo
+
+# ---------- 3. espigas: hastes finas com uma espiga dourada no topo ----------
+def espigas(cx, cz):
+    campo = []
+    for i in range(8):
+        for j in range(8):
+            x = cx + (i - 3.5) * 0.23 + uniform(-0.08, 0.08)
+            z = cz + (j - 3.5) * 0.23 + uniform(-0.08, 0.08)
+            h = uniform(0.5, 0.75)
+            inc = uniform(-0.1, 0.1)
+            direcao = uniform(0, 360)
+            haste = lamina(h, 0.009, inc * 2, direcao, (0.3, 0.5, 0.2), (0.75, 0.7, 0.3))
+            topo = (cos(radians(direcao)) * inc * 2, h, sin(radians(direcao)) * inc * 2)
+            espiga = ellipsoid(0.02, 0.06, 0.02).color((0.9, 0.7, 0.25)).at(topo[0], topo[1] + 0.03, topo[2])
+            campo.append(group(haste, espiga).at(x, 0, z))
+    return campo
+
+# ---------- 4. trevo: gramado baixo salpicado de flores ----------
+def trevo(cx, cz):
+    campo = []
+    cores = [(1, 1, 0.95), (1, 0.85, 0.2), (0.8, 0.5, 0.95), (1, 0.55, 0.7)]
+    for i in range(7):
+        for j in range(7):
+            x = cx + (i - 3) * 0.27 + uniform(-0.08, 0.08)
+            z = cz + (j - 3) * 0.27 + uniform(-0.08, 0.08)
+            campo.append(tufo(uniform(0.08, 0.13), 3, 0.018, 0.9, (0.1, 0.38, 0.1), (0.45, 0.8, 0.25)).at(x, 0, z))
+            if random() < 0.3:
+                h = uniform(0.12, 0.2)
+                caule = segment((x, 0, z), (x, h, z), 0.006).color((0.2, 0.5, 0.18))
+                flor = sphere(uniform(0.03, 0.04)).color(choice(cores)).at(x, h + 0.015, z)
+                miolo = sphere(0.014).color((1, 0.8, 0.1)).at(x, h + 0.05, z)
+                campo.append(group(caule, flor, miolo))
+    return campo
+
+# ---------- 5. touceiras: tufos grandes de folhas largas que arqueiam, ao estilo cartoon ----------
+def touceiras(cx, cz):
+    campo = []
+    for i in range(4):
+        for j in range(4):
+            x = cx + (i - 1.5) * 0.5 + uniform(-0.12, 0.12)
+            z = cz + (j - 1.5) * 0.5 + uniform(-0.12, 0.12)
+            campo.append(tufo(uniform(0.3, 0.42), 9, 0.03, 1.3, (0.08, 0.32, 0.1), mistura((0.5, 0.85, 0.3), (0.85, 0.9, 0.35), random())).at(x, 0, z))
+    return campo
+
+show(
+    plane().color("#35602a"),
+    gramado(-1.2, -1.2),
+    capim(1.2, -1.2),
+    espigas(-1.2, 1.2),
+    trevo(1.2, 1.2),
+    touceiras(0, 2.9),
+)
+camera(pos=(0, 2.6, 6.4), look=(0, 0.15, 0.6), fov=48)

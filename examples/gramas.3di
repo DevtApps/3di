@@ -1,0 +1,13 @@
+# Tipos de grama (kind), todos no estilo "stylized". Troque style= por "lowpoly" ou "realistic"
+# (veja gramas-estilos.3di) e ajuste density, height, color, tip, flowers e sway.
+#   lawn gramado curto · meadow campo · tall capim alto · dry grama seca
+#   tufts touceiras · wheat trigo com espigas · clover trevo com flores
+tipos = ["lawn", "meadow", "tall", "dry", "tufts", "wheat", "clover"]
+
+canteiros = []
+for i, tipo in enumerate(tipos):
+    canteiros.append(grass(1.0, 1.0, kind=tipo, style="stylized", seed=i, soil="#4a3a28").at((i - 3) * 1.12, 0, 0))
+
+show(plane().color("#2d241a"), canteiros)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 1.9, 3.9), look=(0, 0.15, 0), fov=52)
