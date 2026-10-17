@@ -479,7 +479,8 @@ test('export: each part keeps its own resolution, flat faces are simplified, and
 });
 
 test('export quality report: good conversions read ~100% volume, thin features that vanish are flagged', async () => {
-  const report = async (src, res = 64) => (await exportGLB(runScript(src).scene, { res })).stats.partReports;
+  // mede a conversão por amostragem (a malha direta é exata e não tem desvio nem volume medidos)
+  const report = async (src, res = 64) => (await exportGLB(runScript(src).scene, { res, method: 'sample' })).stats.partReports;
   // formas sólidas: desvio dentro da célula, volume ~100% e status ok
   for (const src of ['show(box(1))', 'show(sphere(0.5))', 'show(polygon(6, 0.5, 0.5))', 'show(star(5, 0.5, h=0.2))', 'show(wedge(1, 0.6, 0.8))', 'show(lathe([(0, 0), (0.4, 0), (0.3, 0.6), (0.1, 1), (0, 1)], smooth=3))']) {
     const [r] = await report(src);
@@ -501,7 +502,53 @@ test('export quality report: good conversions read ~100% volume, thin features t
 
 test('large triangles never bridge across the volume: simplified meshes stay on the surface', async () => {
   // a rampa tem uma aresta viva entre a rampa e a face vertical; antes um triângulo de 62 cm cruzava o sólido
-  const [r] = (await exportGLB(runScript('show(wedge(1, 0.6, 0.8).place(0.6, 0, -2.2))').scene, { res: 96 })).stats.partReports;
+  const [r] = (await exportGLB(runScript('show(wedge(1, 0.6, 0.8).place(0.6, 0, -2.2))').scene, { res: 96, method: 'sample' })).stats.partReports;
   assert.ok(r.faceError <= r.cell * 0.6, `centros dos triângulos devem ficar na superfície (${(r.faceError * 1000).toFixed(1)} mm, célula ${(r.cell * 1000).toFixed(1)} mm)`);
   assert.equal(r.status, 'ok');
+});
+
+test('direct meshing: primitives are tessellated exactly (no grid), and grass keeps every blade', async () => {
+  const { nativeMesh } = await import('../src/nativemesh.js');
+  const vol = (m) => {
+    const P = m.positions, I = m.indices;
+    let v = 0;
+    for (let t = 0; t < I.length; t += 3) {
+      const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
+      v += P[a] * (P[b + 1] * P[c + 2] - P[b + 2] * P[c + 1]) - P[a + 1] * (P[b] * P[c + 2] - P[b + 2] * P[c]) + P[a + 2] * (P[b] * P[c + 1] - P[b + 1] * P[c]);
+    }
+    return v / 6;
+  };
+  const PI = Math.PI;
+  const cases = [
+    ['box(1, 2, 3)', 6, 1e-6], ['pyramid(1, 1)', 1 / 3, 1e-6], ['prism(1, 0.5, 1)', 0.25, 1e-6], ['polygon(6, 0.5, 1)', (3 * Math.sqrt(3) / 2) * 0.25, 1e-6],
+    ['extrude([(0, 0), (1, 0), (1, 0.4), (0.4, 0.4), (0.4, 1), (0, 1)], h=0.2)', 0.128, 1e-6], ['box(1).at(1, 0, 0).mirror("x")', 2, 1e-6],
+    ['sphere(0.5)', (4 / 3) * PI * 0.125, 0.01], ['cylinder(0.5, 1)', PI * 0.25, 0.01], ['cone(0.5, 1)', (PI * 0.25) / 3, 0.01],
+    ['torus(0.5, 0.1)', 2 * PI * PI * 0.5 * 0.01, 0.02], ['box(1, round=0.5)', (4 / 3) * PI * 0.125, 0.02],
+  ];
+  for (const [src, expected, tol] of cases) {
+    const run = runScript(`show(${src})`);
+    const shape = run.scene.shapes[0];
+    const m = nativeMesh(shape, { seg: 48 });
+    assert.ok(m, `${src} deve ter malha direta`);
+    const v = vol(m);
+    assert.ok(Math.abs(v / expected - 1) <= tol, `${src}: volume ${v} (esperado ${expected})`);
+    // todo vértice fica exatamente na superfície da forma
+    const { dist } = buildSceneFns(shape);
+    let worst = 0;
+    for (let i = 0; i < m.positions.length; i += 3) worst = Math.max(worst, Math.abs(dist(m.positions[i], m.positions[i + 1], m.positions[i + 2])));
+    assert.ok(worst < 1e-4, `${src}: vértice fora da superfície (${worst})`);
+  }
+  // o que não tem tesselação direta cai na amostragem
+  for (const src of ['box(1) - sphere(0.6)', 'box(1).bend(30)', 'sphere(0.5).displace(0.05, 0.2)', 'sphere(0.5).at(0.2, 0, 0).mirror("x")']) {
+    assert.equal(nativeMesh(runScript(`show(${src})`).scene.shapes[0]), null, src);
+  }
+  // grama: a rota direta mantém as lâminas (a amostragem perdia as finas) e marca a peça como direta
+  const code = 'show(grass(1, 1, kind="meadow", style="stylized", seed=3))';
+  const direct = await exportGLB(runScript(code).scene, { res: 64 });
+  const [g] = direct.stats.partReports;
+  assert.equal(g.method, 'direta');
+  assert.equal(g.status, 'ok');
+  const sampled = await exportGLB(runScript(code).scene, { res: 64, method: 'sample' });
+  assert.equal(sampled.stats.partReports[0].method, 'amostragem');
+  assert.ok(direct.glb.byteLength < sampled.glb.byteLength, 'a malha direta da grama é menor que a amostrada');
 });
