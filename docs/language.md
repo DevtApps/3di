@@ -58,7 +58,7 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 
 | função | descrição |
 |---|---|
-| `box(w=1, h=w, d=w, round=0)` | caixa (largura x, altura y, profundidade z) |
+| `box(w=1, h=w, d=w, round=0, bevel=0)` | caixa (largura x, altura y, profundidade z); `bevel` chanfra as arestas a 45° (placas, armaduras, móveis) |
 | `cube(size=1, round=0)` | cubo |
 | `sphere(r=0.5)` | esfera |
 | `cylinder(r=0.5, h=1, round=0)` | cilindro em pé |
@@ -69,7 +69,8 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `pyramid(w=1, h=1)` | pirâmide de base quadrada |
 | `prism(w=1, h=0.5, d=1)` | prisma triangular (telhado de duas águas): triângulo de base w e altura h, estendido em z |
 | `plane()` | chão infinito em y=0 |
-| `segment(a, b, r=0.05)` | cápsula ligando os pontos a e b (membros, canos, galhos) |
+| `segment(a, b, r=0.05, r2=None)` | cápsula ligando os pontos a e b (membros, canos, galhos); com `r2` afina de `r` até `r2` |
+| `chain(points, r=0.05, smooth=0, curve=0)` | corrente de segmentos que afinam pelos pontos (caudas, pernas, orelhas; veja "Personagens e criaturas") |
 | `polygon(sides=6, r=0.5, h=1, round=0)` | pilar de base poligonal regular (3 a 64 lados), em pé |
 | `star(points=5, r=0.5, inner=None, h=0.2, round=0)` | estrela extrudada deitada, de 3 a 32 pontas em `r`; vales em `inner` (padrão `0.45*r`) |
 | `wedge(w=1, h=1, d=1)` | rampa: sobe de -x até +x, com profundidade d em z |
@@ -87,6 +88,12 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `a - b` ou `subtract(a, b, ...)` | subtração (recorta b de a) |
 | `a & b` ou `intersect(a, b)` | interseção |
 | `group(..., smooth=0.1)` | união suave (as formas se fundem), também em `subtract`/`intersect` |
+
+| `merge(a, b, ..., r=0.03, profile="round", colors="sharp", seam=None, seam_width=None)` | junção com acabamento **só na linha de contato**: `profile` `round` (filete, a peça "nasce" da outra), `chamfer` (chanfro a 45°) ou `groove` (sulco, a emenda entre duas peças montadas). `colors="sharp"` mantém a cor de cada forma até o contato, `"blend"` mistura no filete; `seam` pinta a emenda com uma cor numa faixa de `seam_width` (padrão `r`). Também como método: `a.merge(b, r=...)` |
+
+Diferente de `group(smooth=)`, que engorda tudo o que estiver perto e mistura as cores, o `merge`
+mexe só onde as formas se encontram e cada uma continua com a sua cor: braço e ombro com sulco,
+caneca e alça com filete, peças de máquina com chanfro.
 
 `union(a, b, ...)` é um alias de `group`. Também há métodos encadeáveis:
 `a.union(b, smooth=0)`, `a.subtract(b, smooth=0)` e `a.intersect(b, smooth=0)`.
@@ -123,6 +130,55 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `.color(c)` | nome (`"red"`, `"wood"`, `"stone"`, `"vermelho"`…), `"#rrggbb"` ou `(r, g, b)` |
 | `.material(color, rough, metal, glow)` | rugosidade 0..1, metal 0..1, brilho próprio |
 | `.name("texto")` | nomeia a peça (aparece no painel Peças e no `check.mjs`) |
+
+## Personagens e criaturas
+
+Bichos e personagens saem bem de **formas fundidas** (`group(..., smooth=)`), **manchas pintadas**
+e, para o visual low poly, **facetas**:
+
+| | |
+|---|---|
+| `chain(points, r=0.05, smooth=0, curve=0)` | segmentos que afinam passando pelos pontos. `r`: um raio, `(início, fim)` ou um raio por ponto. `curve` (0 a 8) arredonda a linha (Catmull-Rom, passa pelos pontos); `smooth` funde os trechos |
+| `segment(a, b, r, r2)` | um trecho só, afinando de `r` (em a) até `r2` (em b): orelhas, garras, chifres, dedos |
+| `.paint(region, blend=0.005, relief=0)` | pinta a forma onde ela está dentro de `region`: focinho, peito, patas, ponta da cauda, listras. A cor e o material vêm da região; `blend` suaviza a borda. `relief` (metros, -0.2 a 0.2) levanta (> 0: faixas, placas, joelheiras) ou afunda (< 0: vincos, emendas, gravações) a superfície na região |
+| `.facets(size=0.05, vary=0.1)` | visual low poly: a superfície vira facetas planas (triângulos) de ~`size` metros, com o tom de cada uma variando `vary` (0 a 0.5) |
+
+Receita: monte o corpo com elipsoides e `chain()` numa só `group(..., smooth=0.03)`, pinte as
+manchas sobre o corpo já fundido com `paint()` (assim elas seguem as emendas) e aplique `facets()`
+por último. Olhos, nariz e bigodes ficam fora do grupo facetado, lisos e brilhantes; pupila e brilho
+do olho também são `paint()` sobre a esfera do olho.
+
+```python
+corpo = group(ellipsoid(0.27, 0.25, 0.3), cabeca, perna(1), perna(-1),
+              chain([(-0.1, 0.1, -0.3), (-0.4, 0.3, -0.1), (-0.3, 0.7, 0)], r=(0.06, 0.05), curve=3),
+              smooth=0.035).color("#d8762a")
+pelo = corpo.paint(ellipsoid(0.12, 0.3, 0.12).at(0, 0.55, 0.2).color("#f5dcae"), blend=0.02)
+gato = group(pelo.facets(0.11, 0.2), olho(1), olho(-1), bigodes)
+```
+
+As facetas vêm de uma grade de tetraedros: cada tetraedro que corta a superfície vira uma face
+plana, como numa malha de marching tetrahedra. No preview são só sombreamento (a silhueta continua
+lisa); no **GLB** a peça facetada é simplificada até triângulos do tamanho da faceta e sai com faces
+chapadas e uma cor por face, um modelo low poly de verdade. Partes lisas e facetadas da mesma união
+viram malhas separadas, para o olho não ser achatado nem o corpo refinado pelo detalhe do nariz.
+A grade de facetas é fixa no espaço: numa peça que se move (animação), as facetas deslizam.
+
+Veja `gato.3di` e `cachorro.3di`.
+
+### Luz de estúdio e verniz
+
+`light(rim=0.6, fill=0.4, ao=1, rim_color=None)` acrescenta ao sol uma luz de contorno (`rim`:
+realça a silhueta, como nos renders de jogo) e uma de preenchimento vinda do lado da câmera
+(`fill`, sem sombra); `ao` regula a oclusão de ambiente. Sem `light()`, a cena fica só com sol e céu.
+`.material(coat=0.8)` põe uma camada de verniz por cima (reflexo nítido de plástico, carro, cerâmica).
+
+### Modelar a partir de uma imagem
+
+O botão **Referência** da IDE (ou arrastar uma imagem para a vista) põe a imagem por cima da cena,
+com opacidade, escala, deslocamento e modo lado a lado; ela fica salva no navegador. Pelo MCP,
+`set_reference(path, opacity, scale, x, y, side)` coloca a imagem e `compare_reference` devolve
+referência | cena | sobreposição na vista atual: ajuste a câmera até a silhueta bater e corrija
+proporções e cores comparando as três.
 
 ## Formas por perfil
 
@@ -409,6 +465,9 @@ Não há `import`, classes nem arquivos.
 |---|---|
 | `vila.3di` | geração procedural: casas aleatórias, recortes com `repeat`, bosque, postes |
 | `pinguim.3di` | personagem com uniões suaves, `mirror`, materiais |
+| `gato.3di`, `cachorro.3di` | bichos low poly: `chain`, `paint` (pelagem), `facets` e olhos com pupila e brilho |
+| `cemiterio.3di` | diorama completo só com funções genéricas: `repeat` (lajotas, grade), `merge`, `bevel`, `polar` (abóboras), `chain` (árvores secas), `facets`, `paint` |
+| `robo.3di` | boneco de brinquedo só com funções genéricas: `merge` nas junções, `bevel`, `paint` com relevo, `light()` e verniz |
 | `arvore.3di` | recursão: árvore fractal com 600 primitivas (BVH) |
 | `mesa.3di`, `castelo.3di`, `templo.3di` | layout semântico, booleanas, `repeat` |
 | `basico.3di`, `organico.3di` | todas as primitivas, `smooth`, `twist` |
@@ -455,7 +514,7 @@ node tools/install-desktop.mjs     # atalho "3DI (dev)" no menu, sem encobrir o 
 - **Arquivos:** Novo/Abrir/Salvar (Ctrl+O, Ctrl+S, Ctrl+Shift+S); PNG e GLB abrem "salvar como".
 - **Câmera:** botões Frente/Lado/Topo/Persp.; clique numa peça do painel Peças para enquadrá-la.
 - **MCP** (`.mcp.json`, `tools/mcp.mjs`): `describe_language`, `check_script`, `get_script`,
-  `set_script`, `save_script`, `screenshot` (vista, peça, grade de 4 vistas, instante), `set_camera`,
+  `set_script`, `save_script`, `screenshot` (vista, peça, grade de 4 vistas, instante), `set_reference`, `compare_reference`, `set_camera`,
   `frame`, `list_parts`, `set_time`, `export_glb`. O ponto verde no editor indica a ponte conectada.
   O app e o MCP compartilham o mesmo servidor (porta 8327 rodando do código-fonte; o app instalado usa 8317).
 

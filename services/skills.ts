@@ -1,9 +1,9 @@
 import { readFile, mkdir, lstat, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
+// Uma skill curta: aponta o agente para as rotas de documentação do MCP (a fonte única).
 export const SKILLS = [
-  { name: '3di-scenes', description: 'Construção de cenas com medidas e layout semântico.' },
-  { name: '3di-geometry-review', description: 'Revisão de apoios, alinhamentos, encaixes e múltiplas vistas antes de finalizar.' },
+  { name: '3di-scenes', description: 'Criar, revisar e exportar cenas .3di pelo MCP, lendo as rotas de documentação.' },
 ] as const;
 
 export async function readSkills(root: string) {

@@ -136,6 +136,48 @@ function smallestTexture(s, k = 1) {
   return m;
 }
 
+// Menor faceta (low poly) de uma forma: { size, vary } ou null, corrigida pelas escalas no caminho.
+function smallestFacet(s, k = 1) {
+  let best = null;
+  const fc = s.kind === 'material' ? s.props.facet : null;
+  if (fc) best = { size: fc.size * k, vary: fc.vary };
+  const kk = s.kind === 'scale' ? k * Math.min(...s.props.s.map((v) => Math.abs(val0(v)))) : k;
+  for (const c of s.children) {
+    const f = smallestFacet(c, kk);
+    if (f && (!best || f.size < best.size)) best = f;
+  }
+  return best;
+}
+
+// Visual low poly: cada triângulo ganha vértices próprios, com a normal da face e uma cor só
+// (a média dos vértices, com o tom variando por face como no preview).
+function flatShade(mesh, vary) {
+  const { positions: P, colors: C, indices: I } = mesh;
+  const n = I.length;
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = C ? new Float32Array(n * 3) : null;
+  const idx = new Uint32Array(n);
+  for (let t = 0; t < n; t += 3) {
+    const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2];
+    const vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    // tom da face: hash do centro, estável entre exportações
+    const cx = (P[a] + P[b] + P[c]) / 3, cy = (P[a + 1] + P[b + 1] + P[c + 1]) / 3, cz = (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
+    const h = Math.abs(Math.sin(cx * 127.1 + cy * 311.7 + cz * 74.7) * 43758.5453) % 1;
+    const tone = 1 + vary * (2 * h - 1);
+    for (let k = 0; k < 3; k++) {
+      const src = I[t + k] * 3, dst = (t + k) * 3;
+      pos[dst] = P[src]; pos[dst + 1] = P[src + 1]; pos[dst + 2] = P[src + 2];
+      nor[dst] = nx; nor[dst + 1] = ny; nor[dst + 2] = nz;
+      if (col) for (let q = 0; q < 3; q++) col[dst + q] = Math.min(1, ((C[a + q] + C[b + q] + C[c + q]) / 3) * tone);
+      idx[t + k] = t + k;
+    }
+  }
+  return { ...mesh, positions: pos, normals: nor, colors: col, indices: idx };
+}
+
 // Raios de arredondamento de uma forma: .round(), box(round=), cylinder(round=), extrude/polygon/star(round=),
 // corrigidos pelas escalas no caminho.
 function fillets(s, k = 1, out = []) {
@@ -147,30 +189,53 @@ function fillets(s, k = 1, out = []) {
   return out;
 }
 
+const hasPaint = (s) => (s._paint ??= s.kind === 'paint' || (s.kind === 'merge' && !!s.props.seam) || s.children.some(hasPaint));
+
 const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const isIdent = (m, t) => m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => Math.abs(v) < 1e-12);
 const hasBound = (s) => (s._hasBound ??= s.kind === 'bound' || s.children.some(hasBound));
 
 const mergeMat = (mat, P) => {
   const out = { ...mat };
-  for (const k of ['color', 'rough', 'metal', 'glow', 'tex']) if (P[k] !== null && P[k] !== undefined) out[k] = P[k];
+  for (const k of ['color', 'rough', 'metal', 'glow', 'tex', 'facet', 'coat']) if (P[k] !== null && P[k] !== undefined) out[k] = P[k];
   return out;
 };
 
 // reaplica transformação e material acumulados (como os resíduos do compilador)
 function wrap(s, m, t, ds, mat) {
   let node = s;
-  if (Object.keys(mat).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, ...mat }, [node]);
+  if (Object.keys(mat).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, facet: null, coat: null, ...mat }, [node]);
   if (!isIdent(m, t)) node = new Shape('affine', { m, t, minv: inv3(m), ds }, [node]);
   return node;
 }
+
+// Facetas usadas numa subárvore (a mais interna vence); '-' = superfície lisa.
+function facetKinds(s, cur = '-', out = new Set()) {
+  const fc = s.kind === 'material' ? s.props.facet : null;
+  const here = fc ? `${fc.size}/${fc.vary}` : cur;
+  if (!s.children.length) out.add(here);
+  // a região de paint só pinta: não conta como geometria
+  const kids = s.kind === 'paint' ? s.children.slice(0, 1) : s.children;
+  for (const c of kids) facetKinds(c, here, out);
+  return out;
+}
+// união simples que mistura partes lisas e facetadas (ou facetas de tamanhos diferentes):
+// cada lado vira sua malha, para o low poly não achatar olhos e bigodes nem refinar o corpo todo
+const mixedFacets = (s) => s.kind === 'union' && !s.props.k && facetKinds(s).size > 1;
+// União simples de poucas formas (um boneco, uma mesa): cada filho vira sua malha, na própria
+// resolução. Uma peça só para tudo malharia o boneco inteiro com a célula do tamanho dele, grossa
+// demais para sulcos, chanfros e relevos. Uniões grandes (grama, árvores) ficam numa malha só.
+const SPLIT_MAX_CHILDREN = 24;
+const splittable = (s) => s.kind === 'union' && !s.props.k && (mixedFacets(s) || s.children.length <= SPLIT_MAX_CHILDREN);
+const needsSplit = (s) => (s._split ??= splittable(s) || (['translate', 'rotate', 'scale', 'material', 'label'].includes(s.kind) && needsSplit(s.children[0])));
+const MAX_PARTS = 64;
 
 // Separa a cena em partes: estáticas (malha comum) e presas a ossos (malha com skin).
 function splitParts(shapes) {
   const parts = [];
   const visit = (s, m, t, ds, mat, name) => {
     const c0 = s.children[0];
-    if (!hasBound(s)) { parts.push({ kind: 'static', shape: wrap(s, m, t, ds, mat), name }); return; }
+    if (!hasBound(s) && (!needsSplit(s) || parts.length >= MAX_PARTS)) { parts.push({ kind: 'static', shape: wrap(s, m, t, ds, mat), name }); return; }
     switch (s.kind) {
       case 'bound':
         parts.push({ kind: 'skin', bone: s.props.bone, shape: wrap(resolveRig([c0])[0], m, t, ds, mat), outer: { m, t }, name: name ? `${name}/${s.props.bone.name}` : s.props.bone.name });
@@ -238,7 +303,9 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   const { dist, mat: matFn } = buildSceneFns(p.shape);
   // A textured SDF has a procedural color in the preview; it is baked into a PNG atlas (textured)
   // or into vertex colors (COLOR_0) so standard viewers show it.
-  let textured = false, bumped = false;
+  // pintura (paint, merge com emenda) muda a cor dentro da superfície: vai para o atlas, nítida,
+  // em vez de ser interpolada entre vértices (olhos e emblemas viravam borrões)
+  let textured = hasPaint(p.shape), bumped = false;
   const colorAt = (x, y, z) => {
     const r = matFn(x, y, z);
     if (r.tx) { textured = true; if (r.tx[3] > 0) bumped = true; }
@@ -253,11 +320,18 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   // peças com textura não podem ganhar triângulos maiores que o padrão (o atlas tem poucos texels
   // por triângulo); sem textura, a simplificação fica livre
   const texSize = smallestTexture(p.shape);
-  const simplify = { tolerance: Math.min(...cell) * 0.35, maxEdge: Number.isFinite(texSize) ? texSize * 0.5 : Infinity };
+  const simplify = { tolerance: Math.min(...cell) * 0.35, maxEdge: Number.isFinite(texSize) ? texSize * 0.5 : hasPaint(p.shape) ? Math.min(...cell) * 8 : Infinity };
+  // low poly: a malha é simplificada até triângulos do tamanho da faceta e sai com sombreamento chapado
+  const facet = smallestFacet(p.shape);
+  if (facet) {
+    simplify.tolerance = Math.max(simplify.tolerance, facet.size * 0.12);
+    simplify.maxEdge = Math.min(simplify.maxEdge, facet.size * 1.3);
+  }
   // Malha direta quando a peça é feita só de primitivas posicionadas/repetidas: triângulos exatos, sem
   // perder o que é mais fino que a célula. Senão (subtrações, fórmulas, deformações...), amostragem.
   let mesh = null, how = 'amostragem';
-  if (method !== 'sample' && !infinite) {
+  // peças pintadas vão pela amostragem: triângulos pequenos e uniformes seguram bem o atlas
+  if (method !== 'sample' && !infinite && !facet && !hasPaint(p.shape)) {
     mesh = nativeMesh(p.shape, { seg: Math.max(12, Math.min(64, Math.round(res / 4))) });
     if (mesh) {
       how = 'direta';
@@ -275,11 +349,14 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   }
   const name = p.name ?? `parte${pi}`;
   if (!mesh) return { name, empty: true };
+  if (facet) mesh = flatShade(mesh, facet.vary);
   // A malha direta é exata por construção (curvas aproximadas por seg segmentos) e as primitivas se
   // sobrepõem, o que tornaria desvio e volume enganosos: só a amostragem é medida.
   const quality = how === 'direta'
     ? { maxError: 0, meanError: 0, faceError: 0, cell: Math.min(...cell), size: partMax, volumeRatio: null, status: 'ok', reason: null, method: how }
     : { ...meshQuality(mesh, dist, cell, dims, infinite ? null : bb), method: how };
+  // facetas: o desvio da superfície lisa é o próprio visual low poly, não defeito
+  if (facet) Object.assign(quality, { status: 'ok', reason: `facetas de ${Math.round(facet.size * 100)} cm (low poly)`, method: 'facetas' });
 
   // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0 ou no atlas)
   const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
@@ -295,7 +372,10 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   }
   // Texels por triângulo: com malha fina os triângulos são pequenos, então menos texels mantêm a
   // mesma densidade de textura por metro (8x8 com ~6 mil triângulos, até 3x3 em malhas densas).
-  const texelsPerTriangle = Math.max(3, Math.min(8, Math.round(8 * Math.sqrt(6000 / Math.max(1, triangles)))));
+  // Peças pintadas (olhos, emblemas) precisam de bordas nítidas: mais texels por triângulo.
+  const texelsPerTriangle = hasPaint(p.shape) && !Number.isFinite(texSize)
+    ? Math.max(6, Math.min(12, Math.round(12 * Math.sqrt(8000 / Math.max(1, triangles)))))
+    : Math.max(3, Math.min(8, Math.round(8 * Math.sqrt(6000 / Math.max(1, triangles)))));
   const chunks = [];
   for (let first = 0; first < mesh.indices.length; first += EXPORT_CHUNK_TRIANGLES * 3) {
     const triangleIndices = mesh.indices.subarray(first, Math.min(first + EXPORT_CHUNK_TRIANGLES * 3, mesh.indices.length));

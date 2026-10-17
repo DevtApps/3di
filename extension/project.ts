@@ -14,14 +14,14 @@ export const PROJECT_GUIDELINES = `# Projeto 3DI
 
 ## Estrutura
 - main.3di é a cena inicial. Guarde cenas adicionais em scenes/ e recursos em assets/.
-- As skills 3di-scenes e 3di-geometry-review estão em .agents/skills e .claude/skills.
-- Leia a skill de construção ao modelar e a de revisão antes de finalizar uma cena.
+- A skill 3di-scenes está em .agents/skills e .claude/skills: ela aponta para a documentação do MCP.
 - Use o app 3DI para editar, conferir o preview e exportar; o editor web e a extensão VS Code também podem ser usados.
 
 ## Trabalho com agentes
 - Leia a cena atual antes de editar e preserve alterações fora do pedido.
-- Consulte a documentação e boas práticas pelo MCP HTTP do 3DI: get_documentation
-  com topic language e best-practices; resources threedi://docs/language e threedi://docs/best-practices.
+- Consulte a documentação pelo MCP HTTP do 3DI: get_documentation(topic="inicio") indica a rota
+  de cada tarefa (formas, combinar, materiais, organico, hard-surface, cenarios, exportar, revisao...).
+- Use só funções genéricas da linguagem; objetos específicos são funções def no próprio script.
 - O painel Integrações MCP e skills mostra o endpoint HTTP local atual.
 - Antes de finalizar, confira numericamente apoios, alinhamentos, margens e encaixes
   com tolerâncias explícitas, leia os logs e examine frente/lado/topo/perspectiva e

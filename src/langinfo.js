@@ -18,7 +18,8 @@ const DOCS = {
   pyramid: 'Pirâmide de base quadrada `w` e altura `h`.',
   prism: 'Prisma triangular (telhado de duas águas): triângulo de base `w` e altura `h`, estendido `d` em z.',
   plane: 'Chão infinito em y = 0.',
-  segment: 'Cápsula ligando os pontos `a` e `b` (membros, canos, galhos).',
+  segment: 'Cápsula ligando os pontos `a` e `b` (membros, canos, galhos); com `r2` afina de `r` (em a) até `r2` (em b).',
+  chain: 'Corrente de segmentos que afinam passando pelos `points`: caudas, pernas, pescoços, orelhas. `r` = um raio, (início, fim) ou um por ponto; `curve` (0 a 8) arredonda a linha; `smooth` funde os trechos.',
   polygon: 'Pilar de base poligonal regular: `sides` lados (3 a 64), circunraio `r`, altura `h`; `round` arredonda as quinas.',
   star: 'Estrela extrudada deitada: `points` pontas em `r`, vales em `inner` (padrão 0.45 r), espessura `h`.',
   wedge: 'Rampa: sobe de -x até +x; profundidade `d` em z.',
@@ -95,9 +96,13 @@ const DOCS = {
   elongate: 'Estica a forma sem deformá-la, acrescentando esse comprimento no meio (esfera vira cápsula).',
   displace: 'Deforma a superfície com ruído (rochas, terreno).',
   color: 'Cor: nome ("red", "wood", "vermelho"...), "#rrggbb" ou (r, g, b).',
-  material: 'Material: cor, rugosidade (0..1), metal (0..1) e brilho próprio (aceita time).',
+  material: 'Material: cor, rugosidade (0..1), metal (0..1), brilho próprio (aceita time) e `coat` = verniz (0..1, reflexo de plástico/carro).',
   texture: 'Textura procedural: noise, wood, marble, stripes, checker, bricks, gradient (degradê da cor até color2 ao longo do eixo), mottle (manchas suaves) e relief (só relevo). bump=0.3 dá relevo (normal map), triplanar=True projeta nos 3 eixos.',
   name: 'Dá nome à peça (aparece no painel Peças e no MCP).',
+  facets: 'Visual low poly: a superfície vira facetas planas de ~`size` metros, com o tom de cada uma variando `vary` (0 a 0.5). No GLB vira malha low poly de verdade.',
+  paint: 'Pinta a forma onde ela está dentro de `region` (focinho, peito, patas, manchas). A cor e o material vêm da região; `blend` suaviza a borda; `relief` levanta (> 0) ou afunda (< 0) a superfície ali: faixas, placas, vincos, emendas.',
+  merge: 'Junta formas com acabamento só na linha de contato: `r` = raio do filete (ou largura), `profile` round (filete), chamfer (chanfro) ou groove (sulco), `colors` sharp (cada forma com sua cor) ou blend, `seam` = cor da emenda.',
+  light: 'Luzes de estúdio além do sol: `rim` = contorno na silhueta, `fill` = preenchimento do lado da câmera, `ao` = força da oclusão de ambiente.',
   bind: 'Prende a forma (modelada na pose de repouso) a um osso.',
   // propriedades
   top: 'y do topo da caixa envolvente.', bottom: 'y da base.', left: 'x mínimo.', right: 'x máximo.',
@@ -107,12 +112,12 @@ const DOCS = {
 
 const CATEGORY = {
   box: 'primitiva', cube: 'primitiva', sphere: 'primitiva', cylinder: 'primitiva', cone: 'primitiva', torus: 'primitiva',
-  capsule: 'primitiva', ellipsoid: 'primitiva', pyramid: 'primitiva', prism: 'primitiva', plane: 'primitiva', segment: 'primitiva',
-  group: 'combinar', union: 'combinar', subtract: 'combinar', intersect: 'combinar',
+  capsule: 'primitiva', ellipsoid: 'primitiva', pyramid: 'primitiva', prism: 'primitiva', plane: 'primitiva', segment: 'primitiva', chain: 'primitiva',
+  group: 'combinar', union: 'combinar', merge: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
   polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', implicit: 'primitiva',
-  grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador',
+  grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 
 const HIDDEN = new Set(['isinstance']);

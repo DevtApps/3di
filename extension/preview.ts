@@ -59,7 +59,7 @@ function renderFrame(size?: [number, number], t = time, capture = false) {
     fog: scene.scene.fog ?? (scene.out.hasPlane ? 1 / (Math.max(cam.dist, radius) * 14) : 0),
     maxDist: scene.out.hasPlane ? Math.max(80, cam.dist * 30) : cam.dist + radius * 4,
     sun: scene.scene.sun?.dir ?? [0.6, 1, 0.4], sunColor: scene.scene.sun?.color ?? [1, 0.95, 0.88],
-    sky: scene.scene.sky ?? [0.3, 0.5, 0.82], time: t, size, capture, interactive: interacting, animated: scene.out.animated && playing,
+    sky: scene.scene.sky ?? [0.3, 0.5, 0.82], light: scene.scene.light, time: t, size, capture, interactive: interacting, animated: scene.out.animated && playing,
   }, interacting && !capture ? 0.5 : 1);
   if (rendered === false) draw();
 }

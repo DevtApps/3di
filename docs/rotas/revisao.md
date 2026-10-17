@@ -1,7 +1,3 @@
----
-name: 3di-geometry-review
-description: Revisar alinhamentos, apoios, encaixes, dimensões e posições em cenas .3di antes de finalizar, ou investigar peças deslocadas e interseções. Combina medidas pelo MCP e inspeção de múltiplas vistas.
----
 
 # Revisar geometria e posições no 3DI
 

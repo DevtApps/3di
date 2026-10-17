@@ -1,0 +1,82 @@
+# Gato low poly sentado: corpo de formas fundidas (smooth), manchas pintadas com paint(),
+# cauda e pernas com chain() e facetas planas com facets(). De frente para +z, altura ~1.3.
+
+laranja = "#d8762a"
+creme = "#f5dcae"
+rosa = "#e99a8e"
+
+# ---- corpo: quadril, peito, pescoço e cabeça fundidos ----
+quadril = ellipsoid(0.27, 0.25, 0.3).at(0, 0.27, -0.06)
+peito = ellipsoid(0.19, 0.3, 0.19).rotate(x=-12).at(0, 0.52, 0.07)
+pescoco = ellipsoid(0.15, 0.16, 0.14).at(0, 0.78, 0.1)
+cranio = ellipsoid(0.27, 0.23, 0.22).at(0, 0.99, 0.11)
+bochechas = ellipsoid(0.1, 0.08, 0.09).at(0.13, 0.9, 0.17).mirror("x")
+focinho = ellipsoid(0.055, 0.045, 0.05).at(0.04, 0.885, 0.29).mirror("x")
+queixo = ellipsoid(0.06, 0.035, 0.05).at(0, 0.845, 0.26)
+
+# orelha: cone achatado que afina até a ponta, inclinada para fora
+def orelha(lado):
+    o = segment((0, 0, 0), (0, 0.27, 0), r=0.1, r2=0.012).scale((1, 1, 0.36))
+    return o.rotate(x=-8, z=-18 * lado).at(0.13 * lado, 1.08, 0.08)
+
+# pernas da frente: retas, afinando até a pata
+def perna(lado):
+    return chain([(0.085 * lado, 0.6, 0.12), (0.09 * lado, 0.3, 0.17), (0.09 * lado, 0.07, 0.2)], r=(0.07, 0.05), curve=2)
+
+pata = ellipsoid(0.062, 0.04, 0.085).at(0.09, 0.04, 0.24).mirror("x")
+coxa = ellipsoid(0.12, 0.17, 0.2).rotate(x=-10).at(0.17, 0.22, -0.02).mirror("x")
+pata_tras = ellipsoid(0.06, 0.038, 0.09).at(0.2, 0.035, 0.11).mirror("x")
+
+# cauda: sobe pela esquerda e enrola no alto
+cauda = chain([(-0.12, 0.08, -0.3), (-0.33, 0.12, -0.22), (-0.44, 0.33, -0.1), (-0.42, 0.58, -0.02), (-0.33, 0.74, 0.02), (-0.27, 0.72, 0.06)],
+              r=[0.06, 0.06, 0.062, 0.062, 0.06, 0.05], curve=3, smooth=0.02)
+
+corpo = group(quadril, peito, pescoco, cranio, bochechas, focinho, queixo, orelha(1), orelha(-1),
+              perna(1), perna(-1), pata, coxa, pata_tras, cauda, smooth=0.035).color(laranja)
+
+# ---- pelagem: creme no focinho, peito, patas e ponta da cauda; rosa dentro das orelhas ----
+manchas = [
+    ellipsoid(0.13, 0.08, 0.1).at(0, 0.87, 0.27),          # focinho e queixo
+    ellipsoid(0.05, 0.09, 0.05).at(0, 0.96, 0.31),         # faixa entre os olhos
+    ellipsoid(0.12, 0.3, 0.12).rotate(x=-12).at(0, 0.55, 0.2),  # peito
+    box(0.8, 0.13, 0.8).at(0, 0.03, 0.1),                  # patas
+    sphere(0.1).at(-0.29, 0.73, 0.05),                     # ponta da cauda
+]
+orelhas_dentro = ellipsoid(0.06, 0.12, 0.05).rotate(z=-18).at(0.16, 1.17, 0.12).mirror("x")
+pelo = corpo
+for m in manchas:
+    pelo = pelo.paint(m.color(creme), blend=0.02)
+pelo = pelo.paint(orelhas_dentro.color(rosa), blend=0.01)
+# listras escuras na testa e nas costas
+listras = group(
+    ellipsoid(0.02, 0.07, 0.05).at(0, 1.1, 0.27),
+    ellipsoid(0.02, 0.06, 0.05).at(0.06, 1.09, 0.26).rotate(z=-15).mirror("x"),
+    box(0.6, 0.035, 0.5).rotate(x=10).at(0, 0.42, -0.25).repeat(y=3, spacing=0.11),
+).color("#c96d1e")
+pelo = pelo.paint(listras, blend=0.015).facets(0.11, 0.2).material(rough=0.8)
+
+# ---- olhos: globo verde, pupila vertical e brilho; contorno escuro atrás ----
+def olho(lado):
+    x, y, z = 0.1 * lado, 0.985, 0.27
+    globo = sphere(0.062).color("#7fb33a").material(rough=0.15)
+    globo = globo.paint(ellipsoid(0.024, 0.05, 0.03).at(0, 0, 0.05).color("#101010"), blend=0.004)
+    globo = globo.paint(sphere(0.014).at(0.014, 0.026, 0.053).color("white").material(glow=0.6), blend=0.002)
+    contorno = sphere(0.069).at(0, 0, -0.01).color("#2a1a10")
+    return group(contorno, globo).at(x, y, z)
+
+nariz = segment((0, 0, 0), (0, -0.035, 0), r=0.024, r2=0.008).scale((1.2, 1, 0.8)).at(0, 0.915, 0.33).color(rosa).facets(0.02)
+boca = group(
+    segment((0, 0.87, 0.33), (0.035, 0.855, 0.32), r=0.004).mirror("x"),
+    segment((0, 0.893, 0.335), (0, 0.872, 0.332), r=0.004),
+).color("#7a4a3a")
+bigodes = group(
+    segment((0.08, 0.885, 0.3), (0.33, 0.9, 0.24), r=0.0035),
+    segment((0.08, 0.875, 0.3), (0.32, 0.845, 0.25), r=0.0035),
+    segment((0.075, 0.865, 0.29), (0.29, 0.8, 0.24), r=0.003),
+).mirror("x").color("#fff6e8")
+
+gato = group(pelo, olho(1), olho(-1), nariz, boca, bigodes).name("gato")
+show(gato)
+
+sky("#cfd1d6")
+camera(pos=(0.25, 0.9, 2.6), look=(0, 0.62, 0), fov=40)

@@ -1,0 +1,79 @@
+# Bonequinho de brinquedo (estilo jogo de festa) feito só com funções genéricas da linguagem:
+#   box(bevel=)        placas chanfradas
+#   merge()            junções: sulco entre peças de plástico, filete onde a peça "nasce" da outra
+#   paint(relief=)     faixas e joelheiras em relevo, emenda afundada entre as cores
+#   chain()            braços e pernas que afinam
+#   material(coat=)    plástico envernizado; light() dá contorno e preenchimento
+# As funções abaixo (metades, membro...) são do script: reutilizáveis para outros bonecos.
+
+azul = "#2f7fd6"
+vermelho = "#e8492f"
+escuro = "#2c313b"
+branco = "#f4f4f2"
+tinta = "#121212"
+
+# pinta o lado +x da forma com outra cor (metade direita/esquerda)
+def metades(forma, direita, esquerda):
+    return forma.color(direita).paint(box(4, 4, 4).at(2, 0, 0).color(esquerda), blend=0.003)
+
+# faixa horizontal em relevo na altura y
+def faixa(forma, y, altura, cor, relevo=0.012):
+    return forma.paint(box(2, altura, 2).at(0, y, 0).color(cor), blend=0.004, relief=relevo)
+
+# membro que afina por uma lista de pontos, com punho/joelheira em relevo
+def membro(pontos, raios, cor):
+    return chain(pontos, r=raios, curve=1, smooth=0.02).color(cor)
+
+# ---- cabeça: cubo bem arredondado com carinha pintada ----
+hy = 1.38
+cabeca = box(0.72, 0.8, 0.62, round=0.26).at(0, hy, 0).color(branco)
+olhos = ellipsoid(0.045, 0.075, 0.2).at(0.12, hy + 0.08, 0.29).mirror("x")
+sorriso = intersect(torus(0.12, 0.022).rotate(x=90), box(0.4, 0.2, 0.4).at(0, -0.1, 0)).at(0, hy - 0.06, 0.29)
+cabeca = cabeca.paint(olhos.color(tinta)).paint(sorriso.color(tinta))
+pescoco = cylinder(0.1, 0.14).at(0, 1.0, 0).color(escuro)
+
+# ---- tronco: peito e cintura chanfrados, fundidos com filete; quadril separado por sulco ----
+peito = box(0.64, 0.3, 0.4, bevel=0.07, round=0.04).at(0, 0.86, 0)
+cintura = box(0.5, 0.2, 0.34, bevel=0.05, round=0.03).at(0, 0.67, 0)
+tronco = merge(peito, cintura, r=0.05)
+tronco = metades(tronco, azul, vermelho)
+tronco = tronco.paint(box(0.012, 2, 2).color(escuro), blend=0.003, relief=-0.006)   # emenda entre as cores
+tronco = faixa(tronco, 0.84, 0.11, escuro, 0.014)
+tronco = faixa(tronco, 0.64, 0.065, escuro)
+quadril = metades(box(0.46, 0.16, 0.32, bevel=0.04, round=0.03).at(0, 0.53, 0), azul, vermelho)
+quadril = quadril.paint(box(0.06, 0.4, 0.7).at(0, 0.53, 0).color(escuro), blend=0.003, relief=0.008)
+corpo = merge(tronco, quadril, pescoco, r=0.03, profile="groove")
+
+# emblema hexagonal na faixa do peito, metade de cada cor
+def meio_hex(lado, cor):
+    pts = [(0, 0.045), (0.09 * lado, 0.045), (0.12 * lado, 0), (0.09 * lado, -0.045), (0, -0.045)]
+    return extrude(pts, h=0.03).at(0, 0.84, 0.215).color(cor)
+emblema = group(meio_hex(-1, azul), meio_hex(1, vermelho))
+etiqueta = box(0.08, 0.04, 0.02, round=0.008).at(-0.17, 0.95, 0.2).color(branco)
+
+# ---- braços: ombro, braço que afina, punho em relevo; luva unida com filete ----
+def braco(lado, cor, abre=8):
+    ombro = sphere(0.125)
+    b = membro([(0, -0.02, 0), (0.05 * lado, -0.17, 0.02), (0.08 * lado, -0.3, 0.05)], (0.1, 0.082), cor)
+    b = merge(ombro.color(cor), b, r=0.02, profile="groove")
+    b = b.paint(box(0.3, 0.05, 0.3).at(0.08 * lado, -0.28, 0.05).color(escuro), blend=0.004, relief=0.012)
+    luva = merge(sphere(0.115).at(0.09 * lado, -0.39, 0.06), ellipsoid(0.038, 0.056, 0.038).at(0.03 * lado, -0.36, 0.14), r=0.02)
+    luva = luva.color(branco).material(rough=0.45)
+    return group(b, luva).rotate(z=-abre * lado, pivot=(0, 0, 0)).at(0.38 * lado, 0.92, 0)
+
+# ---- pernas: coxa e canela, joelheira em relevo, bota chanfrada com sola em relevo ----
+def perna(lado, cor):
+    p = membro([(0, 0, 0), (0.01 * lado, -0.17, 0.01), (0.02 * lado, -0.33, 0)], (0.105, 0.09), cor)
+    p = p.paint(ellipsoid(0.065, 0.055, 0.06).at(0.01 * lado, -0.17, 0.095).color(escuro), blend=0.006, relief=0.016)
+    bota = box(0.23, 0.16, 0.32, bevel=0.045, round=0.04).at(0.02 * lado, -0.4, 0.04).color(cor)
+    bota = bota.paint(box(0.4, 0.05, 0.5).at(0.02 * lado, -0.465, 0.04).color(escuro), blend=0.004, relief=0.01)
+    return merge(p, bota, r=0.02, profile="groove").at(0.12 * lado, 0.48, 0)
+
+boneco = group(cabeca, corpo, emblema, etiqueta,
+               braco(-1, azul), braco(1, vermelho), perna(-1, azul), perna(1, vermelho))
+boneco = boneco.material(rough=0.42, coat=0.6).name("boneco")
+show(boneco)
+
+light(rim=0.7, fill=0.45)
+sky("#d9e3ef")
+camera(pos=(0.3, 1.0, 2.6), look=(0, 0.9, 0), fov=40)

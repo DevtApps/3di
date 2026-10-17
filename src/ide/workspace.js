@@ -1,3 +1,4 @@
+import { DOC_ROUTES } from '../docroutes.js';
 import { integrationConfig } from '../integration-config.js';
 
 export function setupWorkspace() {
@@ -86,29 +87,23 @@ export function setupWorkspace() {
     a.target = '_blank'; a.rel = 'noopener'; parent.append(a);
   };
   let skill = null;
-  let geometrySkill = null;
   const render = () => {
     $('integrationContent').replaceChildren();
     feedback('');
     document.querySelector('.integration-settings').hidden = activeGuide === 'skills' || activeGuide === 'docs';
     if (activeGuide === 'docs') {
-      for (const [title, description, uri, href] of [
-        ['Linguagem 3DI', 'Sintaxe, primitivas, materiais, animação e exportação.', 'threedi://docs/language', '/docs/language.md'],
-        ['Boas práticas', 'Layout, desempenho e revisão visual das cenas.', 'threedi://docs/best-practices', '/docs/best-practices.md'],
-        ['Exemplos', 'Cenas prontas e um fluxo de trabalho para agentes.', 'threedi://docs/examples', '/docs/examples.md'],
-      ]) {
-        const section = card(title, description, uri);
-        link(section, 'Abrir documentação', href);
+      for (const { topic, name, description, file } of DOC_ROUTES) {
+        const section = card(name, description, `threedi://docs/${topic}`);
+        link(section, 'Abrir', `/${file}`);
       }
-      card('Consultar pelo MCP', 'Peça ao agente para ler esses recursos MCP ou chamar get_documentation com topic language, best-practices ou examples. A documentação pode ser consultada sem o editor aberto.');
+      card('Consultar pelo MCP', 'O agente lê get_documentation(topic="inicio") e segue para a rota de cada tarefa. Funciona sem o editor aberto.');
       return;
     }
     if (activeGuide === 'skills') {
-      card('Skills pelo MCP', 'Use list_skills para descobrir e get_skill para ler 3di-scenes e 3di-geometry-review. O agente pode seguir as instruções diretamente nesta sessão, sem instalar arquivos.', 'threedi://skills/3di-scenes\nthreedi://skills/3di-geometry-review');
+      card('Documentação pelo MCP', 'A skill só aponta o agente para as rotas de documentação do servidor (get_documentation, começando por "inicio"); sem instalar nada, o agente já pode lê-las direto pelo MCP.', 'get_documentation(topic="inicio")');
       card('Instalar pelo agente', 'Peça ao agente para executar install_skills com o caminho absoluto do workspace dele. target both prepara Codex e Claude Code; arquivos existentes diferentes são preservados.', 'install_skills({workspace: "/caminho/absoluto/do/seu-workspace", target: "both"})');
       card('Codex · instalação no projeto', 'Crie esta pasta no projeto em que você usa o agente e salve o arquivo baixado como SKILL.md.', '.agents/skills/3di-scenes/SKILL.md');
       card('Claude Code · instalação no projeto', 'Salve o mesmo arquivo neste caminho do projeto em que você inicia o Claude Code.', '.claude/skills/3di-scenes/SKILL.md');
-      if (geometrySkill) card('Revisão geométrica', 'Salve em 3di-geometry-review/SKILL.md dentro do diretório de skills do cliente. Invoque $3di-geometry-review ou /3di-geometry-review.', geometrySkill, '3di-geometry-review-SKILL.md');
       if (skill) card('Construção de cenas', 'Depois de instalar, invoque $3di-scenes no Codex ou /3di-scenes no Claude Code.', skill, 'SKILL.md');
       else card('Skill indisponível', 'Não foi possível carregar a skill. Reabra esta seção para tentar novamente.');
       const section = card('Referências oficiais', 'Confira os diretórios e a descoberta de skills do seu cliente.');
@@ -126,7 +121,7 @@ export function setupWorkspace() {
       : 'Mescle a entrada 3di em mcpServers no .mcp.json do seu projeto. Preserve os outros servidores. Aprove o servidor no Claude Code quando solicitado.',
     codex ? config.codex : config.claude, codex ? '3di-mcp.toml' : '3di-mcp.json');
     card('2. Verificar a conexão', 'Reinicie a sessão do agente após configurar. Use /mcp no cliente para conferir se o servidor 3di está disponível.', codex ? 'codex mcp list' : 'claude mcp list');
-    card('3. Criar e revisar', 'Mantenha este preview aberto na mesma porta. O indicador “Ponte ativa” confirma a conexão do editor ao servidor local; o estado do cliente externo é conferido no próprio cliente.', 'Consulte a documentação e as boas práticas do 3DI. Leia a cena atual com get_script, valide alterações com check_script, aplique com set_script e confira screenshot com view="grid".');
+    card('3. Criar e revisar', 'Mantenha este preview aberto na mesma porta. O indicador “Ponte ativa” confirma a conexão do editor ao servidor local; o estado do cliente externo é conferido no próprio cliente.', 'Leia get_documentation(topic="inicio") e a rota da tarefa. Leia a cena com get_script, valide com check_script, aplique com set_script e confira screenshot com view="grid".');
     const section = card('Documentação oficial', 'Consulte as opções de configuração do cliente.');
     link(section, codex ? 'MCP no Codex' : 'MCP no Claude Code', codex ? 'https://developers.openai.com/codex/mcp/' : 'https://code.claude.com/docs/en/mcp');
   };
@@ -138,8 +133,6 @@ export function setupWorkspace() {
         try {
           const r = await fetch('/skills/3di-scenes/SKILL.md');
           if (r.ok) skill = await r.text();
-          const geometry = await fetch('/skills/3di-geometry-review/SKILL.md');
-          if (geometry.ok) geometrySkill = await geometry.text();
         } catch {}
       }
       render();

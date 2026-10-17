@@ -85,9 +85,13 @@ function transformedBBox(s, m, t) {
       const mv = mulMV(m, s.props.t);
       return transformedBBox(s.children[0], mul3(m, s.props.m), t.map((v, i) => v + mv[i]));
     }
-    case 'union': return unionBB(s.children.map((c) => transformedBBox(c, m, t)));
+    case 'union': case 'merge': return unionBB(s.children.map((c) => transformedBBox(c, m, t)));
     case 'subtract': case 'material': case 'label': case 'bound':
       return transformedBBox(s.children[0], m, t);
+    case 'paint': {
+      const b = transformedBBox(s.children[0], m, t), e = Math.max(0, s.props.relief ?? 0) * 1.01;
+      return e ? expand(b, e) : b;
+    }
   }
   return fromPoints(corners(s.bbox).map((c) => mulMV(m, c).map((v, i) => v + t[i])));
 }
@@ -100,7 +104,7 @@ function computeBBox(s) {
   const p = s.props;
   const c0 = s.children[0];
   switch (s.kind) {
-    case 'box': return sym(p.size[0] / 2, p.size[1] / 2, p.size[2] / 2);
+    case 'box': case 'cbox': return sym(p.size[0] / 2, p.size[1] / 2, p.size[2] / 2);
     case 'sphere': return sym(p.r, p.r, p.r);
     case 'cylinder': return sym(p.r, p.h / 2, p.r);
     case 'cone': { const r = Math.max(p.r, p.top); return sym(r, p.h / 2, r); }
@@ -111,7 +115,7 @@ function computeBBox(s) {
     case 'prism': return sym(p.w / 2, p.h / 2, p.d / 2);
     case 'plane': return bb([-INF, -INF, -INF], [INF, 0, INF]);
     case 'affine': return transformedBBox(c0, p.m, p.t);
-    case 'union': return unionBB(s.children.map((c) => c.bbox));
+    case 'union': case 'merge': return unionBB(s.children.map((c) => c.bbox));
     case 'subtract': return c0.bbox;
     case 'intersect': {
       const bs = s.children.map((c) => c.bbox);
@@ -183,6 +187,10 @@ function computeBBox(s) {
     case 'label':
     case 'bound':
       return c0.bbox;
+    // relevo positivo sai da forma: a caixa cresce junto (senão a malha seria cortada ali)
+    case 'paint': return p.relief > 0 ? expand(c0.bbox, p.relief * 1.01) : c0.bbox;
+    case 'roundcone':
+      return bb([0, 1, 2].map((i) => Math.min(p.a[i] - p.r1, p.b[i] - p.r2)), [0, 1, 2].map((i) => Math.max(p.a[i] + p.r1, p.b[i] + p.r2)));
   }
   throw new Error(`bbox: tipo desconhecido ${s.kind}`);
 }
@@ -231,6 +239,28 @@ export function segmentShape(a, b, r) {
   const az = (Math.atan2(-n[0], n[1]) * 180) / Math.PI;
   const cap = new Shape('capsule', { r, h: len + 2 * r });
   return translate(new Shape('rotate', { m: rotMatrix(ax, 0, az) }, [cap]), mid);
+}
+
+// cone arredondado (de a com raio r1 até b com raio r2)
+export function roundCone(a, b, r1, r2) {
+  if (Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) < 1e-9) return translate(new Shape('sphere', { r: Math.max(r1, r2) }), a);
+  return new Shape('roundcone', { a, b, r1, r2 });
+}
+
+// subdivide a linha de pontos com Catmull-Rom (passa pelos pontos), interpolando os raios
+function catmull(pts, radii, k) {
+  const n = pts.length, P = [], R = [];
+  const g = (i) => pts[Math.max(0, Math.min(n - 1, i))];
+  for (let i = 0; i + 1 < n; i++) {
+    for (let j = 0; j < k; j++) {
+      const t = j / k, t2 = t * t, t3 = t2 * t;
+      const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+      P.push([0, 1, 2].map((c) => 0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3)));
+      R.push(radii[i] + (radii[i + 1] - radii[i]) * t);
+    }
+  }
+  P.push(pts[n - 1]); R.push(radii[n - 1]);
+  return [P, R];
 }
 
 export function union(list, k = 0) {
@@ -321,8 +351,10 @@ export function parseColor(v) {
   throw new ScriptError(`cor inválida: ${typeName(v)}`, null, 'use um nome (red, wood...), "#rrggbb" ou (r, g, b)');
 }
 
-function material(s, { color = null, rough = null, metal = null, glow = null, tex = null }) {
+function material(s, { color = null, rough = null, metal = null, glow = null, tex = null, facet = null, coat = null }) {
   const props = {
+    facet,
+    coat: coat === null ? null : Math.min(1, Math.max(0, num(coat, 'coat'))),
     color: color === null ? null : parseColor(color),
     rough: rough === null ? null : num(rough, 'rough'),
     metal: metal === null ? null : num(metal, 'metal'),
@@ -494,8 +526,29 @@ const METHODS = {
     return new Shape('elongate', { h: h.map((v) => v / 2) }, [s]);
   }],
   color: [['c'], (s, a) => material(s, { color: a.c })],
-  material: [['color=None', 'rough=None', 'metal=None', 'glow=None'], (s, a) => material(s, a)],
+  // coat: verniz (camada brilhante por cima, como plástico de brinquedo ou carro), 0 a 1
+  material: [['color=None', 'rough=None', 'metal=None', 'glow=None', 'coat=None'], (s, a) => material(s, a)],
   name: [['label'], (s, a) => new Shape('label', { name: String(a.label) }, [s])],
+  // visual low poly: a superfície vira facetas planas de ~size metros, com o tom variando vary (0..0.5)
+  facets: [['size=0.05', 'vary=0.1'], (s, a) => {
+    const sz = num(a.size, 'size'), vary = num(a.vary, 'vary');
+    if (!(sz > 0) || sz >= 16) throw new ScriptError('facets(): size deve ser maior que zero (em metros, menor que 16)', null, 'facets(0.04) dá facetas de uns 4 cm');
+    if (vary < 0 || vary > 0.5) throw new ScriptError('facets(): vary vai de 0 a 0.5', null, 'vary=0.1 varia o tom de cada faceta em 10%');
+    return material(s, { facet: { size: sz, vary } });
+  }],
+  // pinta a forma onde ela está dentro da região (focinho, peito, patas, manchas), sem mudar a geometria;
+  // a cor e o material vêm da própria região. blend suaviza a borda (metros)
+  paint: [['region', 'blend=0.005', 'relief=0'], (s, a) => {
+    const region = asShape(a.region, 'paint()');
+    const relief = num(a.relief, 'relief');
+    // relief > 0 levanta a região (placa, faixa, botão); < 0 afunda (vinco, emenda, gravação).
+    // A borda precisa de rampa: com blend >= 1,5 x relevo, o campo inclina no máximo 50% a mais
+    // que uma distância, o que o raio do shader e o malhador do GLB aguentam
+    const k = Math.max(num(a.blend, 'blend'), 1.5 * Math.abs(relief));
+    if (k < 0) throw new ScriptError('paint(): blend não pode ser negativo', null);
+    if (Math.abs(relief) > 0.2) throw new ScriptError('paint(): relief vai de -0.2 a 0.2 metros', null, 'para peças maiores, some uma forma de verdade');
+    return new Shape('paint', { k, relief }, [s, region]);
+  }],
   bind: [['bone'], (s, a) => {
     if (!a.bone?.isBone) throw new ScriptError('bind() espera um osso', null, 'crie com esq = skeleton(); osso = esq.bone("nome", head=(x, y, z))');
     return new Shape('bound', { bone: a.bone }, [s]);
@@ -536,6 +589,7 @@ const METHODS = {
     return new Shape('displace', { amt, size: sz }, [s]);
   }],
   union: [['*others', 'smooth=0'], (s, a) => union([s, ...flatten(a.others, 'union()')], num(a.smooth, 'smooth'))],
+  merge: [['*others', 'r=0.03', 'profile="round"', 'colors="sharp"', 'seam=None', 'seam_width=None'], (s, a) => mergeShapes([s, ...flatten(a.others, 'merge()')], a)],
   subtract: [['*others', 'smooth=0'], (s, a) => subtract(s, flatten(a.others, 'subtract()'), a.smooth)],
   intersect: [['*others', 'smooth=0'], (s, a) => intersect([s, ...flatten(a.others, 'intersect()')], a.smooth)],
 };
@@ -557,6 +611,23 @@ function stack(s, a, dir) {
     dz = a.z === null ? 0 : num(a.z, 'z') - sc[2];
   }
   return translate(s, [dx, dy, dz]);
+}
+
+// Junção genérica: filete redondo, chanfro ou sulco na linha onde as formas se encontram.
+// colors: "sharp" mantém a cor de cada forma até a linha de contato; "blend" mistura no filete.
+// seam: cor da emenda (faixa de largura seam_width, padrão r, ao longo do contato).
+function mergeShapes(list, a) {
+  if (!list.length) throw new ScriptError('merge() vazio', null);
+  if (list.length === 1) return list[0];
+  const r = num(a.r, 'r');
+  if (!(r > 0)) throw new ScriptError('merge(): r deve ser maior que zero', null, 'r é o raio do filete (ou largura do chanfro/sulco) em metros');
+  const profile = String(a.profile).toLowerCase();
+  if (!['round', 'chamfer', 'groove'].includes(profile)) throw new ScriptError(`merge(): profile desconhecido '${a.profile}'`, null, 'use "round" (filete), "chamfer" (chanfro) ou "groove" (sulco)');
+  const colors = String(a.colors).toLowerCase();
+  if (!['sharp', 'blend'].includes(colors)) throw new ScriptError(`merge(): colors deve ser "sharp" ou "blend"`, null);
+  const seam = a.seam === null ? null : parseColor(a.seam);
+  const seamWidth = a.seam_width === null ? r : num(a.seam_width, 'seam_width');
+  return new Shape('merge', { r, profile, colors, seam, seamWidth }, list);
 }
 
 function asShape(v, what) {
@@ -620,10 +691,14 @@ function extrudeShape(pts, h, axis, round, what) {
 export function shapeBuiltins(scene) {
   const N = (name, params, fn) => new Native(name, params, fn);
   return {
-    box: N('box', ['w=1', 'h=None', 'd=None', 'round=0'], (a) => {
+    box: N('box', ['w=1', 'h=None', 'd=None', 'round=0', 'bevel=0'], (a) => {
       const w = positive(a.w, 'w');
       const size3 = [w, a.h === null ? w : positive(a.h, 'h'), a.d === null ? w : positive(a.d, 'd')];
       const r = Math.min(num(a.round, 'round'), Math.min(...size3) / 2);
+      const bevel = num(a.bevel, 'bevel');
+      if (bevel < 0) throw new ScriptError('box(): bevel não pode ser negativo', null);
+      // chanfro: as arestas viram faces planas a 45° (placas de armadura, móveis, peças de máquina)
+      if (bevel > 0) return new Shape('cbox', { size: size3, c: Math.min(bevel, Math.min(...size3) / 2), r });
       return new Shape('box', { size: size3, r });
     }),
     cube: N('cube', ['size=1', 'round=0'], (a) => {
@@ -690,7 +765,33 @@ export function shapeBuiltins(scene) {
       if (t >= r) throw new ScriptError('tube(): thickness deve ser menor que r', null);
       return subtract(new Shape('cylinder', { r, h, round: 0 }), [new Shape('cylinder', { r: r - t, h: h + 0.02, round: 0 })]);
     }),
-    segment: N('segment', ['a', 'b', 'r=0.05'], (a) => segmentShape(vec3(a.a, 'a'), vec3(a.b, 'b'), positive(a.r, 'r'))),
+    segment: N('segment', ['a', 'b', 'r=0.05', 'r2=None'], (a) => {
+      const p0 = vec3(a.a, 'a'), p1 = vec3(a.b, 'b'), r = positive(a.r, 'r');
+      if (a.r2 === null) return segmentShape(p0, p1, r);
+      return roundCone(p0, p1, r, positive(a.r2, 'r2'));
+    }),
+    // corrente de segmentos que afinam, por uma lista de pontos: caudas, pernas, pescoços, orelhas.
+    // r: um raio, (início, fim) ou um raio por ponto. curve: subdivisões suaves (Catmull-Rom) por trecho
+    chain: N('chain', ['points', 'r=0.05', 'smooth=0', 'curve=0'], (a) => {
+      if (!Array.isArray(a.points) || a.points.length < 2 || a.points.length > 64) throw new ScriptError('chain(): points deve ser uma lista de 2 a 64 pontos (x, y, z)', null);
+      const pts = a.points.map((q, i) => vec3(q, `points[${i}]`));
+      const n = pts.length;
+      let radii;
+      if (Array.isArray(a.r) && a.r.length === n && n !== 2) radii = a.r.map((v) => positive(v, 'r'));
+      else if (Array.isArray(a.r) && a.r.length === 2) {
+        const [r0, r1] = a.r.map((v) => positive(v, 'r'));
+        radii = pts.map((_, i) => r0 + ((r1 - r0) * i) / (n - 1));
+      } else if (Array.isArray(a.r)) throw new ScriptError('chain(): r deve ser um número, (início, fim) ou um raio por ponto', null);
+      else radii = pts.map(() => positive(a.r, 'r'));
+      const sub = num(a.curve, 'curve');
+      if (!Number.isInteger(sub) || sub < 0 || sub > 8) throw new ScriptError('chain(): curve deve ser um inteiro de 0 a 8', null, 'curve=3 arredonda a curva entre os pontos');
+      const [P, R] = sub ? catmull(pts, radii, sub + 1) : [pts, radii];
+      const segs = [];
+      for (let i = 0; i + 1 < P.length; i++) segs.push(roundCone(P[i], P[i + 1], R[i], R[i + 1]));
+      return union(segs, num(a.smooth, 'smooth'));
+    }),
+    // junta formas com um acabamento só na linha de contato (o resto fica intacto)
+    merge: N('merge', ['*shapes', 'r=0.03', 'profile="round"', 'colors="sharp"', 'seam=None', 'seam_width=None'], (a) => mergeShapes(flatten(a.shapes, 'merge()'), a)),
     group: N('group', ['*shapes', 'smooth=0'], (a) => {
       const list = flatten(a.shapes, 'group()');
       if (!list.length) throw new ScriptError('group() vazio', null);
@@ -721,6 +822,14 @@ export function shapeBuiltins(scene) {
     }),
     sky: N('sky', ['color'], (a) => { scene.sky = parseColor(a.color); return null; }),
     fog: N('fog', ['density=0.02'], (a) => { scene.fog = num(a.density, 'fog'); return null; }),
+    // luzes de estúdio além do sol: rim = contorno (luz de recorte nas bordas), fill = preenchimento
+    // vindo do lado da câmera (sem sombra), ao = força da oclusão de ambiente (1 = padrão)
+    light: N('light', ['rim=0.6', 'fill=0.4', 'ao=1', 'rim_color=None'], (a) => {
+      const v = ['rim', 'fill', 'ao'].map((k) => num(a[k], k));
+      if (v.some((x) => x < 0 || x > 4)) throw new ScriptError('light(): rim, fill e ao vão de 0 a 4', null);
+      scene.light = { rim: v[0], fill: v[1], ao: v[2], rimColor: a.rim_color === null ? [1, 1, 1] : parseColor(a.rim_color) };
+      return null;
+    }),
   };
 }
 

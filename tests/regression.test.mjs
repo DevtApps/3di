@@ -552,3 +552,87 @@ test('direct meshing: primitives are tessellated exactly (no grid), and grass ke
   assert.equal(sampled.stats.partReports[0].method, 'amostragem');
   assert.ok(direct.glb.byteLength < sampled.glb.byteLength, 'a malha direta da grama é menor que a amostrada');
 });
+
+test('characters: tapered segments, chains, paint regions and low poly facets', async () => {
+  // segment com r2 e chain: distância exata nas pontas, raios interpolados
+  const seg = runScript('show(segment((0, 0, 0), (0, 1, 0), r=0.2, r2=0.05))').scene.shapes[0];
+  const { dist: ds } = buildSceneFns(seg);
+  assert.ok(Math.abs(ds(0, -0.2, 0)) < 1e-9, 'base com raio r');
+  assert.ok(Math.abs(ds(0, 1.05, 0)) < 1e-9, 'ponta com raio r2');
+  assert.ok(ds(0.1, 0.5, 0) < 0 && ds(0.1, 0.95, 0) > 0, 'afina ao longo do eixo');
+  const ch = runScript('show(chain([(0, 0, 0), (0.5, 0.5, 0), (1, 0.5, 0)], r=(0.1, 0.02), curve=3))').scene.shapes[0];
+  assert.ok(Math.abs(buildSceneFns(ch).dist(0, -0.1, 0)) < 1e-6, 'a corrente passa pelo primeiro ponto');
+  assert.ok(Math.abs(ch.bbox.max[0] - 1.02) < 1e-6, 'e termina no último, com o raio final');
+  assert.equal(runScript('show(chain([(0, 0, 0)]))').ok, false, 'chain precisa de 2 pontos');
+
+  // paint: muda a cor dentro da região, não a geometria
+  const code = 'show(sphere(1).color("red").paint(sphere(0.5).at(0, 0, 1).color("white"), blend=0.01).facets(0.2, 0.1))';
+  const sh = runScript(code).scene.shapes[0];
+  const { dist, mat } = buildSceneFns(sh);
+  assert.ok(Math.abs(dist(0, 0, 1)) < 1e-9 && Math.abs(dist(0, 1, 0)) < 1e-9, 'a região não altera a superfície');
+  const front = surfaceColor(mat(0, 0, 1)), top = surfaceColor(mat(0, 1, 0));
+  assert.ok(front[1] > 0.8 && top[1] < 0.1, `branco na região, vermelho fora (${front} / ${top})`);
+  assert.deepEqual(mat(0, 1, 0).facet, { size: 0.2, vary: 0.1 });
+
+  // shader: facetas chegam ao material e a região de paint vira código
+  const { glsl } = compileScene(runScript(code).scene);
+  assert.match(glsl, /, 160\.2\);/, 'faceta codificada (tamanho + 16 * variação %)');
+  assert.match(glsl, /smoothstep\(/);
+
+  // GLB: peça facetada sai com faces chapadas (vértices não compartilhados, normal da face)
+  const { glb, stats } = await exportGLB(runScript(code).scene, { res: 48 });
+  const [rep] = stats.partReports;
+  assert.equal(rep.method, 'facetas');
+  assert.equal(rep.status, 'ok');
+  assert.ok(rep.triangles < 2000, `low poly: poucos triângulos (${rep.triangles})`);
+  assert.ok(glb.byteLength > 0);
+});
+
+test('hard-surface tools: bevel, paint relief, coat and light()', async () => {
+  const code = `placa = box(0.6, 0.4, 0.3, bevel=0.05).color("#2f7fd6").material(coat=0.8)
+placa = placa.paint(box(0.7, 0.03, 0.5).color("#222"), relief=-0.008, blend=0.004)
+placa = placa.paint(box(0.12, 0.08, 0.5).at(0, 0.1, 0).color("red"), relief=0.012, blend=0.004)
+show(placa)
+light(rim=0.5, fill=0.3)`;
+  const run = runScript(code);
+  assert.equal(run.ok, true);
+  assert.deepEqual(run.scene.light, { rim: 0.5, fill: 0.3, ao: 1, rimColor: [1, 1, 1] });
+  const { dist, mat } = buildSceneFns(run.scene.shapes[0]);
+  assert.ok(Math.abs(dist(0, -0.1, 0.15)) < 1e-6, 'face plana intacta');
+  // a superfície (zero do campo) ao longo de z: o relevo muda onde ela fica, não só a cor
+  const surfZ = (y) => { let lo = 0, hi = 0.3; for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (dist(0, y, m) > 0) hi = m; else lo = m; } return lo; };
+  assert.ok(Math.abs(surfZ(0) - (0.15 - 0.008)) < 1e-4, `vinco afundado 8 mm (${surfZ(0)})`);
+  assert.ok(Math.abs(surfZ(0.1) - (0.15 + 0.012)) < 1e-4, `placa levantada 12 mm (${surfZ(0.1)})`);
+  assert.ok(run.scene.shapes[0].bbox.max[2] >= 0.15 + 0.012, 'a caixa envolvente inclui o relevo (senão a malha é cortada)');
+  assert.ok(Math.abs(dist(0.3, 0.2, 0) - 0.05 / Math.SQRT2) < 1e-6, 'aresta chanfrada');
+  assert.equal(mat(0, -0.1, 0.15).coat, 0.8);
+  const { glsl } = compileScene(run.scene);
+  assert.match(glsl, /sdCBox\(/);
+  assert.match(glsl, /, 8192\.0\);|, 8192\);/, 'verniz codificado (1024 * décimos)');
+  assert.equal(runScript('show(box(1).paint(sphere(0.2), relief=0.5))').ok, false, 'relevo limitado');
+});
+
+test('merge(): round fillet, chamfer and groove only at the contact line, with sharp or blended colors', () => {
+  const shapes = 'box(1).color("red"), box(0.4, 1, 0.4).at(0, 0.9, 0).color("blue")';
+  const at = (profile, extra = '') => {
+    const r = runScript(`show(merge(${shapes}, r=0.1, profile="${profile}"${extra}))`);
+    assert.equal(r.ok, true, profile);
+    return buildSceneFns(r.scene.shapes[0]);
+  };
+  const corner = [0.24, 0.54, 0]; // no canto entre o topo da caixa e a coluna
+  const far = [0.45, 0.5, 0.45];  // topo da caixa longe da coluna
+  const round = at('round'), chamfer = at('chamfer'), groove = at('groove');
+  const plain = Math.min(0.04, 0.04);
+  assert.ok(round.dist(...corner) < plain - 0.01, 'filete preenche o canto');
+  assert.ok(chamfer.dist(...corner) < 0, 'chanfro preenche até a diagonal');
+  assert.ok(groove.dist(...corner) > plain - 1e-9, 'sulco não preenche');
+  assert.ok(groove.dist(0.2, 0.5, 0) > 0.02, 'sulco afunda a linha de contato');
+  for (const f of [round, chamfer, groove]) assert.ok(Math.abs(f.dist(...far)) < 1e-9, 'longe da junção a forma é intacta');
+  // cores: sharp mantém cada cor até o contato; seam pinta a emenda
+  const top = surfaceColor(round.mat(0.3, 0.5, 0.3)), col = surfaceColor(round.mat(0, 1.4, 0.2));
+  assert.ok(top[0] > 0.5 && col[2] > 0.5, 'vermelho e azul preservados');
+  const seam = at('round', ', seam="black", seam_width=0.05');
+  assert.ok(surfaceColor(seam.mat(0.215, 0.515, 0))[0] < 0.2, 'emenda pintada na junção');
+  assert.equal(runScript(`show(merge(${shapes}, profile="wavy"))`).ok, false);
+  assert.match(compileScene(runScript(`show(merge(${shapes}, r=0.05))`).scene).glsl, /mMerge\(/);
+});

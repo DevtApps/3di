@@ -5,7 +5,7 @@
 //    no navegador ou no app desktop (veja ideserver.mjs). Se a porta já tiver outro servidor
 //    3DI (outra instância ou o app), os comandos são repassados para ele.
 // Uso: node tools/mcp.mjs [--port 8327]
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { resolve, dirname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runScript } from '../src/interp.js';
@@ -17,7 +17,7 @@ import { languageSummary } from '../src/langinfo.js';
 import { collectBones } from '../src/rig.js';
 import { ScriptError } from '../src/parser.js';
 import { startIdeServer } from './ideserver.mjs';
-import { documentationResources, readDocumentation } from './documentation.mjs';
+import { documentationResources, readDocumentation, DOC_TOPICS } from './documentation.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argPort = process.argv.indexOf('--port');
@@ -69,9 +69,9 @@ function text(t, isError = false) {
 const TOOLS = [
   {
     name: 'get_documentation',
-    description: 'Documentação e boas práticas do 3DI. Funciona sem editor aberto. Tópicos: language, best-practices, examples e skill.',
-    inputSchema: { type: 'object', properties: { topic: { type: 'string', enum: ['language', 'best-practices', 'examples', 'skill'] } }, required: ['topic'] },
-    run: async ({ topic }) => text((await readDocumentation(topic)).text),
+    description: 'Documentação do 3DI em rotas por tema (funciona sem editor). Comece por "inicio", que diz qual rota ler para cada tarefa. Rotas: ' + DOC_TOPICS.join(', ') + '.',
+    inputSchema: { type: 'object', properties: { topic: { type: 'string', enum: DOC_TOPICS, default: 'inicio' } } },
+    run: async ({ topic = 'inicio' }) => text((await readDocumentation(topic)).text),
   },
   {
     name: 'describe_language',
@@ -136,6 +136,29 @@ const TOOLS = [
     },
   },
   {
+    name: 'set_reference',
+    description: 'Coloca uma imagem de referência (PNG/JPEG) por cima da vista 3D do editor, para modelar copiando um desenho ou foto. path: arquivo no disco (absoluto ou relativo ao projeto). opacity 0..1, scale (1 = encaixada na vista), x/y = deslocamento em % do tamanho da imagem, side = mostrar ao lado em vez de por cima. Sem path, só ajusta a atual. Depois use compare_reference.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, opacity: { type: 'number' }, scale: { type: 'number' }, x: { type: 'number' }, y: { type: 'number' }, side: { type: 'boolean' } } },
+    run: async ({ path, ...opts }) => {
+      let data, mime;
+      if (path) {
+        const file = isAbsolute(path) ? path : resolve(ROOT, path);
+        data = (await readFile(file)).toString('base64');
+        mime = /\.jpe?g$/i.test(file) ? 'image/jpeg' : /\.webp$/i.test(file) ? 'image/webp' : 'image/png';
+      }
+      return text(await callEditor('setReference', { ...opts, data, mime }));
+    },
+  },
+  {
+    name: 'compare_reference',
+    description: 'Imagem para comparar a cena com a referência: referência | cena (vista atual) | sobreposição a 50%. Ajuste câmera (set_camera) e escala/deslocamento (set_reference) até a silhueta bater, depois corrija proporções e cores.',
+    inputSchema: { type: 'object', properties: {} },
+    run: async () => {
+      const r = await callEditor('compareReference');
+      return { content: [{ type: 'image', data: r.png, mimeType: 'image/png' }, { type: 'text', text: r.info }] };
+    },
+  },
+  {
     name: 'set_camera',
     description: 'Posiciona a câmera do editor: pos (x, y, z) olhando para look (padrão: centro da cena), com fov em graus.',
     inputSchema: { type: 'object', properties: { pos: vec3, look: vec3, fov: { type: 'number' } }, required: ['pos'] },
@@ -196,8 +219,8 @@ async function handle(msg) {
         protocolVersion: SUPPORTED.includes(params?.protocolVersion) ? params.protocolVersion : SUPPORTED[0],
         capabilities: { tools: {}, resources: {} },
         serverInfo: { name: '3di', version: '0.3.0' },
-        instructions: 'Ferramentas para criar e conferir cenas 3D na linguagem 3DI. Comece consultando os recursos 3di://docs/language e 3di://docs/best-practices ou get_documentation. describe_language fornece um resumo. ' +
-          `Valide com check_script; para ver o resultado, a IDE precisa estar aberta (app 3DI ou ${URL_IDE}): set_script, screenshot, frame.`,
+        instructions: '3DI: linguagem (subconjunto de Python) de cenas 3D feitas só com funções genéricas (formas, combinações, merge, deformações, paint, facets); objetos específicos são funções def do próprio script. Leia get_documentation(topic="inicio") primeiro: ela indica a rota de cada tarefa (fundamentos, formas, combinar, materiais, organico, hard-surface, cenarios, exportar, referencia-visual, revisao...). describe_language lista todas as assinaturas. Fluxo: get_script antes de editar, check_script para validar, set_script para aplicar, screenshot(view="grid") para ver, check_glb antes de entregar um GLB. ' +
+          `O preview exige a IDE aberta (app 3DI ou ${URL_IDE}).`,
       });
     case 'ping': return reply({});
     case 'resources/list': return reply({ resources: documentationResources });
