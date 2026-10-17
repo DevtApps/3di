@@ -321,8 +321,17 @@ O botão **Conferir GLB** (ou a ferramenta MCP `check_glb`) exporta a cena e abr
 (three.js) no mesmo ângulo do shader: **Dividido** compara a forma exata com a malha exportada; **Triângulos**
 mostra a densidade (faces planas têm poucos, curvas têm mais) e **Normais** o sombreamento. O relatório lista,
 por peça, os triângulos, o **desvio** da malha em relação à forma (em mm, contra o tamanho da célula) e o
-**volume** (quanto da forma virou malha). Volume bem abaixo de 100% é geometria perdida: partes mais finas que
-a célula (grama, fios) somem na conversão; suba o detalhe ou modele-as mais grossas para o GLB.
+**volume** (quanto da forma virou malha).
+
+Há duas rotas de conversão, escolhidas por peça:
+- **direta**: peças feitas de primitivas (caixa, esfera, cone, pirâmide, cilindro, cápsula, toro, prisma,
+  `polygon`/`star`/`wedge`/`extrude`, `lathe`, inclusive com `round`) posicionadas, unidas, repetidas
+  (`repeat`, `mirror`, `polar`) e recortadas viram triângulos direto da primitiva: exatos, nada se perde
+  (pontas e lâminas finas como as da grama incluídas). É o padrão.
+- **grade**: subtrações, uniões suaves, deformações (`bend`, `taper`...), `displace`, fórmulas (`implicit`)
+  e o chão são amostrados numa grade. Partes mais finas que a célula podem sumir; o relatório mede isso.
+
+Isso não depende do formato: OBJ ou FBX teriam a mesma diferença, porque ela vem da conversão, não do arquivo.
 
 ## Exportar glTF / GLB
 

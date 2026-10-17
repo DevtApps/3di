@@ -8,6 +8,7 @@ import { Shape, isFiniteBB, mulMV, mul3, size, unionBB } from './shapes.js';
 import { resolveRig, collectBones } from './rig.js';
 import { buildSceneFns, surfaceColor, texHeight } from './sdf.js';
 import { meshSDF } from './mesh.js';
+import { nativeMesh } from './nativemesh.js';
 import { inv3 } from './compiler.js';
 import { val0 } from './expr.js';
 import { GltfBuilder, GL, mat4FromAffine, mat4Mul, mat4Translate, mat4Invert, eulerToQuat } from './gltf.js';
@@ -198,11 +199,11 @@ function splitParts(shapes) {
 }
 
 // Contexto compartilhado por todas as peças (precisa ser igual em qualquer worker).
-function sceneContext(parts, res) {
+function sceneContext(parts, res, method = 'auto') {
   const finite = parts.filter((p) => isFiniteBB(p.shape.bbox)).map((p) => p.shape.bbox);
   const sceneBB = finite.length ? unionBB(finite) : { min: [-1, 0, -1], max: [1, 1, 1] };
   const sceneMax = Math.max(...size(sceneBB), 0.01);
-  return { res, sceneBB, sceneMax };
+  return { res, sceneBB, sceneMax, method };
 }
 
 /**
@@ -210,7 +211,7 @@ function sceneContext(parts, res) {
  * Devolve { name, kind, materialProps, chunks: [{ positions, normals, colors | uv, png, normalPng }], triangles, vertices }
  * ou { name, empty: true } se a peça não tem superfície.
  */
-export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
+export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'auto' }) {
   let bb = p.shape.bbox;
   const infinite = !isFiniteBB(bb);
   if (infinite) {
@@ -253,7 +254,18 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
   // por triângulo); sem textura, a simplificação fica livre
   const texSize = smallestTexture(p.shape);
   const simplify = { tolerance: Math.min(...cell) * 0.35, maxEdge: Number.isFinite(texSize) ? texSize * 0.5 : Infinity };
-  let mesh = meshSDF(dist, bb, { cell, colorAt, simplify });
+  // Malha direta quando a peça é feita só de primitivas posicionadas/repetidas: triângulos exatos, sem
+  // perder o que é mais fino que a célula. Senão (subtrações, fórmulas, deformações...), amostragem.
+  let mesh = null, how = 'amostragem';
+  if (method !== 'sample' && !infinite) {
+    mesh = nativeMesh(p.shape, { seg: Math.max(12, Math.min(64, Math.round(res / 4))) });
+    if (mesh) {
+      how = 'direta';
+      mesh.colors = new Float32Array(mesh.positions.length);
+      for (let v = 0; v < mesh.positions.length; v += 3) mesh.colors.set(colorAt(mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]), v);
+    }
+  }
+  if (!mesh) mesh = meshSDF(dist, bb, { cell, colorAt, simplify });
   // peças finas espalhadas numa parte grande (postes...) passam entre os pontos da grade:
   // tenta de novo com voxel menor
   for (let tries = 0; !mesh && tries < 3; tries++) {
@@ -263,7 +275,11 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax }) {
   }
   const name = p.name ?? `parte${pi}`;
   if (!mesh) return { name, empty: true };
-  const quality = meshQuality(mesh, dist, cell, dims, infinite ? null : bb);
+  // A malha direta é exata por construção (curvas aproximadas por seg segmentos) e as primitivas se
+  // sobrepõem, o que tornaria desvio e volume enganosos: só a amostragem é medida.
+  const quality = how === 'direta'
+    ? { maxError: 0, meanError: 0, faceError: 0, cell: Math.min(...cell), size: partMax, volumeRatio: null, status: 'ok', reason: null, method: how }
+    : { ...meshQuality(mesh, dist, cell, dims, infinite ? null : bb), method: how };
 
   // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0 ou no atlas)
   const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
@@ -361,19 +377,20 @@ export function geometryTransfer(geom) {
  * Os workers rodam o mesmo script (determinístico, inclusive com seed), então a lista de peças e o
  * contexto da cena são idênticos aos do processo principal.
  */
-export function partSession(scene, res) {
+export function partSession(scene, res, method = 'auto') {
   const parts = splitParts(scene.shapes);
-  const ctx = sceneContext(parts, res);
+  const ctx = sceneContext(parts, res, method);
   return { count: parts.length, build: (i) => partGeometry(parts[i], i, ctx) };
 }
 
 /**
  * Exporta a cena (resultado de runScript) para GLB.
  * opts.res: células na maior dimensão de cada peça (padrão 128).
+ * opts.method: 'auto' (malha direta das primitivas quando der, senão amostragem) ou 'sample' (sempre amostragem).
  * opts.runParts(n, onDone): opcional; malha as n peças em paralelo (workers) e devolve as geometrias em ordem.
  * Devolve { glb: Uint8Array, stats }.
  */
-export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null } = {}) {
+export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto' } = {}) {
   if (!Number.isInteger(res) || res < 1 || res > 2048) throw new Error('res deve ser um inteiro entre 1 e 2048');
   const { duration = 4, fps = 30 } = scene.anim ?? {};
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
@@ -381,8 +398,9 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
   }
   const t0 = Date.now();
   const warnings = [];
+  if (method !== 'auto' && method !== 'sample') throw new Error("method deve ser 'auto' ou 'sample'");
   const parts = splitParts(scene.shapes);
-  const ctx = sceneContext(parts, res);
+  const ctx = sceneContext(parts, res, method);
 
   if (parts.some((p) => p.kind === 'static' && p.shape.animated)) {
     warnings.push('partes animadas com time fora de ossos foram exportadas paradas (t = 0)');

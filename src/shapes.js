@@ -677,7 +677,7 @@ export function shapeBuiltins(scene) {
       if (pts.length > 128) throw new ScriptError('lathe(): perfil com pontos demais depois de suavizar', null, 'use menos pontos ou um smooth menor');
       const b = boundsOf(prof);
       if (!(b.maxX > 0)) throw new ScriptError('lathe(): o perfil precisa ter algum raio maior que zero', null);
-      return new Shape('lathe', { pts, rmax: b.maxX, y0: b.minY, y1: b.maxY }, []);
+      return new Shape('lathe', { pts, profile: prof, rmax: b.maxX, y0: b.minY, y1: b.maxY }, []);
     }),
     // ---- formas compostas ----
     hemisphere: N('hemisphere', ['r=0.5'], (a) => {

@@ -177,7 +177,7 @@ export function createGlbPreview({ getView, getSun = () => [0.6, 1, 0.4], getTim
     const rows = reps.map((r, i) => {
       if (r.empty) return `<tr><td><span class="dot empty"></span>${esc(r.name)}</td><td colspan="4" class="muted">sem superfície</td></tr>`;
       const idx = reps.slice(0, i).filter((x) => !x.empty).length;
-      return `<tr class="part" data-i="${idx}" title="Clique para isolar esta peça"><td><span class="dot ${r.status}"></span>${esc(r.name)}</td><td>${r.triangles.toLocaleString('pt-BR')}</td><td>${mm(Math.max(r.maxError, r.faceError))}</td><td>${mm(r.cell)}</td><td${r.reason === 'volume' ? ' style="color:var(--error)"' : ''}>${r.volumeRatio === null || r.volumeRatio === undefined ? '—' : `${Math.round(r.volumeRatio * 100)}%`}</td></tr>`;
+      return `<tr class="part" data-i="${idx}" title="Clique para isolar esta peça"><td><span class="dot ${r.status}"></span>${esc(r.name)}</td><td title="${r.method === 'direta' ? 'triângulos gerados direto das primitivas: exatos' : 'forma amostrada numa grade (célula de ' + mm(r.cell) + ' mm)'}">${r.method === 'direta' ? 'direta' : 'grade'}</td><td>${r.triangles.toLocaleString('pt-BR')}</td><td>${r.method === 'direta' ? 'exata' : mm(Math.max(r.maxError, r.faceError))}</td><td${r.reason === 'volume' ? ' style="color:var(--error)"' : ''}>${r.volumeRatio === null || r.volumeRatio === undefined ? '—' : `${Math.round(r.volumeRatio * 100)}%`}</td></tr>`;
     }).join('');
     side.innerHTML = `
       <h3>Resultado</h3>
@@ -186,10 +186,10 @@ export function createGlbPreview({ getView, getSun = () => [0.6, 1, 0.4], getTim
       <div>${s.parts} peças · ${s.triangles.toLocaleString('pt-BR')} triângulos · ${s.vertices.toLocaleString('pt-BR')} vértices<br>${MB(s.bytes)} · exportado em ${(s.ms / 1000).toFixed(1)} s${s.bones ? ` · ${s.bones} ossos` : ''}${s.animated ? ' · animado' : ''}<br>
         <span class="muted">pior desvio: ${mm(worstErr)} mm</span></div>
       ${(s.warnings ?? []).length ? `<h3>Avisos</h3>${s.warnings.map((w) => `<div>⚠ ${esc(w)}</div>`).join('')}` : ''}
-      <h3>Peças <span class="muted" style="text-transform:none;letter-spacing:0">(desvio e célula em mm; volume = quanto da forma virou malha)</span></h3>
-      <table><tr><th>peça</th><th>triâng.</th><th>desvio</th><th>célula</th><th>volume</th></tr>${rows}</table>
+      <h3>Peças <span class="muted" style="text-transform:none;letter-spacing:0">(desvio em mm; volume = quanto da forma virou malha)</span></h3>
+      <table><tr><th>peça</th><th>via</th><th>triâng.</th><th>desvio</th><th>volume</th></tr>${rows}</table>
       <h3>Como ler</h3>
-      <div class="muted">Desvio: quanto a malha se afasta da forma exata, medido nos vértices e no centro dos triângulos. A célula é o tamanho do voxel da conversão; o método garante desvio abaixo de ~0,6 célula. O volume compara a malha com a forma (amostragem aleatória): bem abaixo de 100% é geometria perdida, o que o desvio sozinho não mostra. "Triângulos" mostra a densidade (faces planas têm poucos, curvas têm mais) e "Normais" mostra o sombreamento: quinas devem ter cor chapada de cada lado.</div>`;
+      <div class="muted">Via: "direta" = triângulos gerados direto das primitivas (exatos, nada se perde); "grade" = a forma foi amostrada numa grade, usado quando há subtrações, deformações, fórmulas ou ruído. Desvio: quanto a malha se afasta da forma exata, medido nos vértices e no centro dos triângulos. A célula é o tamanho do voxel da conversão; o método garante desvio abaixo de ~0,6 célula. O volume compara a malha com a forma (amostragem aleatória): bem abaixo de 100% é geometria perdida, o que o desvio sozinho não mostra. "Triângulos" mostra a densidade (faces planas têm poucos, curvas têm mais) e "Normais" mostra o sombreamento: quinas devem ter cor chapada de cada lado.</div>`;
     side.querySelectorAll('tr.part').forEach((tr) => tr.addEventListener('click', () => {
       const i = Number(tr.dataset.i);
       st.isolated = st.isolated === i ? -1 : i;
@@ -220,7 +220,8 @@ export function createGlbPreview({ getView, getSun = () => [0.6, 1, 0.4], getTim
       st.job = job;
       const { glb, stats } = await job.promise;
       if (token !== st.token) return;
-      st.glb = glb; st.stats = stats;
+      // tempo total (a malha das peças roda antes, em outros workers; stats.ms só conta a montagem)
+      st.glb = glb; st.stats = { ...stats, ms: performance.now() - t0 };
       busyText.textContent = 'Carregando a malha…';
       const gltf = await new Promise((resolve, reject) => new st.T.GLTFLoader().parse(glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength), '', resolve, reject));
       if (token !== st.token) return;
@@ -305,7 +306,7 @@ export function createGlbPreview({ getView, getSun = () => [0.6, 1, 0.4], getTim
       if (st.error) return st.error;
       if (!s) return 'sem exportação ainda';
       const lines = [`${s.parts} peças · ${s.triangles} triângulos · ${MB(s.bytes)} · ${(s.ms / 1000).toFixed(1)} s · detalhe ${st.res}`];
-      for (const r of s.partReports ?? []) lines.push(r.empty ? `  ${r.name}: sem superfície` : `  ${r.name}: ${r.triangles} triângulos, desvio ${mm(Math.max(r.maxError, r.faceError))} mm (célula ${mm(r.cell)} mm)${r.volumeRatio == null ? '' : `, volume ${Math.round(r.volumeRatio * 100)}%`} — ${r.status}${r.reason === 'volume' ? ' (faltou geometria: partes finas demais para este detalhe)' : ''}`);
+      for (const r of s.partReports ?? []) lines.push(r.empty ? `  ${r.name}: sem superfície` : r.method === 'direta' ? `  ${r.name}: ${r.triangles} triângulos, malha direta (exata)` : `  ${r.name}: ${r.triangles} triângulos, amostrada, desvio ${mm(Math.max(r.maxError, r.faceError))} mm (célula ${mm(r.cell)} mm)${r.volumeRatio == null ? '' : `, volume ${Math.round(r.volumeRatio * 100)}%`} — ${r.status}${r.reason === 'volume' ? ' (faltou geometria: partes finas demais para este detalhe)' : ''}`);
       for (const w of s.warnings ?? []) lines.push(`aviso: ${w}`);
       return lines.join('\n');
     },
