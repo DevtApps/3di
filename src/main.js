@@ -133,13 +133,26 @@ function setAnimated(on) {
   anim.on = on;
 }
 
+// Resolução durante a interação (girar, mover, zoom): se o quadro demora, desce até 22% da
+// tela; se sobra tempo, sobe até 75%. Ao soltar, volta à resolução cheia.
+let interactScale = 0.5, lastInteractFrame = 0;
+function adaptInteractScale(now) {
+  const dt = lastInteractFrame ? now - lastInteractFrame : 0;
+  lastInteractFrame = now;
+  if (dt <= 0 || dt > 250) return;
+  if (dt > 38) interactScale = Math.max(0.22, interactScale * 0.85);
+  else if (dt < 20) interactScale = Math.min(0.75, interactScale * 1.06);
+}
+
 function requestRender() {
   if (anim.on && anim.playing) return;
   if (pending) return;
   pending = true;
-  requestAnimationFrame(() => {
+  requestAnimationFrame((now) => {
     pending = false;
-    draw(interacting ? 0.5 : 1);
+    if (interacting) adaptInteractScale(now);
+    else lastInteractFrame = 0;
+    draw(interacting ? interactScale : 1);
   });
 }
 
@@ -160,6 +173,8 @@ function draw(scale, opts = {}) {
     sky: sc?.sky ?? [0.3, 0.5, 0.82],
     time: opts.time ?? anim.time,
     size: opts.size,
+    // raios de sombra mais curtos enquanto a câmera se move
+    shadowSteps: interacting && !opts.size ? 28 : 80,
   }, scale);
 }
 
@@ -481,6 +496,8 @@ window.tdi = {
   // pausa a animação num instante (s) e desenha
   at(t) { anim.playing = false; anim.time = t; draw(1); },
   status: () => status.textContent,
+  // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
+  interactScale: () => interactScale,
   // grade 2x2 com frente, lado, topo e perspectiva (PNG em data URL); t fixa o instante da animação
   async views({ size = 512, t } = {}) { return (await renderViews({ size, time: t ?? anim.time })).toDataURL('image/png'); },
   // tempo médio de um quadro em resolução cheia (ms)

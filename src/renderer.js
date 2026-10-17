@@ -14,7 +14,7 @@ uniform vec2 uRes;
 uniform vec3 uRo, uTa;
 uniform float uFov, uFog, uMaxDist, uTime;
 uniform vec3 uSun, uSunCol, uSky;
-uniform int uZero;
+uniform int uZero, uShadowSteps;
 out vec4 outColor;
 ${sceneGlsl}
 
@@ -102,7 +102,7 @@ void main() {
     } else if (state == S_SHADOW) {
       sh = min(sh, 12.0 * d / st);
       st += clamp(d, 0.004, 0.25);
-      if (sh < 0.002 || st > uMaxDist * 0.5 || ++steps >= 80) { state = S_AO; k = 0; }
+      if (sh < 0.002 || st > uMaxDist * 0.5 || ++steps >= uShadowSteps) { state = S_AO; k = 0; }
     } else {
       occ += (0.01 + 0.04 * float(k) - d) * sca;
       sca *= 0.8;
@@ -207,7 +207,7 @@ export class Renderer {
     this.program = prog;
     this.glsl = glsl;
     this.loc = {};
-    for (const u of ['uRes', 'uRo', 'uTa', 'uFov', 'uFog', 'uMaxDist', 'uSun', 'uSunCol', 'uSky', 'uTime', 'uZero']) {
+    for (const u of ['uRes', 'uRo', 'uTa', 'uFov', 'uFog', 'uMaxDist', 'uSun', 'uSunCol', 'uSky', 'uTime', 'uZero', 'uShadowSteps']) {
       this.loc[u] = gl.getUniformLocation(prog, u);
     }
     gl.useProgram(prog);
@@ -259,6 +259,7 @@ export class Renderer {
     gl.uniform3fv(L.uSky, view.sky);
     gl.uniform1f(L.uTime, view.time ?? 0);
     gl.uniform1i(L.uZero, 0);
+    gl.uniform1i(L.uShadowSteps, view.shadowSteps ?? 80);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
