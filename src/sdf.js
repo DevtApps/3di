@@ -309,7 +309,9 @@ export function buildMat(s, t = 0, mat = {}) {
     const merged = { ...mat };
     for (const k of Object.keys(DEFAULT)) if (P[k] !== null && P[k] !== undefined) merged[k] = P[k];
     const c = buildMat(s.children[0], t, merged);
-    return P.tex ? (x, y, z) => c(x, y, z, [x, y, z]) : c;
+    // Match compiler.js: texture coordinates are fixed at the node where the
+    // material is applied, then transformed by child transforms as needed.
+    return P.tex ? (x, y, z, tp) => c(x, y, z, tp ?? [x, y, z]) : c;
   }
   const kids = s.children.map((c) => buildMat(c, t, mat));
   const pm = pointMap(s, t);
@@ -319,7 +321,7 @@ export function buildMat(s, t = 0, mat = {}) {
     const c = kids[0];
     return (x, y, z, tp) => {
       const q = map(x, y, z);
-      const r = c(q[0], q[1], q[2], tp);
+      const r = c(q[0], q[1], q[2], tp ?? q);
       return k === 1 ? r : withD(r, r.d * k);
     };
   }
@@ -441,7 +443,16 @@ function buildTree(items) {
  */
 export function buildSceneFns(shape) {
   const { instances, residual } = splitScene([shape]);
-  if (instances.length < 16) return { dist: buildDist(shape), mat: buildMat(shape) };
+  if (instances.length < 16) {
+    const mat = buildMat(shape);
+    return {
+      dist: buildDist(shape),
+      // Primitive scenes use the direct evaluator. Pass the surface position
+      // as the default texture frame, as the GLSL compiler does for a top-level
+      // .texture() node.
+      mat: (x, y, z) => mat(x, y, z, [x, y, z]),
+    };
+  }
   const inst = instances.map(makeInstance);
   const root = buildTree(inst);
   const resD = residual.map((r) => buildDist(r));

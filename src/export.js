@@ -1,5 +1,5 @@
 // Exportação da cena para glTF binário (.glb).
-// - Cada forma mostrada vira uma malha (SDF -> surface nets), com cor por vértice.
+// - Cada forma mostrada vira uma malha (SDF -> surface nets); texturas procedurais são assadas em PNG.
 // - Partes presas a ossos (.bind) viram malhas com skin (peso 1 no osso) na pose de repouso;
 //   o esqueleto vira a hierarquia de juntas e as rotações/movimentos com `time` viram
 //   uma animação amostrada (duration/fps de animation()).
@@ -11,6 +11,78 @@ import { meshSDF } from './mesh.js';
 import { inv3 } from './compiler.js';
 import { val0 } from './expr.js';
 import { GltfBuilder, GL, mat4FromAffine, mat4Mul, mat4Translate, mat4Invert, eulerToQuat } from './gltf.js';
+
+const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+const EXPORT_CHUNK_TRIANGLES = 8192;
+const ATLAS_TILE = 10; // 8 texels de conteúdo + 1 texel de margem em cada lado
+
+function u32be(n) { return Uint8Array.of(n >>> 24, n >>> 16, n >>> 8, n); }
+function pngChunk(type, data) {
+  const typeBytes = new TextEncoder().encode(type);
+  const body = new Uint8Array(typeBytes.length + data.length);
+  body.set(typeBytes); body.set(data, typeBytes.length);
+  let crc = 0xffffffff;
+  for (const byte of body) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  crc = (crc ^ 0xffffffff) >>> 0;
+  return [u32be(data.length), body, u32be(crc)];
+}
+
+async function encodePng(width, height, rgba) {
+  const scanlines = new Uint8Array(height * (width * 4 + 1));
+  for (let y = 0; y < height; y++) scanlines.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1);
+  if (typeof CompressionStream !== 'function') throw new Error('este ambiente não oferece compressão PNG (CompressionStream)');
+  const stream = new Blob([scanlines]).stream().pipeThrough(new CompressionStream('deflate'));
+  const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+  const chunks = [PNG_SIGNATURE, ...pngChunk('IHDR', Uint8Array.from([...u32be(width), ...u32be(height), 8, 6, 0, 0, 0])), ...pngChunk('IDAT', compressed), ...pngChunk('IEND', new Uint8Array())];
+  const png = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) { png.set(chunk, offset); offset += chunk.length; }
+  return png;
+}
+
+const linearToSrgb = (x) => {
+  const v = Math.max(0, Math.min(1, x));
+  return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+};
+
+async function bakeTextureAtlas(positions, indices, sampleColor) {
+  const triangleCount = indices.length / 3;
+  const grid = Math.ceil(Math.sqrt(triangleCount));
+  const width = 2 ** Math.ceil(Math.log2(grid * ATLAS_TILE));
+  const uv = new Float32Array(triangleCount * 6);
+  const rgba = new Uint8Array(width * width * 4);
+  const sample = (x, y, z) => sampleColor(x, y, z).map(linearToSrgb);
+  const coords = (corner, left, top) => {
+    const x0 = (left + 1.5) / width, x1 = (left + 8.5) / width;
+    // glTF tem a origem de V no topo da imagem (sem inversão): linha py = 8 é sy = 0, py = 1 é sy = 1
+    const v0 = (top + 8.5) / width, v1 = (top + 1.5) / width;
+    return corner === 0 ? [x0, v0] : corner === 1 ? [x1, v0] : [x0, v1];
+  };
+
+  for (let tri = 0; tri < triangleCount; tri++) {
+    const tileX = (tri % grid) * ATLAS_TILE, tileY = Math.floor(tri / grid) * ATLAS_TILE;
+    const points = [0, 1, 2].map((corner) => {
+      const v = indices[tri * 3 + corner] * 3;
+      return [positions[v], positions[v + 1], positions[v + 2]];
+    });
+    for (let corner = 0; corner < 3; corner++) uv.set(coords(corner, tileX, tileY), (tri * 3 + corner) * 2);
+    // Bake a private UV chart per triangle. This preserves the exact 3D
+    // procedural coordinates, including noise that changes through depth.
+    for (let py = 0; py < ATLAS_TILE; py++) for (let px = 0; px < ATLAS_TILE; px++) {
+      const sx = Math.max(-0.15, Math.min(1.15, (px - 1) / 7));
+      const sy = Math.max(-0.15, Math.min(1.15, 1 - (py - 1) / 7));
+      const weights = [1 - sx - sy, sx, sy];
+      const point = [0, 1, 2].map((axis) => points.reduce((sum, p, i) => sum + p[axis] * weights[i], 0));
+      const color = sample(...point);
+      const at = ((tileY + py) * width + tileX + px) * 4;
+      rgba[at] = color[0]; rgba[at + 1] = color[1]; rgba[at + 2] = color[2]; rgba[at + 3] = 255;
+    }
+  }
+  return { uv, png: await encodePng(width, width, rgba) };
+}
 
 const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 const isIdent = (m, t) => m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => Math.abs(v) < 1e-12);
@@ -68,7 +140,12 @@ function splitParts(shapes) {
  * opts.res: células na maior dimensão da cena (padrão 128); define o tamanho do voxel.
  * Devolve { glb: Uint8Array, stats }.
  */
-export function exportGLB(scene, { res = 128, onProgress = null } = {}) {
+export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
+  if (!Number.isInteger(res) || res < 1 || res > 2048) throw new Error('res deve ser um inteiro entre 1 e 2048');
+  const { duration = 4, fps = 30 } = scene.anim ?? {};
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
+    throw new Error('animação deve ter duration e fps positivos e no máximo 100000 amostras');
+  }
   const t0 = Date.now();
   const warnings = [];
   const parts = splitParts(scene.shapes);
@@ -89,7 +166,8 @@ export function exportGLB(scene, { res = 128, onProgress = null } = {}) {
   const skinParts = parts.filter((p) => p.kind === 'skin');
   let vertices = 0, triangles = 0;
 
-  parts.forEach((p, pi) => {
+  for (let pi = 0; pi < parts.length; pi++) {
+    const p = parts[pi];
     onProgress?.(pi, parts.length);
     let bb = p.shape.bbox;
     const infinite = !isFiniteBB(bb);
@@ -110,7 +188,16 @@ export function exportGLB(scene, { res = 128, onProgress = null } = {}) {
     const cells = () => dims.reduce((n, d, i) => n * (Math.ceil(d / cell[i]) + 5), 1);
     while (cells() > 12e6) cell = cell.map((c) => c * 1.25);
     const { dist, mat: matFn } = buildSceneFns(p.shape);
-    const colorAt = (x, y, z) => surfaceColor(matFn(x, y, z));
+    // Preserve the evaluated material at each mesh vertex. A textured SDF has
+    // a procedural color in the preview; sampling only RGB loses its material
+    // when the GLB is opened in a standard viewer. COLOR_0 is supported by
+    // glTF, so bake the procedural texture into vertex colors.
+    let textured = false;
+    const colorAt = (x, y, z) => {
+      const r = matFn(x, y, z);
+      if (r.tx) textured = true;
+      return surfaceColor(r);
+    };
     let mesh = meshSDF(dist, bb, { cell, colorAt });
     // peças finas espalhadas numa parte grande (postes...) passam entre os pontos da grade:
     // tenta de novo com voxel menor
@@ -119,41 +206,77 @@ export function exportGLB(scene, { res = 128, onProgress = null } = {}) {
       if (cells() > 12e6) break;
       mesh = meshSDF(dist, bb, { cell, colorAt });
     }
-    if (!mesh) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); return; }
+    if (!mesh) { warnings.push(`parte ${p.name ?? pi} não tem superfície`); continue; }
     const nv = mesh.positions.length / 3;
-    vertices += nv;
     triangles += mesh.indices.length / 3;
 
     // material da parte: o do primeiro vértice (a cor de cada vértice vai em COLOR_0)
     const m0 = matFn(mesh.positions[0], mesh.positions[1], mesh.positions[2]);
     const glow = Math.min(1, Math.max(0, m0.glow));
-    const material = g.add('materials', {
+    const materialProps = {
       name: p.name ?? `material${pi}`,
       pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: m0.metal, roughnessFactor: Math.max(0.03, m0.rough) },
       ...(glow > 0 ? { emissiveFactor: m0.c.map((c) => Math.min(1, c * glow * 2)) } : {}),
-    });
-
-    const attributes = {
-      POSITION: g.accessor(mesh.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
-      NORMAL: g.accessor(mesh.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-      COLOR_0: g.accessor(mesh.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
     };
-    if (p.kind === 'skin') {
-      const ji = jointIndex.get(p.bone);
-      const big = bones.length > 255;
-      const joints = big ? new Uint16Array(nv * 4) : new Uint8Array(nv * 4);
-      const weights = new Float32Array(nv * 4);
-      for (let v = 0; v < nv; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
-      attributes.JOINTS_0 = g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER });
-      attributes.WEIGHTS_0 = g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER });
+    const primitives = [];
+    if (textured) {
+      vertices += mesh.indices.length;
+      for (let first = 0; first < mesh.indices.length; first += EXPORT_CHUNK_TRIANGLES * 3) {
+        const triangleIndices = mesh.indices.subarray(first, Math.min(first + EXPORT_CHUNK_TRIANGLES * 3, mesh.indices.length));
+        const vertexCount = triangleIndices.length;
+        const positions = new Float32Array(vertexCount * 3), normals = new Float32Array(vertexCount * 3);
+        for (let i = 0; i < vertexCount; i++) {
+          const source = triangleIndices[i] * 3;
+          positions.set(mesh.positions.subarray(source, source + 3), i * 3);
+          normals.set(mesh.normals.subarray(source, source + 3), i * 3);
+        }
+        const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z) => surfaceColor(matFn(x, y, z)));
+        const imageView = g.bufferView(atlas.png);
+        const image = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}.png`, bufferView: imageView, mimeType: 'image/png' });
+        const sampler = g.add('samplers', { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 });
+        const texture = g.add('textures', { sampler, source: image });
+        const material = g.add('materials', { ...materialProps, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
+        const attributes = {
+          POSITION: g.accessor(positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
+          NORMAL: g.accessor(normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+          TEXCOORD_0: g.accessor(atlas.uv, GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }),
+        };
+        if (p.kind === 'skin') {
+          const ji = jointIndex.get(p.bone), big = bones.length > 255;
+          const joints = big ? new Uint16Array(vertexCount * 4) : new Uint8Array(vertexCount * 4);
+          const weights = new Float32Array(vertexCount * 4);
+          for (let v = 0; v < vertexCount; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
+          attributes.JOINTS_0 = g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER });
+          attributes.WEIGHTS_0 = g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER });
+        }
+        const indices = g.accessor(vertexCount < 65536 ? Uint16Array.from({ length: vertexCount }, (_, i) => i) : Uint32Array.from({ length: vertexCount }, (_, i) => i), vertexCount < 65536 ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
+        primitives.push({ attributes, indices, material });
+      }
+    } else {
+      vertices += nv;
+      const material = g.add('materials', materialProps);
+      const attributes = {
+        POSITION: g.accessor(mesh.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
+        NORMAL: g.accessor(mesh.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+        COLOR_0: g.accessor(mesh.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+      };
+      if (p.kind === 'skin') {
+        const ji = jointIndex.get(p.bone), big = bones.length > 255;
+        const joints = big ? new Uint16Array(nv * 4) : new Uint8Array(nv * 4);
+        const weights = new Float32Array(nv * 4);
+        for (let v = 0; v < nv; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
+        attributes.JOINTS_0 = g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER });
+        attributes.WEIGHTS_0 = g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER });
+      }
+      const small = nv < 65536;
+      const indices = g.accessor(small ? Uint16Array.from(mesh.indices) : mesh.indices, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
+      primitives.push({ attributes, indices, material });
     }
-    const small = nv < 65536;
-    const indices = g.accessor(small ? Uint16Array.from(mesh.indices) : mesh.indices, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
-    const meshIndex = g.add('meshes', { name: p.name ?? `parte${pi}`, primitives: [{ attributes, indices, material }] });
+    const meshIndex = g.add('meshes', { name: p.name ?? `parte${pi}`, primitives });
     const node = { name: p.name ?? `parte${pi}`, mesh: meshIndex };
     if (p.kind === 'skin') node.skin = 0;
     J.scenes[0].nodes.push(g.add('nodes', node));
-  });
+  }
 
   // ---- esqueleto: juntas na pose de repouso (sem rotação), filhas do nó "armature"
   let animated = false;
