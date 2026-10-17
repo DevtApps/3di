@@ -24,6 +24,12 @@ const DOCS = {
   union: 'União de formas (o mesmo que group).',
   subtract: 'Recorta as formas `cutters` de `base`. Faça o recorte atravessar a superfície.',
   intersect: 'Interseção: só o volume comum a todas as formas.',
+  // geradores (src/lib)
+  grass: 'Gera um canteiro de grama de `width` x `depth` m. `kind` é o tipo (lawn, meadow, tall, dry, tufts, wheat, clover) e `style` o desenho (lowpoly, stylized, realistic): qualquer combinação. `density` (1 normal), `height`, `color`/`tip` (base e ponta), `flowers`, `sway` (graus de balanço animado), `soil` (cor de terra embaixo) e `seed` (reprodutível).',
+  plant: 'Gera uma planta pequena. `kind`: flower, daisy, lavender, fern, bush, cactus, mushroom; `style`: lowpoly, stylized, realistic. `height` (m), `color` (destaque: pétalas, chapéu, espigas, folhagem), `density` (1 uma planta; mais = touceira ou mais frondes/hastes) e `seed`.',
+  tree: 'Gera uma árvore. `kind`: oak, pine, birch, palm, willow, dead, round, bonsai; `style`: lowpoly, stylized, realistic. `height` (m), `trunk` e `leaves` (cores) e `seed`.',
+  person: 'Gera uma pessoa. `style`: lowpoly, stylized, realistic; `build`: slim, average, stocky, child, elder; `hair`: short, long, bald, ponytail, curly, bun; `outfit`: casual, suit, sport, dress, uniform; `pose`: stand, walk, sit (sem cadeira), arms_up. `height` (m; padrão por biotipo), `skin` (cor) e `seed` (pele, cabelo e roupa saem dele).',
+  vehicle: 'Gera um veículo andando para +z, rodas no chão. `kind`: car, hatch, suv, pickup, van, bus, truck, tractor, bike, motorbike; `style`: lowpoly, stylized, realistic. `color` (carroceria), `length` (m), `wheels_angle` (graus; use time para as rodas girarem) e `seed`.',
   // cena
   show: 'Mostra as formas na cena. Chame no fim do script; aceita listas.',
   camera: 'Câmera inicial: posição `pos` olhando para `look` (padrão: centro da cena).',
@@ -41,6 +47,9 @@ const DOCS = {
   linspace: '`n` números igualmente espaçados de `a` até `b` (inclusive).',
   len: 'Tamanho de uma lista, texto ou dict.',
   lerp: 'Interpolação linear entre `a` e `b` (t de 0 a 1).',
+  mix: 'Mistura duas cores (nomes, "#rrggbb" ou tuplas) em sRGB; com números, é como lerp. t de 0 a 1.',
+  hsv: 'Cor a partir de matiz (0 a 360), saturação e brilho (0 a 1): hsv(110, 0.7, 0.6) é um verde.',
+  vary: 'Cor com variação aleatória (reprodutível com seed): vary("green", hue=15, sat=0.1, val=0.15).',
   clamp: 'Limita `x` ao intervalo [lo, hi].',
   smoothstep: 'Transição suave de 0 a 1 quando `x` vai de e0 a e1.',
   fract: 'Parte fracionária de `x`.',
@@ -69,7 +78,7 @@ const DOCS = {
   displace: 'Deforma a superfície com ruído (rochas, terreno).',
   color: 'Cor: nome ("red", "wood", "vermelho"...), "#rrggbb" ou (r, g, b).',
   material: 'Material: cor, rugosidade (0..1), metal (0..1) e brilho próprio (aceita time).',
-  texture: 'Textura procedural: noise, wood, marble, stripes, checker, bricks.',
+  texture: 'Textura procedural: noise, wood, marble, stripes, checker, bricks, gradient (degradê da cor até color2 ao longo do eixo), mottle (manchas suaves) e relief (só relevo). bump=0.3 dá relevo (normal map), triplanar=True projeta nos 3 eixos.',
   name: 'Dá nome à peça (aparece no painel Peças e no MCP).',
   bind: 'Prende a forma (modelada na pose de repouso) a um osso.',
   // propriedades
@@ -84,6 +93,7 @@ const CATEGORY = {
   group: 'combinar', union: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
+  grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador',
 };
 
 const HIDDEN = new Set(['isinstance']);
@@ -150,11 +160,12 @@ export function languageSummary() {
     `Combinar:\n${fn('combinar')}\n  a + b (união), a - b (subtração), a & b (interseção)`,
     `Métodos de forma:\n${c.methods.map((m) => `  .${m.signature}  # ${m.doc}`).join('\n')}`,
     `Propriedades de forma: ${c.properties.map((p) => p.name).join(', ')}`,
+    `Geradores (cada um aceita style="lowpoly"|"stylized"|"realistic" e seed=):\n${fn('gerador')}`,
     `Cena:\n${fn('cena')}`,
     `Rig:\n${fn('rig')}\n${c.rig.skeleton.map((m) => `  esq.${m.signature}  # ${m.doc}`).join('\n')}\n${c.rig.bone.map((m) => `  osso.${m.signature}  # ${m.doc}`).join('\n')}`,
     `Animação:\n${fn('animação')}\n  time  # ${DOCS.time}`,
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
-    `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks'].join(', ')}`,
+    `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,
     'Dicas: prefira layout semântico (on, beside, place, mirror) a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
   ].join('\n\n');

@@ -4,11 +4,12 @@
 //  - /bridge/call (POST {cmd, args}): repassa um comando ao editor e devolve a resposta
 //    (é assim que uma segunda instância usa o editor desta).
 import http from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { extname, join, normalize, isAbsolute, dirname } from 'node:path';
+import { extname, join, resolve, relative, sep, isAbsolute, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { readDocumentation } from './documentation.mjs';
 
 // Token que libera /fs/read e /fs/write: fica em ~/.config/3di/token (só o usuário lê) e é
 // passado para a janela do app no endereço (#token=...). Todas as instâncias usam o mesmo.
@@ -30,12 +31,36 @@ const MIME = {
   '.3di': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
 };
 
-const readBody = (req) => new Promise((res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => res(b)); });
+const MAX_BODY = 32 * 1024 * 1024;
+async function readBody(req) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY) throw Object.assign(new Error('requisição grande demais'), { status: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+async function readJson(req) {
+  try {
+    const value = JSON.parse((await readBody(req)).toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    return value;
+  } catch (e) {
+    if (e.status) throw e;
+    throw Object.assign(new Error('JSON inválido'), { status: 400 });
+  }
+}
+const within = (root, path) => {
+  const rel = relative(root, path);
+  return !isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`);
+};
 
 // Pergunta se quem está na porta é um servidor 3DI (responde em /bridge/call).
-export async function isIdeServer(port) {
+export async function isIdeServer(port, token = appToken()) {
   try {
-    const r = await fetch(`http://127.0.0.1:${port}/bridge/call`, { method: 'POST', body: JSON.stringify({ cmd: 'ping', args: {} }) });
+    const r = await fetch(`http://127.0.0.1:${port}/bridge/call`, { method: 'POST', headers: { 'X-3DI-Token': token }, signal: AbortSignal.timeout(2000), body: JSON.stringify({ cmd: 'ping', args: {} }) });
     const j = await r.json();
     return typeof j.ok === 'boolean';
   } catch {
@@ -44,12 +69,11 @@ export async function isIdeServer(port) {
 }
 
 /**
- * Sobe o servidor. Se a porta estiver ocupada por outro servidor 3DI, não sobe e devolve
- * { relay: true }: os comandos vão para ele. Se estiver ocupada por outro programa e
- * fallbackPort for true, usa uma porta livre qualquer.
+ * Sobe o servidor. Pode reutilizar outro editor 3DI na mesma porta quando reuse=true.
+ * Com reuse=false, mantém uma instância própria e usa uma porta livre se fallbackPort=true.
  */
-export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false } = {}) {
-  const token = appToken();
+export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false, reuse = true, token = appToken() } = {}) {
+  root = await realpath(root);
   const clients = new Set();
   const pending = new Map();
   let nextId = 1;
@@ -66,8 +90,37 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     });
   };
 
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
+  const server = http.createServer((req, res) => {
+    handle(req, res).catch((e) => {
+      if (res.headersSent) { res.destroy(); return; }
+      res.writeHead(e.status ?? 500, { 'Content-Type': 'text/plain; charset=utf-8' }).end(e.status ? e.message : 'erro interno');
+    });
+  });
+  const handle = async (req, res) => {
+    const host = req.headers.host;
+    if (host !== `localhost:${port}` && host !== `127.0.0.1:${port}`) { res.writeHead(403).end(); return; }
+    if (req.headers.origin && req.headers.origin !== `http://${host}`) { res.writeHead(403).end(); return; }
+    const url = new URL(req.url, `http://${host}`);
+    if (url.pathname === '/integration/config' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ root, port }));
+      return;
+    }
+    if (url.pathname.startsWith('/docs/') && !url.pathname.endsWith('.md') && req.method === 'GET') {
+      try {
+        const doc = await readDocumentation(url.pathname.slice('/docs/'.length));
+        res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store' }).end(doc.text);
+      } catch { res.writeHead(404).end('documento não encontrado'); }
+      return;
+    }
+    if (url.pathname === '/bridge/session' && req.method === 'GET') {
+      if (req.headers['x-3di-client'] !== 'ide') { res.writeHead(403).end(); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ token }));
+      return;
+    }
+    if (url.pathname.startsWith('/bridge/')) {
+      const supplied = url.pathname === '/bridge/events' ? url.searchParams.get('token') : req.headers['x-3di-token'];
+      if (supplied !== token) { res.writeHead(403).end(); return; }
+    }
     if (url.pathname === '/bridge/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       res.write(': conectado\n\n');
@@ -79,7 +132,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       return;
     }
     if (url.pathname === '/bridge/reply' && req.method === 'POST') {
-      const msg = JSON.parse(await readBody(req));
+      const msg = await readJson(req);
       const p = pending.get(msg.id);
       if (p) {
         clearTimeout(p.timer);
@@ -90,7 +143,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       return;
     }
     if (url.pathname === '/bridge/call' && req.method === 'POST') {
-      const { cmd, args } = JSON.parse(await readBody(req));
+      const { cmd, args } = await readJson(req);
       const json = (o) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(o));
       if (cmd === 'ping') { json({ ok: true, result: 'pong' }); return; }
       try { json({ ok: true, result: await callLocal(cmd, args) }); } catch (e) { json({ ok: false, error: e.message }); }
@@ -106,10 +159,9 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
         if (url.pathname === '/fs/read') {
           res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(await readFile(p, 'utf8'));
         } else {
-          const chunks = [];
-          for await (const c of req) chunks.push(c);
+          const body = await readBody(req);
           await mkdir(dirname(p), { recursive: true });
-          await writeFile(p, Buffer.concat(chunks));
+          await writeFile(p, body);
           res.writeHead(204).end();
         }
       } catch (e) {
@@ -117,15 +169,19 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       }
       return;
     }
-    const path = normalize(join(root, decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)));
-    if (!path.startsWith(root)) { res.writeHead(403).end(); return; }
+    let pathname;
+    try { pathname = decodeURIComponent(url.pathname); } catch { res.writeHead(400).end('URL inválida'); return; }
+    const candidate = resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
+    if (!within(root, candidate)) { res.writeHead(403).end(); return; }
     try {
+      const path = await realpath(candidate);
+      if (!within(root, path)) { res.writeHead(403).end(); return; }
       const data = await readFile(path);
       res.writeHead(200, { 'Content-Type': MIME[extname(path)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' }).end(data);
     } catch {
       res.writeHead(404).end('não encontrado');
     }
-  });
+  };
 
   const listen = (p) => new Promise((res, rej) => {
     const onErr = (e) => { server.off('listening', onOk); rej(e); };
@@ -139,10 +195,10 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     port = await listen(port);
   } catch (e) {
     if (e.code !== 'EADDRINUSE') throw e;
-    if (await isIdeServer(port)) {
+    if (await isIdeServer(port, token) && reuse) {
       log(`porta ${port} já tem um servidor 3DI: usando o editor dele`);
       const call = async (cmd, args) => {
-        const r = await fetch(`http://127.0.0.1:${port}/bridge/call`, { method: 'POST', body: JSON.stringify({ cmd, args }) });
+        const r = await fetch(`http://127.0.0.1:${port}/bridge/call`, { method: 'POST', headers: { 'X-3DI-Token': token }, body: JSON.stringify({ cmd, args }) });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error);
         return j.result;
@@ -161,6 +217,12 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     call: callLocal,
     onClients: (fn) => { onClients = fn; },
     clientCount: () => clients.size,
-    close: () => server.close(),
+    close: () => {
+      for (const client of clients) client.end();
+      for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('servidor encerrado')); }
+      pending.clear();
+      server.close();
+      server.closeAllConnections();
+    },
   };
 }

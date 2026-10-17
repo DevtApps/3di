@@ -1,0 +1,17 @@
+# Veículos: os dez tipos (kind), todos no estilo "stylized". Troque style= por "lowpoly" ou "realistic"
+# (veja veiculos-estilos.3di). color pinta a carroceria; length muda o comprimento;
+# wheels_angle gira as rodas (use time para animar: wheels_angle=time * 360).
+#   car sedã · hatch · suv · pickup picape · van · bus ônibus · truck caminhão
+#   tractor trator · bike bicicleta · motorbike moto
+tipos = ["car", "hatch", "suv", "pickup", "van", "bike", "motorbike", "tractor"]
+grandes = ["bus", "truck"]
+
+frota = []
+for i, tipo in enumerate(tipos):
+    frota.append(vehicle(kind=tipo, style="stylized", seed=i + 3).at((i - 3.5) * 3.4, 0, 0))
+for i, tipo in enumerate(grandes):
+    frota.append(vehicle(kind=tipo, style="stylized", seed=i + 20).at((i - 0.5) * 6.5, 0, -9))
+
+show(plane().color("#6d7078"), frota)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 9, 19), look=(0, 0.8, -3), fov=50)

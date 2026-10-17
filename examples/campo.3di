@@ -1,0 +1,49 @@
+# Campo de grama estilizada: lâminas largas e pontudas, sobrepostas, com degradê da base escura para a ponta clara.
+# Quatro paletas lado a lado: verde vivo, verde profundo, verde claro e oliva.
+#
+# Truque de desempenho: cada camada é UMA lâmina com .repeat(), que não custa primitivas,
+# então o campo todo tem poucas primitivas. As camadas têm alturas, espaçamentos e direções
+# de inclinação diferentes, o que esconde a regularidade da grade. Camadas baixas são escuras
+# e as altas, claras: o olho lê isso como um degradê dentro da grama.
+seed(3)
+
+def mistura(a, b, t):
+    return (lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t))
+
+# Uma faixa de campo: largura x profundidade (m), cores da base e da ponta, altura média das lâminas.
+# repeat() exige que cada cópia caiba na sua célula; por isso o espaçamento sai do tamanho da lâmina
+# inclinada, e a sobreposição vem de empilhar várias camadas com tamanhos diferentes.
+def faixa(largura, fundo, base, ponta, altura=0.17, camadas=10):
+    partes = []
+    for l in range(camadas):
+        t = l / (camadas - 1)
+        h = altura * (0.45 + 0.75 * t)             # camadas baixas -> altas
+        w = 0.1 + 0.03 * (l % 3)                   # larguras variadas
+        lamina = pyramid(w, h).scale((1, 1, 0.16))
+        lamina = lamina.rotate(x=uniform(10, 24)).rotate(y=l * 47 + uniform(-15, 15)).ground()
+        esp = max(lamina.width, lamina.depth) * 1.03
+        nx = int(largura / esp)
+        nz = int(fundo / esp)
+        # cada camada gira um pouco para as fileiras não coincidirem; o recorte (&) com uma caixa
+        # mantém as bordas da faixa retas, e a cor vai depois do recorte
+        grade = lamina.repeat(x=nx, z=nz, spacing=esp).rotate(y=l * 6 - 27).at(l * 0.017, 0, l * 0.029)
+        partes.append((grade & box(largura, 2, fundo).ground()).color(mistura(base, ponta, t)))
+    return group(*partes)
+
+paletas = [
+    ((0.14, 0.42, 0.08), (0.6, 0.82, 0.26)),   # verde vivo
+    ((0.05, 0.3, 0.08), (0.42, 0.72, 0.24)),   # verde profundo
+    ((0.28, 0.52, 0.12), (0.78, 0.9, 0.4)),    # verde claro
+    ((0.26, 0.36, 0.06), (0.74, 0.74, 0.22)),  # oliva
+]
+
+L = 1.1
+faixas = []
+for i in range(4):
+    base, ponta = paletas[i]
+    faixas.append(faixa(L, 7, base, ponta).at((i - 1.5) * L, 0, -0.4))
+
+show(plane().color("#2f5a22"), faixas)
+sky((0.42, 0.58, 0.82))
+fog(0.025)
+camera(pos=(0, 0.5, 3.2), look=(0, 0.3, -3), fov=70)

@@ -1,0 +1,16 @@
+{
+  "Cena 3DI": {
+    "prefix": "cena",
+    "body": [
+      "chao = plane().color(\"lightgray\")",
+      "objeto = box(${1:1}, round=0.03).ground().color(\"${2:red}\").name(\"objeto\")",
+      "show(chao, objeto)",
+      "$0"
+    ],
+    "description": "Cena inicial com chão e objeto"
+  },
+  "Objeto apoiado": {
+    "prefix": "sobre",
+    "body": "${1:objeto} = sphere(${2:0.2}).on(${3:alvo})"
+  }
+}

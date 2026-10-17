@@ -1,0 +1,14 @@
+**
+!package.json
+!README.md
+!dist/extension.cjs
+!dist/engine-worker.cjs
+!dist/preview.js
+!dist/preview.css
+!dist/THIRD-PARTY-NOTICES.txt
+!extension/language-configuration.json
+!extension/3di.tmLanguage.json
+!extension/snippets.json
+!docs/**
+!skills/**
+!examples/**

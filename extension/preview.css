@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { display: flex; flex-direction: column; background: var(--vscode-editor-background, #15171c); color: var(--vscode-foreground, #ddd); font: 12px var(--vscode-font-family, system-ui); }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, #333); }
+nav strong { margin-right: 8px; }
+button { background: var(--vscode-button-secondaryBackground, #262a33); color: var(--vscode-button-secondaryForeground, #ddd); border: 1px solid transparent; border-radius: 4px; padding: 5px 8px; cursor: pointer; font: inherit; }
+button:hover { background: var(--vscode-button-secondaryHoverBackground, #384354); }
+button:focus-visible { outline: 2px solid var(--vscode-focusBorder, #6aa6ff); }
+main { flex: 1; min-height: 0; position: relative; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+canvas:active { cursor: grabbing; }
+#parts { position: absolute; top: 8px; right: 8px; max-width: 220px; max-height: 40%; overflow: auto; display: flex; flex-direction: column; gap: 3px; }
+#parts button { background: #15171ccc; color: #ddd; font-size: 10px; text-align: left; }
+footer { min-height: 30px; max-height: 100px; overflow: auto; padding: 8px 12px; border-top: 1px solid var(--vscode-panel-border, #333); }
+[hidden] { display: none !important; }

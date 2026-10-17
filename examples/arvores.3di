@@ -1,0 +1,13 @@
+# Tipos de árvore (kind), todos no estilo "stylized". Troque style= por "lowpoly" ou "realistic"
+# (veja arvores-estilos.3di). height, trunk, leaves (cores) e seed ajustam cada árvore.
+#   oak carvalho · pine pinheiro · birch bétula · palm palmeira
+#   willow salgueiro · dead árvore seca · round pirulito · bonsai
+tipos = ["oak", "pine", "birch", "palm", "willow", "dead", "round", "bonsai"]
+
+arvores = []
+for i, tipo in enumerate(tipos):
+    arvores.append(tree(kind=tipo, style="stylized", seed=i + 1).at((i - 3.5) * 3.4, 0, 0))
+
+show(plane().color("#6f8f4a"), arvores)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 4.2, 15), look=(0, 2.2, 0), fov=50)

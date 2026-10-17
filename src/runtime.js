@@ -143,6 +143,11 @@ export function numT(v, what) {
   return isExpr(v) ? v : num(v, what);
 }
 
+export function vec2(v, what) {
+  if (Array.isArray(v) && v.length === 2) return v.map((x, i) => num(x, `${what}[${i}]`));
+  throw new ScriptError(`${what} deve ser uma tupla (a, b), recebeu ${typeTag(v)}`, null);
+}
+
 export function vec3(v, what) {
   if (Array.isArray(v) && v.length === 3) return v.map((x, i) => num(x, `${what}[${i}]`));
   throw new ScriptError(`${what} deve ser uma tupla (x, y, z), recebeu ${typeTag(v)}`, null);

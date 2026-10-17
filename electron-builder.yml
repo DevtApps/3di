@@ -1,0 +1,23 @@
+appId: dev.3di.studio
+productName: 3DI
+directories:
+  app: dist-desktop
+  output: release
+asar: true
+asarUnpack:
+  - desktop/engine-worker.cjs
+linux:
+  target:
+    - deb
+  category: Graphics
+  icon: assets/icon.png
+  executableName: 3di
+  desktop:
+    entry:
+      StartupWMClass: 3DI
+fileAssociations:
+  - ext: 3di
+    name: Cena 3DI
+    mimeType: text/x-3di
+deb:
+  maintainer: 3DI <3di@localhost>

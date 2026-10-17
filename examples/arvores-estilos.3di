@@ -1,0 +1,15 @@
+# A mesma árvore em três estilos de desenho, do low poly ao realista:
+#   lowpoly   copas facetadas, cores chapadas
+#   stylized  copas lisas com degradê
+#   realistic mais galhos, copas rugosas com manchas e casca com relevo
+estilos = ["lowpoly", "stylized", "realistic"]
+tipos = ["oak", "pine", "palm"]
+
+arvores = []
+for j, tipo in enumerate(tipos):
+    for i, estilo in enumerate(estilos):
+        arvores.append(tree(kind=tipo, style=estilo, seed=j * 3 + i + 1).at((i - 1) * 6, 0, (1 - j) * 6.5))
+
+show(plane().color("#6f8f4a"), arvores)
+sun(0.5, 1, 0.6)
+camera(pos=(0, 9, 19), look=(0, 1.5, 0), fov=50)

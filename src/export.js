@@ -6,7 +6,7 @@
 // - Outras animações com `time` (fora de ossos) são exportadas paradas, em t = 0.
 import { Shape, isFiniteBB, mulMV, mul3, size, unionBB } from './shapes.js';
 import { resolveRig, collectBones } from './rig.js';
-import { buildSceneFns, surfaceColor } from './sdf.js';
+import { buildSceneFns, surfaceColor, texHeight } from './sdf.js';
 import { meshSDF } from './mesh.js';
 import { inv3 } from './compiler.js';
 import { val0 } from './expr.js';
@@ -48,13 +48,22 @@ const linearToSrgb = (x) => {
   return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
 };
 
-async function bakeTextureAtlas(positions, indices, sampleColor) {
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+
+// Atlas de cor (e, se heightAt existir, de normais): um bloco por triângulo.
+// sampleColor(x, y, z, n) recebe a normal da face (para a projeção triplanar);
+// heightAt(x, y, z, n) devolve { h, amp, e } do relevo: altura 0..1, amplitude (m) e passo de derivação (m).
+async function bakeTextureAtlas(positions, indices, sampleColor, heightAt = null, normals = null) {
   const triangleCount = indices.length / 3;
   const grid = Math.ceil(Math.sqrt(triangleCount));
   const width = 2 ** Math.ceil(Math.log2(grid * ATLAS_TILE));
   const uv = new Float32Array(triangleCount * 6);
   const rgba = new Uint8Array(width * width * 4);
-  const sample = (x, y, z) => sampleColor(x, y, z).map(linearToSrgb);
+  const nrgba = heightAt ? new Uint8Array(width * width * 4) : null;
+  const sample = (x, y, z, n) => sampleColor(x, y, z, n).map(linearToSrgb);
   const coords = (corner, left, top) => {
     const x0 = (left + 1.5) / width, x1 = (left + 8.5) / width;
     // glTF tem a origem de V no topo da imagem (sem inversão): linha py = 8 é sy = 0, py = 1 é sy = 1
@@ -69,6 +78,16 @@ async function bakeTextureAtlas(positions, indices, sampleColor) {
       return [positions[v], positions[v + 1], positions[v + 2]];
     });
     for (let corner = 0; corner < 3; corner++) uv.set(coords(corner, tileX, tileY), (tri * 3 + corner) * 2);
+    // normal da face, orientada como as normais de vértice da malha
+    let nf = norm3(cross3(sub3(points[1], points[0]), sub3(points[2], points[0])));
+    if (normals) {
+      const a = indices[tri * 3] * 3;
+      if (dot3(nf, [normals[a], normals[a + 1], normals[a + 2]]) < 0) nf = nf.map((c) => -c);
+    }
+    // quadro tangente como o dos visualizadores glTF: T no sentido de +u, B no de -v (sy crescente)
+    const T = norm3(sub3(points[1], points[0]));
+    const e2 = sub3(points[2], points[0]);
+    const B = norm3(sub3(e2, T.map((c) => c * dot3(e2, T))));
     // Bake a private UV chart per triangle. This preserves the exact 3D
     // procedural coordinates, including noise that changes through depth.
     for (let py = 0; py < ATLAS_TILE; py++) for (let px = 0; px < ATLAS_TILE; px++) {
@@ -76,12 +95,29 @@ async function bakeTextureAtlas(positions, indices, sampleColor) {
       const sy = Math.max(-0.15, Math.min(1.15, 1 - (py - 1) / 7));
       const weights = [1 - sx - sy, sx, sy];
       const point = [0, 1, 2].map((axis) => points.reduce((sum, p, i) => sum + p[axis] * weights[i], 0));
-      const color = sample(...point);
+      const color = sample(...point, nf);
       const at = ((tileY + py) * width + tileX + px) * 4;
       rgba[at] = color[0]; rgba[at + 1] = color[1]; rgba[at + 2] = color[2]; rgba[at + 3] = 255;
+      if (nrgba) {
+        const h0 = heightAt(...point, nf);
+        let nx = 0, ny = 0;
+        if (h0.amp > 0) {
+          const e = h0.e;
+          const gT = (heightAt(...point.map((c, k) => c + T[k] * e), nf).h - h0.h) / e;
+          const gB = (heightAt(...point.map((c, k) => c + B[k] * e), nf).h - h0.h) / e;
+          // inclinação da superfície: n' ~ N - amp * grad(h); limitada para não virar uma parede
+          nx = Math.max(-4, Math.min(4, -h0.amp * gT));
+          ny = Math.max(-4, Math.min(4, -h0.amp * gB));
+        }
+        const nl = Math.hypot(nx, ny, 1);
+        nrgba[at] = Math.round(((nx / nl) * 0.5 + 0.5) * 255);
+        nrgba[at + 1] = Math.round(((ny / nl) * 0.5 + 0.5) * 255);
+        nrgba[at + 2] = Math.round(((1 / nl) * 0.5 + 0.5) * 255);
+        nrgba[at + 3] = 255;
+      }
     }
   }
-  return { uv, png: await encodePng(width, width, rgba) };
+  return { uv, png: await encodePng(width, width, rgba), normalPng: nrgba ? await encodePng(width, width, nrgba) : null };
 }
 
 const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -192,11 +228,17 @@ export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
     // a procedural color in the preview; sampling only RGB loses its material
     // when the GLB is opened in a standard viewer. COLOR_0 is supported by
     // glTF, so bake the procedural texture into vertex colors.
-    let textured = false;
+    let textured = false, bumped = false;
     const colorAt = (x, y, z) => {
       const r = matFn(x, y, z);
-      if (r.tx) textured = true;
+      if (r.tx) { textured = true; if (r.tx[3] > 0) bumped = true; }
       return surfaceColor(r);
+    };
+    // altura do relevo (0..1) com a amplitude e o passo de derivação (em metros) da textura
+    const heightAt = (x, y, z, n) => {
+      const r = matFn(x, y, z);
+      if (!r.tx || !(r.tx[3] > 0) || !r.tp) return { h: 0, amp: 0, e: 1 };
+      return { h: texHeight(r.tp, r.tx, n), amp: r.tx[3] * r.tx[1], e: r.tx[1] * 0.02 };
     };
     let mesh = meshSDF(dist, bb, { cell, colorAt });
     // peças finas espalhadas numa parte grande (postes...) passam entre os pontos da grade:
@@ -230,12 +272,18 @@ export async function exportGLB(scene, { res = 128, onProgress = null } = {}) {
           positions.set(mesh.positions.subarray(source, source + 3), i * 3);
           normals.set(mesh.normals.subarray(source, source + 3), i * 3);
         }
-        const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z) => surfaceColor(matFn(x, y, z)));
+        const atlas = await bakeTextureAtlas(positions, Uint32Array.from({ length: vertexCount }, (_, i) => i), (x, y, z, n) => surfaceColor(matFn(x, y, z), n), bumped ? heightAt : null, normals);
         const imageView = g.bufferView(atlas.png);
         const image = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}.png`, bufferView: imageView, mimeType: 'image/png' });
         const sampler = g.add('samplers', { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 });
         const texture = g.add('textures', { sampler, source: image });
-        const material = g.add('materials', { ...materialProps, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
+        const extra = {};
+        if (atlas.normalPng) {
+          // normal map no mesmo atlas: o relevo (bump) da textura vai junto no GLB
+          const nImage = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}-normal.png`, bufferView: g.bufferView(atlas.normalPng), mimeType: 'image/png' });
+          extra.normalTexture = { index: g.add('textures', { sampler, source: nImage }), texCoord: 0 };
+        }
+        const material = g.add('materials', { ...materialProps, ...extra, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
         const attributes = {
           POSITION: g.accessor(positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
           NORMAL: g.accessor(normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),

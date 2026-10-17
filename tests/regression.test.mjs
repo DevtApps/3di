@@ -175,3 +175,139 @@ test('GLB atlas UVs use the glTF top-left origin: each vertex samples its own su
   assert.ok(total > 50);
   assert.ok(match / total > 0.9, `só ${match} de ${total} vértices acharam a própria cor no atlas`);
 });
+
+test('materials: gradient follows the axis, triplanar projects every face, bump bakes a normal map', async () => {
+  // degradê: base na cor da forma, topo em color2
+  let run = runScript('show(cylinder(0.25, 1).color("#102030").texture("gradient", color2="#f0e0d0"))');
+  assert.equal(run.ok, true, run.error?.toString());
+  let fns = buildSceneFns(run.scene.shapes[0]);
+  const at = (y) => surfaceColor(fns.mat(0.25, y, 0), [1, 0, 0]);
+  const bottom = at(-0.45), top = at(0.45);
+  assert.ok(top[0] > bottom[0] + 0.3 && top[1] > bottom[1] + 0.3, 'o topo do degradê deve ser bem mais claro que a base');
+
+  // triplanar: o topo de um bloco de tijolos tem argamassa, a projeção normal só tem listras
+  const tri = (flag) => {
+    const r = runScript(`show(box(1).color("#a8553a").texture("bricks", size=0.3, triplanar=${flag}))`);
+    const f = buildSceneFns(r.scene.shapes[0]);
+    const colors = new Set();
+    for (let i = 0; i < 40; i++) colors.add(surfaceColor(f.mat(-0.45 + i * 0.0231, 0.5, -0.45 + i * 0.0173), [0, 1, 0]).map((c) => c.toFixed(2)).join(','));
+    return colors.size;
+  };
+  assert.ok(tri('True') > tri('False'), 'o topo com triplanar mostra mais variação (tijolos) que com a projeção normal');
+
+  // relevo: o GLB ganha normalTexture, e o PNG de normais tem inclinações (não é tudo azul liso)
+  run = runScript('show(box(1).color("#a8553a").texture("bricks", size=0.3, bump=0.6))');
+  const { glb } = await exportGLB(run.scene, { res: 24 });
+  const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  const jsonLen = dv.getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLen)));
+  const material = json.materials.find((m) => m.normalTexture);
+  assert.ok(material, 'o material com bump deve ter normalTexture');
+  const image = json.images[json.textures[material.normalTexture.index].source];
+  const view = json.bufferViews[image.bufferView];
+  const binStart = 20 + jsonLen + 8;
+  const png = glb.subarray(binStart + view.byteOffset, binStart + view.byteOffset + view.byteLength);
+  assert.deepEqual(Array.from(png.subarray(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  const pdv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  const width = pdv.getUint32(16), height = pdv.getUint32(20);
+  const idat = [];
+  for (let o = 8; o < png.length;) {
+    const len = pdv.getUint32(o), type = new TextDecoder().decode(png.subarray(o + 4, o + 8));
+    if (type === 'IDAT') idat.push(png.subarray(o + 8, o + 8 + len));
+    o += 12 + len;
+  }
+  const raw = new Uint8Array(await new Response(new Blob(idat).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  let tilted = 0;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const at = y * (width * 4 + 1) + 1 + x * 4;
+    if (raw[at + 3] === 255 && (Math.abs(raw[at] - 128) > 20 || Math.abs(raw[at + 1] - 128) > 20)) tilted++;
+  }
+  assert.ok(tilted > 50, `o normal map deve ter texels inclinados (achou ${tilted})`);
+});
+
+test('grass generator: every kind x style compiles, seed is deterministic, bad arguments explain themselves', () => {
+  const kinds = ['lawn', 'meadow', 'tall', 'dry', 'tufts', 'wheat', 'clover'];
+  const styles = ['lowpoly', 'stylized', 'realistic'];
+  for (const kind of kinds) for (const style of styles) {
+    const run = runScript(`show(grass(1, 1, kind="${kind}", style="${style}", seed=3))`);
+    assert.equal(run.ok, true, `${kind}/${style}: ${run.error?.toString()}`);
+    const out = compileScene(run.scene);
+    assert.ok(out.leaves > 0 && out.leaves < 200, `${kind}/${style} deve ser leve (achou ${out.leaves} primitivas)`);
+  }
+  const glsl = (src) => compileScene(runScript(src).scene).glsl;
+  assert.equal(glsl('show(grass(1, seed=9))'), glsl('show(grass(1, seed=9))'));
+  assert.notEqual(glsl('show(grass(1, seed=9))'), glsl('show(grass(1, seed=10))'));
+  // sem seed próprio, o seed() da cena controla o resultado
+  assert.equal(glsl('seed(4)\nshow(grass(1))'), glsl('seed(4)\nshow(grass(1))'));
+  const bad = runScript('show(grass(1, kind="gramado"))');
+  assert.equal(bad.ok, false);
+  assert.match(bad.error.hint ?? bad.error.toString(), /lawn|meadow/);
+  assert.equal(runScript('show(grass(1, style="x"))').ok, false);
+  assert.equal(runScript('show(grass(1, density=0))').ok, false);
+});
+
+test('plant and tree generators: every kind x style compiles light, seed is deterministic, bad arguments hint', () => {
+  const styles = ['lowpoly', 'stylized', 'realistic'];
+  const cases = [
+    ['plant', ['flower', 'daisy', 'lavender', 'fern', 'bush', 'cactus', 'mushroom']],
+    ['tree', ['oak', 'pine', 'birch', 'palm', 'willow', 'dead', 'round', 'bonsai']],
+  ];
+  for (const [fn, kinds] of cases) for (const kind of kinds) for (const style of styles) {
+    const run = runScript(`show(${fn}(kind="${kind}", style="${style}", seed=3))`);
+    assert.equal(run.ok, true, `${fn} ${kind}/${style}: ${run.error?.toString()}`);
+    const out = compileScene(run.scene);
+    assert.ok(out.leaves > 0 && out.leaves < 90, `${fn} ${kind}/${style} deve ser leve (achou ${out.leaves} primitivas)`);
+    assert.ok(Number.isFinite(run.scene.shapes[0].bbox.max[1]) && run.scene.shapes[0].bbox.max[1] > 0, `${fn} ${kind}/${style} deve ter altura`);
+  }
+  const glsl = (src) => JSON.stringify(compileScene(runScript(src).scene).data ?? compileScene(runScript(src).scene).glsl);
+  assert.equal(glsl('show(tree(kind="oak", seed=7))'), glsl('show(tree(kind="oak", seed=7))'));
+  assert.notEqual(glsl('show(tree(kind="oak", seed=7))'), glsl('show(tree(kind="oak", seed=8))'));
+  assert.equal(glsl('show(plant(kind="fern", seed=2))'), glsl('show(plant(kind="fern", seed=2))'));
+  // altura pedida é respeitada (copas e hastes podem passar um pouco)
+  const tall = runScript('show(tree(kind="pine", height=10))').scene.shapes[0].bbox;
+  assert.ok(tall.max[1] > 8 && tall.max[1] < 13, `pinheiro de 10 m mediu ${tall.max[1]}`);
+  for (const bad of ['tree(kind="carvalho")', 'plant(kind="rosa")', 'tree(style="x")', 'plant(density=0)', 'tree(height=0)']) {
+    assert.equal(runScript(`show(${bad})`).ok, false, bad);
+  }
+  assert.match(runScript('show(tree(kind="carvalho"))').error.toString(), /oak|pine/);
+});
+
+test('person and vehicle generators: every combination compiles light, sizes are honored, seed is deterministic, bad arguments hint', () => {
+  const styles = ['lowpoly', 'stylized', 'realistic'];
+  for (const build of ['slim', 'average', 'stocky', 'child', 'elder']) for (const style of styles) {
+    const run = runScript(`show(person(style="${style}", build="${build}", seed=3))`);
+    assert.equal(run.ok, true, `person ${build}/${style}: ${run.error?.toString()}`);
+    const leaves = compileScene(run.scene).leaves;
+    assert.ok(leaves > 10 && leaves < 70, `person ${build}/${style} deve ser leve (achou ${leaves})`);
+  }
+  for (const pose of ['stand', 'walk', 'sit', 'arms_up']) for (const outfit of ['casual', 'suit', 'sport', 'dress', 'uniform']) for (const hair of ['short', 'long', 'bald', 'ponytail', 'curly', 'bun']) {
+    assert.equal(runScript(`show(person(pose="${pose}", outfit="${outfit}", hair="${hair}", seed=5))`).ok, true, `${pose}/${outfit}/${hair}`);
+  }
+  const h = (src) => { const b = runScript(src).scene.shapes[0].bbox; return b.max[1] - b.min[1]; };
+  assert.ok(Math.abs(h('show(person(height=1.8))') - 1.8) < 0.1, 'a pessoa deve ter a altura pedida');
+  assert.ok(Math.abs(h('show(person(build="child"))') - 1.1) < 0.08, 'a criança tem 1,1 m por padrão');
+  assert.ok(h('show(person(pose="arms_up"))') > h('show(person())') + 0.1, 'braços para cima aumentam a altura total');
+
+  for (const kind of ['car', 'hatch', 'suv', 'pickup', 'van', 'bus', 'truck', 'tractor', 'bike', 'motorbike']) for (const style of styles) {
+    const run = runScript(`show(vehicle(kind="${kind}", style="${style}", seed=3))`);
+    assert.equal(run.ok, true, `vehicle ${kind}/${style}: ${run.error?.toString()}`);
+    const out = compileScene(run.scene);
+    assert.ok(out.leaves > 8 && out.leaves < 80, `vehicle ${kind}/${style} deve ser leve (achou ${out.leaves})`);
+    const b = run.scene.shapes[0].bbox;
+    assert.ok(Math.abs(b.min[1]) < 0.02, `vehicle ${kind}/${style} deve apoiar as rodas no chão`);
+  }
+  const len = (src) => { const b = runScript(src).scene.shapes[0].bbox; return b.max[2] - b.min[2]; };
+  assert.ok(Math.abs(len('show(vehicle(kind="car", length=3))') - 3) < 0.05, 'length deve redimensionar o veículo');
+  assert.ok(len('show(vehicle(kind="bus"))') > len('show(vehicle(kind="car"))') * 2, 'o ônibus é bem mais longo que o carro');
+  const spin = compileScene(runScript('show(vehicle(wheels_angle=time * 90))').scene);
+  assert.equal(spin.animated, true, 'wheels_angle com time deve animar a cena');
+
+  const glsl = (src) => JSON.stringify(compileScene(runScript(src).scene).data ?? compileScene(runScript(src).scene).glsl);
+  assert.equal(glsl('show(person(seed=4))'), glsl('show(person(seed=4))'));
+  assert.notEqual(glsl('show(person(seed=4))'), glsl('show(person(seed=5))'));
+  assert.equal(glsl('show(vehicle(seed=4))'), glsl('show(vehicle(seed=4))'));
+  for (const bad of ['person(build="gigante")', 'person(pose="voar")', 'person(outfit="x")', 'person(hair="x")', 'person(height=0)', 'vehicle(kind="navio")', 'vehicle(style="x")', 'vehicle(length=0)']) {
+    assert.equal(runScript(`show(${bad})`).ok, false, bad);
+  }
+  assert.match(runScript('show(vehicle(kind="carro"))').error.toString(), /car|bus/);
+});

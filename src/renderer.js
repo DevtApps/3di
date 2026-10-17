@@ -27,7 +27,7 @@ vec3 skyCol(vec3 rd) {
 }
 
 vec3 shade(M m, vec3 rd, vec3 n, float dif, float occ) {
-  if (m.tx.x > 0.5) m.c = texColor(m.tp, m.c, m.c2, m.tx);
+  if (m.tx.x > 0.5) m.c = texColor(m.tp, m.c, m.c2, m.tx, n);
   vec3 L = normalize(uSun);
   float rough = clamp(m.m.x, 0.03, 1.0), metal = clamp(m.m.y, 0.0, 1.0);
   vec3 H = normalize(L - rd);
@@ -111,7 +111,16 @@ void main() {
   }
 
   vec3 col = skyCol(rd);
+  // relevo (bump): as derivadas de tela exigem fluxo uniforme, por isso a altura é calculada
+  // para todos os pixels (textura sem relevo devolve 0 de imediato)
+  float bumpH = texHeight(mat.tp, mat.tx, nor);
+  float dhx = dFdx(bumpH), dhy = dFdy(bumpH);
+  vec3 dpx = dFdx(pos), dpy = dFdy(pos);
   if (hitT > 0.0) {
+    if (mat.tx.w > 0.0) {
+      float px = hitT * 2.0 * tan(radians(uFov) * 0.5) / min(uRes.x, uRes.y);
+      nor = bumpNormal(nor, mat.tx.w * mat.tx.y, dhx, dhy, dpx, dpy, px);
+    }
     float dif = clamp(dot(nor, L), 0.0, 1.0) * clamp(sh, 0.0, 1.0);
     vec3 c = shade(mat, rd, nor, dif, clamp(1.0 - 3.0 * occ, 0.0, 1.0));
     col = mix(col, c, exp(-uFog * hitT));
