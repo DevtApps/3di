@@ -572,7 +572,7 @@ Não há `import`, classes nem arquivos.
   coloridas e agrupadas com `group()`), elas vão para a BVH, sem teto fixo de instâncias; a capacidade depende da GPU.
 - Subtrações, `smooth`, `mirror`, `repeat`, `twist`, `round` e `shell` viram código no shader, sem teto fixo de primitivas;
   o shader demora mais para compilar quanto mais código houver
-  (a vila, com 78, leva ~0,6 s). A compilação roda em segundo plano, sem travar o editor.
+  (a vila, com 75, leva alguns segundos). A compilação roda em segundo plano, sem travar o editor.
 - Dê `.name()` às peças principais e rode `node scripts/check.mjs` para conferir tamanhos e posições.
 - Depois, rode `node scripts/render.mjs cena.3di cena.png` e olhe a imagem: as vistas de frente, lado e
   topo mostram peças flutuando, atravessadas ou fora do lugar que os números não deixam ver.
@@ -584,7 +584,7 @@ Não há `import`, classes nem arquivos.
 |---|---|
 | `curvas.3di` | ponte em arco, cerca e corda: `bezier`, `spline`, `sweep` e `along` |
 | `casa-longa.3di` | casa longa nórdica: escopos (`split`, `tile`, `fill`), âncoras, telhas (`shingles`), pedras (`masonry`) e tábuas (`planks`) |
-| `vila.3di` | geração procedural: casas aleatórias, recortes com `repeat`, bosque, postes |
+| `vila.3di` | vila nórdica num fiorde: casas longas com âncoras, telhas/tábuas/pedras, paliçada e floresta com `polar`, píer e drakkar com curvas |
 | `pinguim.3di` | personagem com uniões suaves, `mirror`, materiais |
 | `gato.3di`, `cachorro.3di` | bichos low poly: `chain`, `paint` (pelagem), `facets` e olhos com pupila e brilho |
 | `cemiterio.3di` | diorama completo só com funções genéricas: `repeat` (lajotas, grade), `merge`, `bevel`, `polar` (abóboras), `chain` (árvores secas), `facets`, `paint` |

@@ -151,7 +151,7 @@ Abra o seletor **Exemplos** no editor ou consulte os arquivos:
 | [Ponte e cerca](examples/curvas.3di) | Curvas: `bezier`, `spline`, `sweep` e `along` |
 | [Casa longa](examples/casa-longa.3di) | Escopos (`split`, `tile`, `fill`), âncoras e telhas/pedras/tábuas de verdade (`shingles`, `masonry`, `planks`) |
 | [Castelo](examples/castelo.3di) | Arquitetura, recortes e repetição |
-| [Vila](examples/vila.3di) | Composição procedural de um cenário |
+| [Vila nórdica](examples/vila.3di) | Cenário completo: casas longas, paliçada, floresta, píer e drakkar |
 | [Campo](examples/campo.3di) | Vegetação estilizada com padrões repetidos |
 | [Formas](examples/formas.3di) | Extrusão, revolução e deformações |
 | [Fórmulas](examples/formulas.3di) | Superfícies implícitas definidas por expressões |

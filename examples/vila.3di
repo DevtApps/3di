@@ -1,89 +1,141 @@
-# Vila procedural: casas aleatórias dos dois lados da rua, praça com poço,
-# postes acesos e um bosque ao redor. Mude o seed para gerar outra vila.
-seed(11)
+# Vila nórdica à beira de um fiorde: casas longas em volta de uma praça com fogueira, o salão do
+# chefe, paliçada em arco, píer de tábuas e um drakkar atracado. Mude o seed para variar a vila.
+# Ferramentas: escopos (split/fill) nas fachadas, âncoras (anchor/attach) para portas e escudos,
+# curvas (spline/bezier + sweep/along) no píer, nos caminhos e no navio, polar na paliçada e na floresta, e tábuas, telhas e
+# pedras de verdade (planks/shingles/masonry) sem uma primitiva por peça.
+seed(5)
 
-PAREDES = ["#efe3cc", "#f3d9b8", "#dcc7a8", "#e9d6c9", "#d5dcc9", "#f0e9dc"]
-TELHAS = ["brick", "#8a3b2e", "#5d6b78", "#6e4a33"]
-PE = 1.1   # pé-direito de cada andar
+G = 0.4                       # altura da terra acima da água
+MADEIRA = ["#5a3d25", "#654529", "#4e3520"]
+ESCUDOS = ["#8c2f25", "#2f4f7a", "#c9a227", "#e8e0cc", "#3d5e3a"]
 
-def aberturas(w, d, andares, fundo, z_extra=0):
-    # porta, janelas do térreo e janelas dos andares de cima (frente e fundos).
-    # z_extra > 0 faz o recorte atravessar a parede: corte rente à face deixa uma película.
-    z = d / 2 - fundo / 2 + z_extra
-    porta = box(0.5, 0.85, fundo).place(0, 0, z)
-    terreo = box(0.42, 0.45, fundo).place(w * 0.3, 0.4, z).mirror("x").mirror("z")
-    partes = [porta, terreo]
-    if andares > 1:
-        n = max(1, int((w - 0.4) / 0.85))
-        esp = (w - 0.4) / n
-        cima = box(0.42, 0.5, fundo).repeat(x=n, y=andares - 1, spacing=(esp, PE, 1))
-        partes.append(cima.place(0, PE + 0.4, z).mirror("z"))
-    return partes
+# ---- terra, água e montanhas do fiorde
+agua = plane().material("#2c4652", rough=0.12, metal=0.25)
+terra = box(90, G, 46, round=0.15).place(0, 0, -19).color("#6b7f45").texture("mottle", color2="#56683a", size=4)
+praia = [ellipsoid(uniform(3, 6), 0.5, uniform(1.5, 2.5)).at(x, 0.1, 3.6 + uniform(-0.5, 0.5)) for x in range(-40, 41, 7)]
+praia = group(praia).color("#8a8270")
 
-def casa(w, d, andares, parede, telha):
-    h = PE * andares
-    corpo = box(w, h, d).place()
-    fachada = subtract(corpo, aberturas(w, d, andares, 0.22, z_extra=0.06)).color(parede)
-    porta, *janelas = aberturas(w, d, andares, 0.02, z_extra=-0.13)
-    vidros = group(janelas).material(color="#33475b", rough=0.08)
-    porta = porta.color("darkwood")
-    telhado = prism(d + 0.35, 0.85, w + 0.35).rotate(y=90).on(corpo).color(telha)
-    chamine = box(0.28, 0.9, 0.28).place(w * 0.25, h + 0.15, -d * 0.15).color("brick")
-    return group(fachada, vidros, porta, telhado, chamine)
+def montanha(x, z, r, h):
+    rocha = cone(r, h).place(x, 0, z).material("#5d6166", rough=1)
+    neve = cone(r * 0.32, h * 0.32).place(x, h * 0.68, z).material("#e9edf0", rough=1)
+    return [rocha, neve]
 
-# ---- casas ao longo da rua (o lado +z gira 180° para a porta olhar a rua)
+montanhas = [montanha(x, -62 - uniform(0, 12), uniform(14, 22), uniform(18, 30)) for x in range(-60, 61, 20)]
+montanhas += [montanha(s * uniform(46, 52), z, uniform(11, 15), uniform(14, 20)) for s in [-1, 1] for z in [-28, 8]]
+
+# ---- casa longa: base de pedra, paredes de tábuas, telhado de telhas (ou de grama), chifres na cumeeira
+def casa_longa(L, D, H=2.1, telhado="madeira"):
+    base = space(L, 0.45, D).fill("stone").masonry(0.5, 0.22).color("#8d8a82")
+    parede = box(L - 0.16, H, D - 0.16).on(base).color(choice(MADEIRA)).planks(0.28, length=1.7)
+    # cópias explícitas em vez de mirror: peças simples vão para a BVH (mirror vira código no shader)
+    postes = [cylinder(0.12, H + 0.1).place(sx * (L / 2 - 0.1), base.top, sz * (D / 2 - 0.1)).color("#3d2a1a") for sx in [-1, 1] for sz in [-1, 1]]
+    alto = H * 0.9 + D * 0.12
+    cobertura = prism(D + 1.0, alto, L + 0.9).rotate(y=90).on(parede)
+    if telhado == "grama":
+        cobertura = cobertura.color("#5f7440").shingles(0.5, 0.3, depth=0.05, vary=0.6).texture("noise", color2="#4c5e32", size=0.6)
+    else:
+        cobertura = cobertura.color("#5b4430").shingles(0.32, 0.22, depth=0.04).texture("mottle", color2="#3e2d1c", size=1.5)
+    cume = cylinder(0.1, L + 1.1).rotate(z=90).at(0, cobertura.top - 0.02, 0).color("#3d2a1a")
+    chifres = [segment((sx * (L / 2 + 0.45), cobertura.top - 0.08, 0), (sx * (L / 2 + 0.45), cobertura.top + 0.67, sz * 0.42), 0.05).color("#3d2a1a")
+               for sx in [-1, 1] for sz in [-1, 1]]
+    corpo = group(base, parede, postes, cobertura, cume, chifres)
+    # âncoras: porta no meio da fachada (+z), no nível do piso; escudos dos dois lados dela
+    frente = parede.front
+    return corpo.anchor("porta", parede, y=base.top, z=frente, dir="front") \
+        .anchor("escudo_e", parede, x=-L * 0.28, y=base.top + H * 0.55, z=frente, dir="front") \
+        .anchor("escudo_d", parede, x=L * 0.28, y=base.top + H * 0.55, z=frente, dir="front")
+
+def porta(h=1.8, w=1.0):
+    folha, verga = space(w, h + 0.25, 0.12).split("y", ["~", 0.25])
+    return group(folha.fill("#3a2616").texture("wood", axis="y", size=0.12), verga.fill("#2b1c10"),
+                 box(w * 0.8, 0.06, 0.03).at(0, h * 0.3, 0.07).mirror("y").color("#2a2a2a"))
+
+def escudo(cor):
+    disco = cylinder(0.36, 0.05).rotate(x=90).color(cor)
+    return group(disco, sphere(0.08).color("#8f8f8f").attach(disco, "front", gap=-0.03))
+
+def montar(casa):
+    p = porta().attach(casa, "porta", to="back", align="bottom", gap=0.01)
+    e = [escudo(choice(ESCUDOS)).attach(casa, k, gap=0.02) for k in ["escudo_e", "escudo_d"]]
+    return [casa, p, e]
+
+# ---- praça com fogueira e as casas em volta, viradas para ela
+PRACA = (0, -9)
+fogueira = group(
+    sphere(0.16).at(0.75, 0.08, 0).polar(11).color("#6e6a63"),
+    cone(0.5, 0.35).color("#2a1a10"),
+    sphere(0.32).at(0, 0.3, 0).material("#ff7a1a", glow=2.2),
+).at(PRACA[0], G, PRACA[1])
+chao_praca = cylinder(5.5, 0.04).place(PRACA[0], G, PRACA[1]).color("#7d6e57").texture("noise", color2="#6a5c47", size=0.5)
+
 casas = []
-for lado in [-1, 1]:
-    x = -15
-    while x < 15:
-        w, d = uniform(2.2, 3.4), uniform(2.3, 3.0)
-        if abs(x + w / 2) < 3.6:      # deixa espaço para a praça
-            x += 1
-            continue
-        c = casa(w, d, choice([1, 1, 2, 2, 3]), choice(PAREDES), choice(TELHAS))
-        if lado == 1:
-            c = c.rotate(y=180)
-        casas.append(c.place(x + w / 2, 0, lado * (1.7 + d / 2 + uniform(0.1, 0.5))))
-        x += w + uniform(0.3, 0.9)
+for i, ang in enumerate([-112, -76, -40, 40, 76, 112]):
+    L, D = uniform(7.5, 9), uniform(4.2, 5.0)
+    c = casa_longa(L, D, telhado=choice(["madeira", "madeira", "grama"]))
+    r = 13 + D / 2
+    x, z = PRACA[0] + r * sin(radians(ang + 180)), PRACA[1] + r * cos(radians(ang + 180))
+    casas += montar(c.rotate(y=ang).place(x, G, z))
 
-# ---- rua, praça e poço
-rua = box(34, 0.04, 2.6).place().color("#bba98a").material(rough=0.95)
-praca = cylinder(3.3, 0.06, round=0.02).place().color("stone")
-mureta = (cylinder(0.6, 0.7) - cylinder(0.48, 0.8)).color("stone")
-agua = cylinder(0.48, 0.05).place(y=0.45).material(color="water", rough=0.05)
-viga = group(box(0.08, 1.4, 0.08).place(0.55, 0, 0).mirror("x"), box(1.3, 0.08, 0.08).place(y=1.4)).color("darkwood")
-cobertura = prism(1.5, 0.45, 0.9).place(y=1.45).color("brick")
-poco = group(mureta.place(), agua, viga, cobertura).on(praca).name("poço")
+# salão do chefe: maior, atrás da praça, com chifres e telhado de telhas
+salao = casa_longa(16, 7, H=2.8)
+casas += montar(salao.place(PRACA[0], G, PRACA[1] - 17))
 
-# ---- postes: 1 poste repetido ao longo da rua e espelhado nas duas calçadas
-poste = group(
-    cylinder(0.05, 2.2).place().color("darkgray"),
-    sphere(0.13).at(0, 2.3, 0).material(color="#ffd27a", glow=1.6),
-)
-postes = poste.repeat(x=8, spacing=4.2).place(0, 0, 1.45).mirror("z").name("postes")
+# ---- paliçada: uma estaca repetida em círculo com polar (não custa primitivas por estaca),
+# recortada para não entrar na água e aberta no portão dos fundos
+CENTRO, RAIO = (0, -12), 25
+estaca = group(cylinder(0.2, 2.6).ground(), cone(0.2, 0.45).place(y=2.6)).color("#5a4630")
+anel = estaca.at(RAIO, 0, 0).polar(256).at(CENTRO[0], G, CENTRO[1])
+portao = box(4, 6, 4).place(0, 0, CENTRO[1] - RAIO)
+palicada = (anel & box(70, 10, 36).place(0, 0, CENTRO[1] - 18 + 1.5)) - portao
+torres = box(1, 4.4, 1).color("#4e3520").texture("wood", axis="y").place(2.4, G, CENTRO[1] - RAIO).mirror("x")
+verga = box(5.8, 0.35, 0.4).place(0, G + 3.9, CENTRO[1] - RAIO).color("#3d2a1a")
 
-# ---- bosque: pinheiros e árvores redondas em volta da vila
+# ---- caminhos de terra batida: da praça ao portão e ao píer
+terra_batida = "#806b4f"
+caminho_portao = sweep(("box", 1.6, 0.05), spline([(0, G, -13), (-1.5, G, -22), (0, G, -30), (0, G, -40)]), steps=14).color(terra_batida)
+caminho_pier = sweep(("box", 1.8, 0.05), spline([(0, G, -4.5), (3, G, 0), (6, G, 3.5)]), steps=8).color(terra_batida)
+
+# ---- píer: tábuas atravessadas ao longo de uma curva sobre a água, com estacas
+rumo = bezier((6, G + 0.05, 3.5), (8, G + 0.05, 9), (6, G + 0.05, 14))
+tabuas = box(0.24, 0.06, 2.2).color("#7a5c3e").along(rumo, spacing=0.27)
+estacas_pier = group([cylinder(0.11, 1.4).place(p[0] + dx, -0.8, p[2]).color("#3d2a1a") for p in rumo.points(6) for dx in [-1.1, 1.1]])
+
+# ---- drakkar: casco de tábuas, proa e popa em espiral, escudos na amurada, vela listrada
+def drakkar(L=12, B=2.4):
+    casco = (ellipsoid(L / 2, 1.0, B / 2) - box(L + 1, 2, B + 1).at(0, 1.0, 0)).shell(0.08)
+    casco = casco.color("#4a3422").planks(0.16, axis="x", vary=0.3)
+    cabeca = sweep(0.12, steps=10, path=bezier((L / 2 - 0.6, 0, 0), (L / 2 + 0.6, 0.4, 0), (L / 2 + 0.6, 2.2, 0), (L / 2 + 0.1, 2.0, 0)))
+    rabo = sweep(0.12, steps=10, path=bezier((-L / 2 + 0.6, 0, 0), (-L / 2 - 0.6, 0.4, 0), (-L / 2 - 0.5, 1.9, 0), (-L / 2 - 0.1, 1.6, 0)))
+    pontas = group(cabeca, rabo).color("#3d2a1a")
+    amurada = spline([(-L * 0.36, 0.02, B * 0.36), (0, 0.02, B / 2 - 0.08), (L * 0.36, 0.02, B * 0.36)])
+    escudos = [cylinder(0.3, 0.04).rotate(x=90).color(ESCUDOS[i % len(ESCUDOS)]).along(amurada, count=1, start=i / 8, end=i / 8)
+               for i in range(9)]
+    escudos = group(escudos).mirror("z")
+    mastro = cylinder(0.09, 5.5).place(0, -0.6, 0).color("#3d2a1a")
+    vela = box(3.6, 3.0, 0.04).at(0, 3.0, 0.12).color("#b8322a").texture("stripes", color2="#efe6d2", size=0.6, axis="x")
+    verga = cylinder(0.05, 4.2).rotate(z=90).at(0, 4.55, 0.1).color("#3d2a1a")
+    remos = segment((0, 0, 0), (0, -0.8, 1.5), 0.03).color("#7a5c3e").along(amurada.offset(0, 0, 0.05), count=7).mirror("z")
+    return group(casco, pontas, escudos, mastro, vela, verga, remos)
+
+navio = drakkar().rotate(y=-75).at(13, 0.55, 12)
+
+# ---- floresta: anéis de pinheiros com polar (contagens primas entre si para não parecer fileira)
 def pinheiro(h):
-    tronco = cylinder(0.1, h * 0.3).place().color("darkwood")
-    copa = [cone(h * (0.32 - 0.07 * i), h * 0.45).place(y=h * (0.22 + 0.2 * i)) for i in range(3)]
-    return group(tronco, group(copa).color("#2f6b3a"))
+    tronco = cylinder(0.18, h * 0.3).place().color("#4a3424")
+    copa = [cone(h * (0.3 - 0.07 * k), h * 0.42).place(y=h * (0.2 + 0.2 * k)) for k in range(3)]
+    return group(tronco, group(copa).color(choice(["#2e4a33", "#34503a", "#29432f"])))
 
-def redonda(h):
-    tronco = cylinder(0.09, h * 0.5).place().color("darkwood")
-    copa = [sphere(h * uniform(0.22, 0.3)).at(uniform(-0.2, 0.2) * h, h * uniform(0.6, 0.8), uniform(-0.2, 0.2) * h) for _ in range(3)]
-    return group(tronco, group(copa).color("leaf"))
+aneis = [(7.5, 29, 37, 0), (6, 31.5, 41, 3), (9.5, 34, 43, 1.5), (8, 37, 47, 4), (10, 40.5, 53, 2.2)]
+floresta = group([pinheiro(h).at(r, 0, 0).polar(n).rotate(y=o) for h, r, n, o in aneis]).at(CENTRO[0], G, CENTRO[1])
+floresta = floresta & box(100, 30, 50).place(0, 0, -33)
 
-arvores = []
-for _ in range(60):
-    lado = choice([-1, 1])
-    x, z = uniform(-17, 17), lado * uniform(6.5, 14)
-    h = uniform(1.8, 3.6)
-    a = pinheiro(h) if random() < 0.5 else redonda(h)
-    arvores.append(a.place(x, 0, z))
+# ---- gente e barris na praça
+gente = [person(outfit="casual", pose="stand", seed=i).rotate(y=uniform(0, 360)).place(PRACA[0] + 3.2 * cos(i * 1.9), G, PRACA[1] + 3.2 * sin(i * 1.9)) for i in range(3)]
+barris = cylinder(0.32, 0.8, round=0.04).color("#6b4a2e").texture("wood", axis="y", size=0.1).repeat(x=3, spacing=0.75).place(4.5, G, -1.5)
 
-morros = [ellipsoid(uniform(8, 14), uniform(3, 6), 6).at(x, 0, -30).color("#6f9a4d") for x in [-20, -5, 12, 26]]
-
-show(plane().color("grass"), rua, praca, poco, casas, postes, arvores, morros)
-sky("#8fbbe6")
-sun(0.75, 0.55, 0.45)
-camera(pos=(15, 10, 19), look=(0, 0.5, 0))
+show(agua, terra, praia, montanhas, chao_praca, fogueira, casas, palicada, torres, verga,
+     caminho_portao, caminho_pier, tabuas, estacas_pier, navio, floresta, gente, barris)
+sky("#a9b9c6")
+fog(0.0035)
+sun(0.5, 0.6, 0.55, color=(1.0, 0.88, 0.74))
+camera(pos=(26, 13, 26), look=(0, 1.5, -8))

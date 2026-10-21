@@ -15,7 +15,7 @@ Os arquivos estão em `examples/` no projeto e também no seletor Exemplos da ID
 | cemiterio.3di | Diorama completo: repeat, merge, polar, chain, facets, paint |
 | castelo.3di | Booleanas e repetição |
 | templo.3di | Arquitetura e repeat |
-| vila.3di | Geração procedural |
+| vila.3di | Vila nórdica: casas longas, paliçada, píer e drakkar |
 | arvore.3di | Recursão e BVH |
 | animacao.3di | Transformações com time |
 | boneco.3di | Esqueleto, bind e exportação animada |
