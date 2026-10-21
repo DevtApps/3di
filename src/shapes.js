@@ -456,10 +456,10 @@ const METHODS = {
     needFinite(s, 'repeat()');
     const n = [a.x, a.y, a.z].map((v, i) => {
       const k = num(v, 'xyz'[i]);
-      if (!Number.isInteger(k) || k < 1) throw new ScriptError('repeat() precisa de quantidades inteiras >= 1', null);
+      if (!Number.isSafeInteger(k) || k < 1) throw new ScriptError('repeat() precisa de quantidades inteiras >= 1 representáveis com precisão', null);
       return k;
     });
-    if (n[0] * n[1] * n[2] > 10000) throw new ScriptError('repeat() com cópias demais', null);
+    if (!Number.isSafeInteger(n[0] * n[1] * n[2])) throw new ScriptError('repeat(): quantidade de cópias excede a precisão numérica', null);
     const sz = size(s.bbox);
     let sp;
     if (a.spacing === null) sp = sz.map((v) => (v > 0 ? v * 1.5 : 1));

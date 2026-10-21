@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, mkdir, writeFile, rename, symlink, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { SceneWorkspace } from '../dist/workspace.mjs';
+import { SceneWorkspace } from '../build/services/workspace.mjs';
 
 async function setup(t) {
   const base = await mkdtemp(join(tmpdir(), '3di-files-'));

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, symlink, rm, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startIdeServer } from '../tools/ideserver.mjs';
+import { startIdeServer } from '../src/services/ideserver.mjs';
 import { runScript } from '../src/interp.js';
 import { compileScene } from '../src/compiler.js';
 import { exportGLB } from '../src/export.js';
@@ -28,7 +28,7 @@ test('examples compile and representative scenes export', async () => {
 
 test('invalid export parameters fail immediately', async () => {
   const scene = runScript('show(sphere())').scene;
-  for (const res of [Infinity, NaN, 0, -1, 1.5, 2049, '128']) await assert.rejects(exportGLB(scene, { res }), /res deve/);
+  for (const res of [Infinity, NaN, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '128']) await assert.rejects(exportGLB(scene, { res }), /res deve/);
   scene.anim = { duration: -1, fps: 30 };
   await assert.rejects(exportGLB(scene), /animação/);
 });

@@ -5,7 +5,7 @@
       "name": "3di",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
-        "/home/tiago/Documentos/Projetos/3DI/tools/serve.py",
+        "scripts/serve.py",
         "8319"
       ],
       "port": 8319

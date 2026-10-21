@@ -10,13 +10,11 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "types": [
-      "node",
-      "vscode"
+      "node"
     ]
   },
   "include": [
-    "extension/**/*.ts",
-    "desktop/**/*.ts",
-    "services/**/*.ts"
+    "apps/desktop/**/*.ts",
+    "src/services/**/*.ts"
   ]
 }

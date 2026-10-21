@@ -6,27 +6,23 @@
     "zod": "^4.6.7"
   },
   "scripts": {
-    "app": "npm run desktop:build && node tools/run-desktop.mjs",
+    "app": "npm run desktop:build && node scripts/run-desktop.mjs",
     "mcp": "npm run dev",
-    "install-desktop": "node tools/install-desktop.mjs",
+    "install-desktop": "node scripts/install-desktop.mjs",
     "test": "node --test tests/*.test.mjs",
-    "dev": "node --watch tools/dev.mjs",
-    "build": "node tools/build-extension.mjs",
+    "dev": "node --watch scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "vscode:prepublish": "npm run build",
-    "package": "vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links -o out/3di-engine.vsix",
-    "test:extension": "node tools/test-extension.mjs",
     "pretest": "npm run build",
-    "desktop:build": "node tools/build-desktop.mjs",
+    "desktop:build": "npm run build",
     "desktop:deb": "npm run desktop:build && electron-builder --linux deb --config electron-builder.yml",
-    "desktop:smoke": "npm run desktop:build && node tools/run-desktop.mjs --smoke",
+    "desktop:smoke": "npm run desktop:build && node scripts/run-desktop.mjs --smoke",
     "predev": "npm run desktop:build",
-    "vendor:three": "node tools/vendor-three.mjs"
+    "vendor:three": "node scripts/vendor-three.mjs",
+    "clean": "node scripts/clean.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "@types/vscode": "^1.110.0",
-    "@vscode/vsce": "^4.0.0",
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
@@ -37,161 +33,9 @@
   "displayName": "3DI — 3D Engine",
   "description": "Crie cenas 3D com código: preview WebGL, linguagem 3DI, projetos e MCP HTTP.",
   "version": "0.4.0",
-  "publisher": "3di-local",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.110.0"
-  },
-  "main": "./dist/extension.cjs",
-  "extensionKind": [
-    "workspace"
-  ],
-  "categories": [
-    "Programming Languages",
-    "Visualization"
-  ],
-  "activationEvents": [
-    "onLanguage:3di",
-    "onUri",
-    "workspaceContains:3di.json"
-  ],
-  "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": false,
-      "description": "O 3DI executa cenas e disponibiliza ferramentas MCP locais."
-    },
-    "virtualWorkspaces": {
-      "supported": false
-    }
-  },
-  "contributes": {
-    "languages": [
-      {
-        "id": "3di",
-        "aliases": [
-          "3DI",
-          "3di"
-        ],
-        "extensions": [
-          ".3di"
-        ],
-        "configuration": "./extension/language-configuration.json"
-      }
-    ],
-    "grammars": [
-      {
-        "language": "3di",
-        "scopeName": "source.3di",
-        "path": "./extension/3di.tmLanguage.json"
-      }
-    ],
-    "snippets": [
-      {
-        "language": "3di",
-        "path": "./extension/snippets.json"
-      }
-    ],
-    "commands": [
-      {
-        "command": "3di.newProject",
-        "title": "Novo projeto",
-        "category": "3DI",
-        "icon": "$(new-folder)"
-      },
-      {
-        "command": "3di.openPreview",
-        "title": "Abrir preview 3D",
-        "category": "3DI",
-        "icon": "$(preview)"
-      },
-      {
-        "command": "3di.previewOnly",
-        "title": "Somente preview",
-        "category": "3DI",
-        "icon": "$(screen-full)"
-      },
-      {
-        "command": "3di.showCode",
-        "title": "Mostrar código",
-        "category": "3DI",
-        "icon": "$(code)"
-      },
-      {
-        "command": "3di.exportGlb",
-        "title": "Exportar GLB",
-        "category": "3DI",
-        "icon": "$(export)"
-      },
-      {
-        "command": "3di.exportPng",
-        "title": "Exportar PNG",
-        "category": "3DI",
-        "icon": "$(device-camera)"
-      },
-      {
-        "command": "3di.examples",
-        "title": "Abrir exemplo",
-        "category": "3DI",
-        "icon": "$(library)"
-      },
-      {
-        "command": "3di.integrations",
-        "title": "Integrações MCP e skills",
-        "category": "3DI",
-        "icon": "$(plug)"
-      },
-      {
-        "command": "3di.restartMcp",
-        "title": "Reiniciar MCP HTTP",
-        "category": "3DI",
-        "icon": "$(debug-restart)"
-      }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "3di.openPreview",
-          "when": "editorLangId == 3di",
-          "group": "navigation"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "3di.openPreview",
-          "when": "resourceExtname == .3di",
-          "group": "navigation"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "3DI",
-      "properties": {
-        "3di.autoPreview": {
-          "type": "boolean",
-          "default": true,
-          "description": "Abrir o preview ao selecionar um arquivo .3di."
-        },
-        "3di.mcp.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Iniciar MCP HTTP local com o SDK oficial, sem autenticação."
-        },
-        "3di.mcp.port": {
-          "type": "integer",
-          "minimum": 1024,
-          "maximum": 65535,
-          "default": 8317,
-          "description": "Porta fixa do MCP em 127.0.0.1. Se ocupada, o MCP informa erro; configure outra porta explicitamente."
-        },
-        "3di.export.resolution": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 2048,
-          "default": 128,
-          "description": "Resolução da malha GLB."
-        }
-      }
-    }
+    "node": ">=22.12.0"
   }
 }

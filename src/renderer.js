@@ -1,4 +1,5 @@
 // Renderizador WebGL2: um triângulo de tela cheia + raymarching do SDF gerado.
+import { packDataTexture } from './data-texture.js';
 
 const VERT = `#version 300 es
 in vec2 pos;
@@ -279,7 +280,8 @@ export class Renderer {
     if (!data) return;
     const gl = this.gl;
     const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    if (data.instCount > max || data.nodeCount > max) throw new Error(`cena excede o limite de textura da GPU (${max})`);
+    const instances = packDataTexture(data.inst, data.instW, max);
+    const nodes = packDataTexture(data.bvh, data.bvhW, max);
     this.tex ??= [gl.createTexture(), gl.createTexture()];
     const put = (unit, tex, w, h, arr, name) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
@@ -287,11 +289,13 @@ export class Renderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, arr);
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) throw new Error(`Não foi possível carregar a cena na GPU (WebGL ${error}); a qualidade não foi reduzida.`);
       gl.uniform1i(gl.getUniformLocation(this.program, name), unit);
     };
     gl.useProgram(this.program);
-    put(0, this.tex[0], data.instW, data.instCount, data.inst, 'uInst');
-    put(1, this.tex[1], data.bvhW, data.nodeCount, data.bvh, 'uBvh');
+    put(0, this.tex[0], instances.width, instances.height, instances.pixels, 'uInst');
+    put(1, this.tex[1], nodes.width, nodes.height, nodes.pixels, 'uBvh');
   }
 
   // devolve false quando ainda não há shader (nada foi desenhado)
