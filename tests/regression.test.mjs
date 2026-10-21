@@ -679,3 +679,34 @@ test('escopos: split, tile e fill montam estruturas sem coordenadas', () => {
     assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
   }
 });
+
+test('âncoras: anchor guarda ponto e direção que acompanham transformações; attach encaixa', () => {
+  const run = (src) => {
+    const r = runScript(src);
+    assert.equal(r.ok, true, `${src}: ${r.error?.toString()} ${r.error?.hint ?? ''}`);
+    return r.logs;
+  };
+  const casa = 'c = box(4, 2.5, 3).ground().anchor("porta", "front", y=0).anchor("cume", "top").rotate(y=90).at(2, 0, 1)\n';
+  assert.deepEqual(run(`${casa}print(c.anchors)\nprint(c.point("porta"))\nprint(c.facing("porta"))\nshow(c)`),
+    ["['cume', 'porta']", '(3.5, 0, 1)', '(1, 0, 0)']);
+  // to= gira a peça para a face dela encarar a âncora; align="bottom" apoia a base na altura da âncora
+  assert.deepEqual(run(`${casa}p = box(1, 2, 0.1).attach(c, "porta", to="back", gap=0.01, align="bottom")\nprint(p.left, p.right, p.bottom, p.size)\nshow(p)`),
+    ['3.51 3.61 0 (0.1, 2, 1)']);
+  // sem to: a face da peça que encara a âncora, sem girar; escopos e faces padrão servem de alvo
+  assert.deepEqual(run('s = sphere(0.2).attach(space(2), "top", gap=0.1)\nprint(s.bottom)\nshow(s)'), ['2.1']);
+  assert.deepEqual(run('a = cone(0.2, 0.6).anchor("ponta", "top").attach(box(1), "right", to="ponta")\nprint(a.point("ponta"), a.facing("ponta"))\nshow(a)'),
+    ['(0.5, 0, 0) (-1, 0, 0)']);
+  // a última âncora com o mesmo nome vence, e anchor não muda a geometria
+  assert.deepEqual(run('b = box(1).anchor("p", (0, 0, 0)).anchor("p", (1, 2, 3))\nprint(b.point("p"), b.size)\nshow(b)'), ['(1, 2, 3) (1, 1, 1)']);
+  compileScene(runScript(`${casa}show(c)`).scene);
+
+  const errs = [
+    ['box(1).attach(box(1), "nada")', /âncora 'nada'/], ['box(1).anchor("a", dir="diagonal")', /direção/],
+    ['box(1).attach(3, "top")', /forma ou um escopo/], ['box(1).attach(box(1), "top", align="meio")', /align/],
+  ];
+  for (const [src, re] of errs) {
+    const r = runScript(`show(${src})`);
+    assert.equal(r.ok, false, src);
+    assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
+  }
+});

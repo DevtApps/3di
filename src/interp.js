@@ -8,6 +8,7 @@ import { makeRng } from './lib/rand.js';
 import { libBuiltins } from './lib/index.js';
 import { rigBuiltins } from './rig.js';
 import { scopeBuiltins, setScopeCaller } from './scope.js';
+import './anchor.js'; // registra anchor/attach/point/facing nas formas
 
 class Scope {
   constructor(parent = null) { this.vars = new Map(); this.parent = parent; }

@@ -1,5 +1,5 @@
 # Casa longa nórdica montada com escopos: split divide, tile repete, fill preenche.
-# Nenhuma coordenada absoluta além do tamanho da casa.
+# Nenhuma coordenada absoluta além do tamanho da casa; anchor/attach penduram os enfeites.
 seed(7)
 L, H, D = 10, 2.4, 5          # comprimento (x), altura das paredes, largura (z)
 casa = space(L, H, D)
@@ -55,6 +55,20 @@ cobertura = telhado.color("#6b5236").texture("bricks", color2="#3e2d1c", size=0.
 adornos = group(segment((0, 0, 0), (0.0, 0.8, 0.45), 0.06, 0.03), segment((0, 0, 0), (0.0, 0.8, -0.45), 0.06, 0.03)) \
     .color("#3d2a1a").at(L / 2 + 0.35, telhado.top - 0.1, 0).mirror("x")
 
-show(plane().color("#6f8a4a").texture("noise", size=0.6), lados, fachada, fundos, cobertura, cume, adornos)
+# ---- âncoras: pontos de encaixe na fachada; os enfeites se colam neles com attach
+casa_toda = group(lados, fachada, fundos, cobertura) \
+    .anchor("porta", vao_porta, y=0, z=frente.front, dir="front") \
+    .anchor("escudo_e", lado_e[2], z=frente.front, dir="front") \
+    .anchor("escudo_d", lado_d[0], z=frente.front, dir="front")
+
+def escudo(cor):
+    disco = cylinder(0.32, 0.05).rotate(x=90).color(cor)
+    return group(disco, sphere(0.07).color("#9a9a9a").attach(disco, "front"))
+
+escudos = [escudo("#8c2f25").attach(casa_toda, "escudo_e", gap=0.02),
+           escudo("#2f4f7a").attach(casa_toda, "escudo_d", gap=0.02)]
+banco = box(1.4, 0.45, 0.4).color("#5a3d25").attach(casa_toda, "porta", gap=0.15, align="bottom", offset=(-1.6, 0, 0))
+
+show(plane().color("#6f8a4a").texture("noise", size=0.6), casa_toda, cume, adornos, escudos, banco)
 sun(0.5, 0.9, 0.7)
 camera(pos=(9, 4.5, 11), look=(0, 1.6, 0))

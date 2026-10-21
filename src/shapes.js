@@ -199,7 +199,8 @@ function computeBBox(s) {
 
 export function translate(s, v) {
   if (v.every((x) => !isExpr(x) && Math.abs(x) < 1e-9)) return s;
-  if (s.kind === 'translate') return translate(s.children[0], v.map((x, i) => esym('+', x, s.props.v[i])));
+  // nós com âncoras não se fundem: as âncoras estão no referencial deles
+  if (s.kind === 'translate' && !s.props.anchors) return translate(s.children[0], v.map((x, i) => esym('+', x, s.props.v[i])));
   return new Shape('translate', { v }, [s]);
 }
 
@@ -656,14 +657,18 @@ const PROPS = {
   x: (b) => center(b)[0], y: (b) => center(b)[1], z: (b) => center(b)[2],
 };
 
+// atributos que dependem da forma toda, não só da caixa (registrados por outros módulos)
+export const SHAPE_ATTRS = {};
+
 export function getShapeAttr(s, name) {
   if (name in PROPS) return PROPS[name](s.bbox);
+  if (name in SHAPE_ATTRS) return SHAPE_ATTRS[name](s);
   if (name in METHODS) {
     const [params, fn] = METHODS[name];
     return new Native(name, params, (a) => fn(s, a));
   }
   throw new ScriptError(`forma não tem o método/atributo '${name}'`, null,
-    didYouMean(name, [...Object.keys(METHODS), ...Object.keys(PROPS)]) ?? `métodos: ${Object.keys(METHODS).join(', ')}`);
+    didYouMean(name, [...Object.keys(METHODS), ...Object.keys(PROPS), ...Object.keys(SHAPE_ATTRS)]) ?? `métodos: ${Object.keys(METHODS).join(', ')}`);
 }
 
 export function shapeBinary(op, a, b) {

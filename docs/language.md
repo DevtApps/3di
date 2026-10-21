@@ -148,6 +148,35 @@ Os escopos são sempre alinhados aos eixos: monte a peça na orientação natura
 Cada `fill` com cor é uma caixa (uma primitiva); para grades muito densas e iguais, `repeat` continua
 mais barato. Veja `casa-longa.3di`.
 
+## Âncoras: encaixar componentes
+
+Uma **âncora** é um ponto com direção guardado na forma ("porta", "cume", "apoio"). Ela acompanha
+`at`/`move`, `rotate` e `scale`, então uma função como `casa()` pode dizer onde as coisas se ligam a ela,
+e quem usa a casa não refaz as contas. Toda forma (e todo escopo) também tem as âncoras padrão no centro
+das faces da caixa envolvente: `top`, `bottom`, `left`, `right`, `front`, `back` (apontando para fora;
+nomes em português também valem) e `center`.
+
+| | |
+|---|---|
+| `.anchor(name, at=None, dir=None, x=None, y=None, z=None)` | declara a âncora. `at`: nome de face ou de outra âncora (herda ponto e direção), ponto `(x, y, z)`, forma ou escopo (o centro); sem `at`, o centro. `x`/`y`/`z` trocam aquela coordenada (absoluta). `dir`: `"up"`, `"front"`... ou `(x, y, z)`. Não muda a geometria |
+| `.attach(target, at, to=None, gap=0, offset=None, turn=True, align="center")` | cola a peça na âncora `at` do alvo. Sem `to`, usa a face da peça que encara a âncora, sem girar. Com `to` (âncora ou face da peça), gira a peça para essa âncora encarar o alvo; `turn=False` não gira. `gap` afasta na direção da âncora, `offset` desloca `(x, y, z)`, `align="bottom"` (ou `"top"`) apoia a base da peça na altura da âncora |
+| `.point(name)`, `.facing(name)` | posição e direção de uma âncora |
+| `.anchors` | nomes das âncoras declaradas |
+
+```python
+def casa(w=6):
+    corpo = box(w, 2.5, 4).ground().color("wood")
+    return corpo.anchor("porta", "front", y=0).anchor("cume", "top")
+
+c = casa().rotate(y=90).at(3, 0, 0)          # as âncoras giram e andam junto
+porta = box(1, 2, 0.08).color("#4a3020").attach(c, "porta", to="back", align="bottom", gap=0.01)
+placa = box(0.6, 0.3, 0.04).attach(c, "porta", to="back", offset=(0, 2.2, 0))
+show(c, porta, placa)
+```
+
+A mesma âncora declarada de novo (mais por fora) vence. Depois de `bend`, `twist`, `taper` e outras
+deformações as âncoras não acompanham a curva: declare-as depois da deformação.
+
 ## Modificar e pintar
 
 | método | |
@@ -480,7 +509,8 @@ Não há `import`, classes nem arquivos.
 
 ## Dicas para IA
 
-- Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) e os escopos (`split`, `tile`, `fill`) a fazer contas de coordenadas.
+- Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) e os escopos (`split`, `tile`, `fill`) a fazer contas de coordenadas. Em componentes reutilizáveis,
+  declare âncoras (`anchor`) para os pontos de encaixe e use `attach` para ligar as peças.
 - Use `.mirror()` e `.repeat()` para simetrias e cópias, porque não pesam nada.
 - Cópias feitas com loop custam uma primitiva cada. Quando são simples (formas posicionadas, giradas,
   coloridas e agrupadas com `group()`), elas vão para a BVH, sem teto fixo de instâncias; a capacidade depende da GPU.
