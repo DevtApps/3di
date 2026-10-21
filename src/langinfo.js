@@ -103,6 +103,9 @@ const DOCS = {
   paint: 'Pinta a forma onde ela está dentro de `region` (focinho, peito, patas, manchas). A cor e o material vêm da região; `blend` suaviza a borda; `relief` levanta (> 0) ou afunda (< 0) a superfície ali: faixas, placas, vincos, emendas.',
   merge: 'Junta formas com acabamento só na linha de contato: `r` = raio do filete (ou largura), `profile` round (filete), chamfer (chanfro) ou groove (sulco), `colors` sharp (cada forma com sua cor) ou blend, `seam` = cor da emenda.',
   light: 'Luzes de estúdio além do sol: `rim` = contorno na silhueta, `fill` = preenchimento do lado da câmera, `ao` = força da oclusão de ambiente.',
+  space: 'Escopo vazio (caixa invisível) de w x h x d, centrado em x/z e com a base em y = 0, para dividir com split/tile e preencher com fill.',
+  split: 'Divide a caixa da forma (ou escopo) no eixo em faixas, da menor para a maior coordenada. Tamanhos: metros, "~" (o que sobrar), "2fr" (partes do que sobrar), "30%"; ou um inteiro = partes iguais. Devolve uma lista de escopos.',
+  tile: 'Repete células de ~`size` metros ao longo do eixo, ajustando o tamanho para caberem inteiras (com `gap` entre elas). Sem `f` devolve os escopos; com `f(escopo)` ou `f(escopo, i)` devolve as formas juntas.',
   bind: 'Prende a forma (modelada na pose de repouso) a um osso.',
   // propriedades
   top: 'y do topo da caixa envolvente.', bottom: 'y da base.', left: 'x mínimo.', right: 'x máximo.',
@@ -117,8 +120,18 @@ const CATEGORY = {
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
   polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', implicit: 'primitiva',
-  grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
+  space: 'estrutura', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
+
+// membros dos escopos (space(), forma.split(), forma.tile())
+const SCOPE_MEMBERS = [
+  { name: 'split', signature: 'split(axis, sizes)', doc: DOCS.split },
+  { name: 'tile', signature: 'tile(axis, size, f=None, gap=0)', doc: DOCS.tile },
+  { name: 'fill', signature: 'fill(what, fit="stretch", round=0, bevel=0, align="bottom")', doc: 'Preenche o escopo: cor/material vira uma caixa do tamanho dele (com `round`/`bevel`); uma forma é encaixada (`fit` stretch estica, contain escala por igual, none só posiciona; `align` bottom apoia na base, center centraliza); uma função recebe o escopo e devolve formas.' },
+  { name: 'inset', signature: 'inset(x, y=None, z=None)', doc: 'Escopo recuado: um valor recua igual nos 3 eixos; (x, y, z) recua cada eixo dos dois lados.' },
+  ...['w', 'h', 'd', 'size', 'center', 'x', 'y', 'z', 'left', 'right', 'bottom', 'top', 'back', 'front', 'min', 'max']
+    .map((name) => ({ name, signature: name, doc: DOCS[name] ?? `${name} do escopo.`, property: true })),
+];
 
 const HIDDEN = new Set(['isinstance']);
 
@@ -167,6 +180,7 @@ export function languageCatalog() {
     methods,
     properties,
     rig: RIG_MEMBERS,
+    scope: SCOPE_MEMBERS,
     colors: Object.keys(COLORS),
     textures: Object.keys(TEXTURES),
     sides: Object.keys(SIDES),
@@ -184,6 +198,7 @@ export function languageSummary() {
     `Combinar:\n${fn('combinar')}\n  a + b (união), a - b (subtração), a & b (interseção)`,
     `Métodos de forma:\n${c.methods.map((m) => `  .${m.signature}  # ${m.doc}`).join('\n')}`,
     `Propriedades de forma: ${c.properties.map((p) => p.name).join(', ')}`,
+    `Estrutura (escopos: caixas invisíveis para dividir e preencher, sem contas de coordenadas):\n${fn('estrutura')}\n${c.scope.filter((m) => !m.property).map((m) => `  escopo.${m.signature}  # ${m.doc}`).join('\n')}\n  propriedades: ${c.scope.filter((m) => m.property).map((m) => m.name).join(', ')}`,
     `Geradores (cada um aceita style="lowpoly"|"stylized"|"realistic" e seed=):\n${fn('gerador')}`,
     `Cena:\n${fn('cena')}`,
     `Rig:\n${fn('rig')}\n${c.rig.skeleton.map((m) => `  esq.${m.signature}  # ${m.doc}`).join('\n')}\n${c.rig.bone.map((m) => `  osso.${m.signature}  # ${m.doc}`).join('\n')}`,
@@ -191,6 +206,6 @@ export function languageSummary() {
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
     `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,
-    'Dicas: prefira layout semântico (on, beside, place, mirror) a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
+    'Dicas: prefira layout semântico (on, beside, place, mirror) e escopos (split, tile, fill) para fachadas, móveis e grades a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
   ].join('\n\n');
 }

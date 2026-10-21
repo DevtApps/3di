@@ -7,6 +7,7 @@ import { toSrgb, hsvToRgb, rgbToHsv, isColorLike } from './color.js';
 import { makeRng } from './lib/rand.js';
 import { libBuiltins } from './lib/index.js';
 import { rigBuiltins } from './rig.js';
+import { scopeBuiltins, setScopeCaller } from './scope.js';
 
 class Scope {
   constructor(parent = null) { this.vars = new Map(); this.parent = parent; }
@@ -150,6 +151,8 @@ export class Interpreter {
     this.globals = new Scope();
     for (const [name, v] of Object.entries(this.builtins())) this.globals.vars.set(name, v);
     this.builtinNames = new Set(this.globals.vars.keys());
+    // escopo.fill(f) / tile(..., f) chamam funções do script
+    setScopeCaller((f, args) => this.call(f, args, [], null));
   }
 
   builtins() {
@@ -278,7 +281,7 @@ export class Interpreter {
       randint: N('randint', ['a', 'b'], ({ a, b }) => a + Math.floor((b - a + 1) * this.rng())),
       choice: N('choice', ['xs'], ({ xs }) => { const a = iterate(xs); return a[Math.floor(this.rng() * a.length)]; }),
     };
-    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
+    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...scopeBuiltins(), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
   }
 
   toNum(x, what) {

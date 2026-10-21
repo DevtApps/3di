@@ -115,6 +115,39 @@ caneca e alça com filete, peças de máquina com chanfro.
 
 `.on()` com `plane()` como alvo mantém o x/z da forma.
 
+## Estrutura: dividir e preencher (escopos)
+
+Um **escopo** é uma caixa invisível, alinhada aos eixos, usada para montar fachadas, móveis, prateleiras
+e grades sem calcular coordenadas (como as gramáticas de divisão do CityEngine). Você **divide** o
+escopo em faixas, **repete** células e **preenche** cada parte com cor, forma ou função.
+
+| | |
+|---|---|
+| `space(w=1, h=w, d=w)` | escopo vazio, centrado em x/z e com a base em y = 0 |
+| `forma.space()` | o escopo da caixa envolvente da forma |
+| `e.split(axis, sizes)` | divide no eixo (`"x"`, `"y"`, `"z"`), da menor para a maior coordenada (esquerda→direita, baixo→cima, trás→frente). Tamanhos: metros (`0.4`), `"~"` (o que sobrar), `"2fr"` (2 partes do que sobrar), `"30%"`; ou um inteiro para partes iguais. Devolve uma lista de escopos |
+| `e.tile(axis, size, f=None, gap=0)` | cabe quantas células de ~`size` der e ajusta o tamanho para ficarem inteiras, com `gap` entre elas. Sem `f`, devolve os escopos; com `f(escopo)` ou `f(escopo, i)`, devolve as formas juntas |
+| `e.fill(what, fit="stretch", round=0, bevel=0, align="bottom")` | preenche: cor ou material vira uma caixa do tamanho do escopo (com `round`/`bevel`); uma forma é encaixada (`fit`: `stretch` estica, `contain` escala por igual até caber, `none` só posiciona; `align`: `bottom` apoia na base, `center` centraliza); uma função recebe o escopo e devolve formas (ou `None`); uma lista preenche com cada item |
+| `e.inset(x, y=None, z=None)` | escopo recuado dos dois lados (um valor = os 3 eixos); valores negativos alargam |
+| `e.w`, `e.h`, `e.d`, `e.size`, `e.center`, `e.x/y/z`, `e.left/right/bottom/top/back/front`, `e.min`, `e.max` | medidas, como nas formas |
+
+`split` e `tile` também funcionam direto numa forma (usam a caixa dela), e `on`, `under` e `beside`
+aceitam um escopo como alvo. Quando os tamanhos fixos não fecham com o comprimento e não há `"~"`/`fr`,
+o `split` dá erro com a soma: use `"~"` numa parte para absorver a diferença.
+
+```python
+parede = space(8, 3, 0.25)
+base, meio, topo = parede.split("y", [0.4, "~", 0.3])
+esq, vao, dir = meio.split("x", ["~", 1.2, "~"])
+tabuas = lambda e: e.tile("x", 0.3, lambda c: c.fill("wood", bevel=0.01), gap=0.01)
+porta = vao.inset(0.05, 0, -0.02).fill("#4a3020", bevel=0.02)
+show(base.fill("stone", round=0.04), tabuas(esq), tabuas(dir), porta, topo.fill("#3d2a1a"))
+```
+
+Os escopos são sempre alinhados aos eixos: monte a peça na orientação natural e gire o resultado.
+Cada `fill` com cor é uma caixa (uma primitiva); para grades muito densas e iguais, `repeat` continua
+mais barato. Veja `casa-longa.3di`.
+
 ## Modificar e pintar
 
 | método | |
@@ -447,7 +480,7 @@ Não há `import`, classes nem arquivos.
 
 ## Dicas para IA
 
-- Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) a fazer contas de coordenadas.
+- Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) e os escopos (`split`, `tile`, `fill`) a fazer contas de coordenadas.
 - Use `.mirror()` e `.repeat()` para simetrias e cópias, porque não pesam nada.
 - Cópias feitas com loop custam uma primitiva cada. Quando são simples (formas posicionadas, giradas,
   coloridas e agrupadas com `group()`), elas vão para a BVH, sem teto fixo de instâncias; a capacidade depende da GPU.
@@ -463,6 +496,7 @@ Não há `import`, classes nem arquivos.
 
 | arquivo | mostra |
 |---|---|
+| `casa-longa.3di` | casa longa nórdica montada só com escopos: `split`, `tile`, `fill`, `inset` |
 | `vila.3di` | geração procedural: casas aleatórias, recortes com `repeat`, bosque, postes |
 | `pinguim.3di` | personagem com uniões suaves, `mirror`, materiais |
 | `gato.3di`, `cachorro.3di` | bichos low poly: `chain`, `paint` (pelagem), `facets` e olhos com pupila e brilho |

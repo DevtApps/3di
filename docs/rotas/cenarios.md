@@ -2,6 +2,9 @@
 
 - **Funções reutilizáveis** para cada elemento (`pilar(h)`, `grade(comprimento, eixo)`, `pinheiro(h, cor)`,
   `lapide()`, `lampiao()`), posicionadas depois com `.at()`. Varie com parâmetros e `seed()`/`uniform()`.
+- **Fachadas e móveis por divisão:** `space(w, h, d)` (ou `forma.space()`) e depois `split("y", [0.4, "~", 0.3])`,
+  `tile("x", 0.3, f, gap=0.01)` e `fill(cor | forma | função)`: base, paredes, vãos, tábuas e janelas sem
+  coordenadas. `inset` recua (molduras, folhas de porta). Exemplo: `casa-longa.3di`.
 - **Grades sem custo:** lajotas, cercas, telhas e janelas com `repeat`; simetrias com `mirror`; peças radiais com `polar`.
 - **Recortes:** portas e janelas com `-`; o cortador atravessa a parede com folga. Batentes e caixilhos
   compartilham centro e nível com o recorte.

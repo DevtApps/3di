@@ -632,6 +632,8 @@ function mergeShapes(list, a) {
 
 function asShape(v, what) {
   if (v instanceof Shape) return v;
+  // escopos (space(), split...) servem de alvo para o layout: só a caixa importa
+  if (v?.isScope && /^(on|under|beside)\(\)$/.test(what)) return { bbox: { min: v.min, max: v.max } };
   throw new ScriptError(`${what} espera uma forma, recebeu ${typeName(v)}`, null);
 }
 

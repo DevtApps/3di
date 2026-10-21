@@ -636,3 +636,46 @@ test('merge(): round fillet, chamfer and groove only at the contact line, with s
   assert.equal(runScript(`show(merge(${shapes}, profile="wavy"))`).ok, false);
   assert.match(compileScene(runScript(`show(merge(${shapes}, r=0.05))`).scene).glsl, /mMerge\(/);
 });
+
+test('escopos: split, tile e fill montam estruturas sem coordenadas', () => {
+  const run = (src) => {
+    const r = runScript(src);
+    assert.equal(r.ok, true, `${src}: ${r.error?.toString()} ${r.error?.hint ?? ''}`);
+    return r;
+  };
+  const bb = (src) => run(src).scene.shapes[0].bbox;
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
+
+  // split: metros, "~" (o que sobra), "2fr" e "%"; ordem de baixo para cima
+  let b = bb('a, m, t = space(8, 3, 0.3).split("y", [0.4, "~", 0.5])\nshow(m.fill("red"))');
+  near(b.min[1], 0.4); near(b.max[1], 2.5); near(b.max[0] - b.min[0], 8);
+  b = bb('show(space(3).split("x", ["1fr", "2fr"])[1].fill("red"))');
+  near(b.min[0], -0.5); near(b.max[0], 1.5);
+  b = bb('show(space(10).split("x", ["25%", "~"])[0].fill("red"))');
+  near(b.max[0], -2.5);
+  assert.equal(run('print(len(box(1).split("z", 4)))').logs[0], '4');
+
+  // tile: ajusta o tamanho para caberem cópias inteiras, com gap entre elas
+  const cells = run('c = space(10, 1, 1).tile("x", 3, gap=0.5)\nprint(len(c))\nprint(c[0].w)').logs;
+  assert.deepEqual(cells, ['3', '3']);
+  b = bb('show(space(4, 2, 1).tile("x", 1, lambda c, i: c.inset(0.1, 0, 0).fill("wood") if i % 2 == 0 else None))');
+  near(b.min[0], -1.9); near(b.max[0], 0.9);
+
+  // fill de forma: stretch ocupa o escopo; contain escala por igual e apoia na base
+  b = bb('show(space(2, 1, 4).fill(sphere(0.5)))');
+  near(b.max[0] - b.min[0], 2); near(b.max[2] - b.min[2], 4); near(b.min[1], 0);
+  b = bb('show(space(2, 3, 2).fill(cube(1), fit="contain"))');
+  near(b.max[1] - b.min[1], 2); near(b.min[1], 0);
+  compileScene(run('show(space(2).split("y", 2)[0].fill("stone", bevel=0.05))').scene);
+
+  const errs = [
+    ['space(2).split("y", [1, 1.5])', /somam/], ['space(2).split("y", [1, 0.5])', /~/], ['space(2).split("w", 2)', /eixo/],
+    ['space(2).split("x", ["abc"])', /fr/], ['space(2).tile("x", 0)', /maior que zero/], ['space(2).fill(cube(1), fit="x")', /fit/],
+    ['space(2).inset(2)', /recuo/], ['space(2).fill(lambda c: 3)', /formas/], ['plane().split("x", 2)', /infinita/],
+  ];
+  for (const [src, re] of errs) {
+    const r = runScript(`show(${src})`);
+    assert.equal(r.ok, false, src);
+    assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
+  }
+});

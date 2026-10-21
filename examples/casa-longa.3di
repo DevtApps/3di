@@ -1,0 +1,60 @@
+# Casa longa nórdica montada com escopos: split divide, tile repete, fill preenche.
+# Nenhuma coordenada absoluta além do tamanho da casa.
+seed(7)
+L, H, D = 10, 2.4, 5          # comprimento (x), altura das paredes, largura (z)
+casa = space(L, H, D)
+
+# ---- fachada da frente (uma faixa fina na face +z)
+_, frente = casa.split("z", ["~", 0.25])
+base, parede, frechal = frente.split("y", [0.5, "~", 0.22])
+
+pedras = base.tile("x", 0.7, lambda c, i: c.inset(0.02, 0, 0).fill("stone", round=0.05).scale(uniform(0.95, 1.05)), gap=0.03)
+
+def tabuas(e):
+    # tábuas verticais com uma fresta entre elas, em dois tons de madeira
+    return e.tile("x", 0.32, lambda c, i: c.fill(mix("#6b4a2e", "#7d5836", uniform(0, 1)), bevel=0.012), gap=0.015)
+
+def porta(e):
+    folga, vao, verga = e.split("y", [0.02, "~", 0.35])
+    batente = e.inset(-0.08, 0, -0.04).split("y", ["~", 0.08])[1].fill("#3d2a1a")
+    folha = vao.inset(0.06, 0, -0.02).fill("#4a3020", bevel=0.02)
+    pregos = vao.inset(0.2, 0.25, -0.05).split("y", 3)
+    ferragens = [p.split("y", ["~", 0.05, "~"])[1].fill("#2a2a2a") for p in pregos]
+    return [folha, batente, ferragens]
+
+esq, vao_porta, dir = parede.split("x", ["~", 1.4, "~"])
+lado_e = esq.split("x", ["~", 0.8, 0.9])
+lado_d = dir.split("x", [0.9, 0.8, "~"])
+
+def janela(e):
+    baixo, vidro, cima = e.split("y", ["2fr", 0.45, "1fr"])
+    return [tabuas(baixo), tabuas(cima), vidro.inset(0.04, 0, -0.03).fill("#1b1f24"),
+            vidro.split("y", ["~", 0.05])[1].inset(-0.05, 0, -0.06).fill("#3d2a1a")]
+
+fachada = [
+    pedras,
+    tabuas(lado_e[0]), janela(lado_e[1]), tabuas(lado_e[2]),
+    porta(vao_porta),
+    tabuas(lado_d[0]), janela(lado_d[1]), tabuas(lado_d[2]),
+    frechal.fill("#4a3020", bevel=0.03),
+]
+fachada = group(fachada)
+fundos = fachada.mirror("z")     # a fachada de trás é a mesma, espelhada
+
+# ---- empenas (laterais) e corpo
+_, miolo, _ = casa.split("z", [0.25, "~", 0.25])
+corpo = miolo.split("y", [0.5, "~"])
+lados = group(corpo[0].fill("stone", round=0.05), corpo[1].inset(0, 0, 0.05).fill("#5a3d25"))
+
+# ---- telhado: prisma de duas águas com telhas de madeira (textura com relevo)
+telhado = prism(D + 0.6, 2.2, L + 0.6).rotate(y=90).on(casa)
+cume = cylinder(0.12, L + 1).rotate(z=90).at(0, telhado.top - 0.05, 0).color("#3d2a1a")
+cobertura = telhado.color("#6b5236").texture("bricks", color2="#3e2d1c", size=0.35, bump=0.4)
+
+# ---- chifres cruzados nas pontas da cumeeira (adorno típico)
+adornos = group(segment((0, 0, 0), (0.0, 0.8, 0.45), 0.06, 0.03), segment((0, 0, 0), (0.0, 0.8, -0.45), 0.06, 0.03)) \
+    .color("#3d2a1a").at(L / 2 + 0.35, telhado.top - 0.1, 0).mirror("x")
+
+show(plane().color("#6f8a4a").texture("noise", size=0.6), lados, fachada, fundos, cobertura, cume, adornos)
+sun(0.5, 0.9, 0.7)
+camera(pos=(9, 4.5, 11), look=(0, 1.6, 0))
