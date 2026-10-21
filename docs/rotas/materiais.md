@@ -23,3 +23,6 @@ Pinte depois de fundir/juntar o corpo, para a pintura seguir as emendas.
 - `sun(x, y, z, color=None)`: direção do sol. `sky(cor)`, `fog(density)`.
 - `light(rim=0.6, fill=0.4, ao=1, rim_color=None)`: luz de contorno na silhueta, preenchimento do lado
   da câmera (sem sombra) e força da oclusão. Sem `light()` a cena tem só sol e céu.
+
+
+Para tábuas, telhas e pedras com relevo de verdade (não só pintura), use `.planks()`, `.shingles()` e `.masonry()` (rota `cenarios`).

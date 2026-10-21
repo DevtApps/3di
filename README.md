@@ -149,7 +149,7 @@ Abra o seletor **Exemplos** no editor ou consulte os arquivos:
 | [Gato](examples/gato.3di) | Personagem low poly, pintura e facetas |
 | [Robô](examples/robo.3di) | Chanfros, junções e relevo |
 | [Ponte e cerca](examples/curvas.3di) | Curvas: `bezier`, `spline`, `sweep` e `along` |
-| [Casa longa](examples/casa-longa.3di) | Fachada montada com escopos (`split`, `tile`, `fill`) e enfeites encaixados com `anchor`/`attach` |
+| [Casa longa](examples/casa-longa.3di) | Escopos (`split`, `tile`, `fill`), âncoras e telhas/pedras/tábuas de verdade (`shingles`, `masonry`, `planks`) |
 | [Castelo](examples/castelo.3di) | Arquitetura, recortes e repetição |
 | [Vila](examples/vila.3di) | Composição procedural de um cenário |
 | [Campo](examples/campo.3di) | Vegetação estilizada com padrões repetidos |

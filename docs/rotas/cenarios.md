@@ -10,10 +10,12 @@
 - **Curvas:** `spline(pontos)`/`bezier(...)` descrevem caminhos; `sweep(raio | ("box", w, h), curva)` faz canos,
   cordas, vigas curvas, corrimãos e faixas de caminho; `forma.along(curva, spacing=...)` planta postes, estacas e
   tábuas. `curva.offset(...)` dá corrimão e bordas paralelas. Exemplo: `curvas.3di`.
+- **Tábuas, telhas e pedras sem custo de peças:** `.planks(largura, length=...)`, `.shingles()` e `.masonry()`
+  afundam juntas reais (silhueta, sombra e GLB). Aplique antes de girar a peça; melhor em caixas e prismas.
 - **Grades sem custo:** lajotas, cercas, telhas e janelas com `repeat`; simetrias com `mirror`; peças radiais com `polar`.
 - **Recortes:** portas e janelas com `-`; o cortador atravessa a parede com folga. Batentes e caixilhos
   compartilham centro e nível com o recorte.
-- **Telhados:** `prism(w, h, d)` (duas águas, cumeeira em z); textura `bricks` com `bump` vira telhas.
+- **Telhados:** `prism(w, h, d)` (duas águas, cumeeira em z) com `.shingles()` (telhas de verdade, fileiras sobrepostas).
   A caixa do telhado não descreve a altura de cada água: meça na posição real.
 - **Base de diorama:** bloco com `bevel`, lajotas em `repeat` com `bevel` pequeno e textura `mottle`/`noise`.
 - **Vegetação estilizada:** cones empilhados + `facets()`; árvores secas com `chain` (tronco e galhos).

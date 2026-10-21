@@ -44,12 +44,12 @@ fundos = fachada.mirror("z")     # a fachada de trás é a mesma, espelhada
 # ---- empenas (laterais) e corpo
 _, miolo, _ = casa.split("z", [0.25, "~", 0.25])
 corpo = miolo.split("y", [0.5, "~"])
-lados = group(corpo[0].fill("stone", round=0.05), corpo[1].inset(0, 0, 0.05).fill("#5a3d25"))
+lados = group(corpo[0].fill("stone").masonry(0.45, 0.25), corpo[1].inset(0, 0, 0.05).fill("#5a3d25").planks(0.3, length=1.6))
 
-# ---- telhado: prisma de duas águas com telhas de madeira (textura com relevo)
+# ---- telhado: prisma de duas águas coberto de telhas de madeira (shingles: fileiras de verdade)
 telhado = prism(D + 0.6, 2.2, L + 0.6).rotate(y=90).on(casa)
 cume = cylinder(0.12, L + 1).rotate(z=90).at(0, telhado.top - 0.05, 0).color("#3d2a1a")
-cobertura = telhado.color("#6b5236").texture("bricks", color2="#3e2d1c", size=0.35, bump=0.4)
+cobertura = telhado.color("#6b5236").shingles(0.32, 0.22, depth=0.04).texture("mottle", color2="#4a3826", size=1.5)
 
 # ---- chifres cruzados nas pontas da cumeeira (adorno típico)
 adornos = group(segment((0, 0, 0), (0.0, 0.8, 0.45), 0.06, 0.03), segment((0, 0, 0), (0.0, 0.8, -0.45), 0.06, 0.03)) \

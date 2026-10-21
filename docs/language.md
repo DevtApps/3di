@@ -324,6 +324,32 @@ Veja `formas.3di` (todas as primitivas e modificadores novos) e `formulas.3di`.
 invisível na abertura. Faça o recorte atravessar a superfície (ex.: janela com profundidade maior e
 deslocada alguns centímetros para fora).
 
+## Tábuas, telhas e pedras (padrões de superfície)
+
+Estes modificadores afundam **juntas de verdade** na forma: a silhueta, a sombra e a malha exportada
+mostram cada tábua, telha ou pedra. O custo é **constante** (não cria uma primitiva por peça) e as juntas
+só tiram material, então a caixa envolvente não muda.
+
+| método | |
+|---|---|
+| `.planks(width=0.2, length=None, axis="y", gap=0.008, depth=0.012, vary=0.25)` | tábuas de `width` correndo ao longo de `axis`; com `length`, emendas desencontradas (assoalho, paredes, portas, cascos) |
+| `.shingles(width=0.25, height=0.18, gap=0.01, depth=0.025, vary=0.3)` | fileiras de telhas de `height` que se sobrepõem, cada uma mais grossa embaixo, separadas a cada `width` (telhados) |
+| `.masonry(length=0.4, height=0.2, gap=0.015, depth=0.02, vary=0.4)` | pedras/tijolos de `length` x `height` em amarração (cada fileira deslocada meia peça), com cantos gastos (muros, bases, chaminés) |
+
+`gap` é a largura da junta, `depth` a profundidade e `vary` (0 a 1) afunda algumas peças ao acaso. O desenho
+é calculado em cada face da caixa da peça: nas faces laterais as fileiras empilham em y; no topo, em z.
+Aplique o padrão **antes** de girar a peça para ele acompanhar a peça; depois de girar, as fileiras ficam
+alinhadas ao mundo (bom para telhados inclinados: as fileiras ficam na horizontal). Funciona melhor em
+caixas, prismas e cunhas; em formas redondas o desenho segue a face dominante e pode emendar torto.
+Combine com `color`/`texture` para variar o tom.
+
+```python
+muro = box(3, 1, 0.5).ground().color("stone").masonry()
+parede = box(3, 2, 0.15).on(muro).color("#7d5836").planks(0.22, length=1.2)
+deck = box(3, 0.1, 2).color("#8a6440").planks(0.15, axis="x")
+telhado = prism(2, 1.2, 3.4).on(parede).color("#6b4a2e").shingles(depth=0.04)
+```
+
 ## Texturas e deformação
 
 | método | |
@@ -557,7 +583,7 @@ Não há `import`, classes nem arquivos.
 | arquivo | mostra |
 |---|---|
 | `curvas.3di` | ponte em arco, cerca e corda: `bezier`, `spline`, `sweep` e `along` |
-| `casa-longa.3di` | casa longa nórdica montada só com escopos: `split`, `tile`, `fill`, `inset` |
+| `casa-longa.3di` | casa longa nórdica: escopos (`split`, `tile`, `fill`), âncoras, telhas (`shingles`), pedras (`masonry`) e tábuas (`planks`) |
 | `vila.3di` | geração procedural: casas aleatórias, recortes com `repeat`, bosque, postes |
 | `pinguim.3di` | personagem com uniões suaves, `mirror`, materiais |
 | `gato.3di`, `cachorro.3di` | bichos low poly: `chain`, `paint` (pelagem), `facets` e olhos com pupila e brilho |

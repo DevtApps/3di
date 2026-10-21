@@ -2,6 +2,7 @@
 // gerar malhas na exportação. Cada forma vira uma closure:
 //   buildDist(s, t)(x, y, z) -> distância
 //   buildMat(s, t)(x, y, z)  -> { d, c, rough, metal, glow } com a textura já aplicada
+import { patternG, patternLip } from './pattern.js';
 import { center } from './shapes.js';
 import { isExpr, val0 } from './expr.js';
 import { rotMatrix, texOffset } from './shapes.js';
@@ -408,6 +409,10 @@ export function buildDist(s, t = 0) {
       const lip = 1 / (1 + (2.5 * P.amt) / P.size);
       return (x, y, z) => (c0(x, y, z) + P.amt * (fbm(x / P.size, y / P.size, z / P.size) * 2 - 1)) * lip;
     }
+    case 'pattern': {
+      const lip = patternLip(P);
+      return (x, y, z) => (c0(x, y, z) + P.depth * patternG([x, y, z], P)) * lip;
+    }
     case 'union': {
       if (P.k) return (x, y, z) => kids.reduce((a, f, i) => (i ? smin(a, f(x, y, z), P.k) : f(x, y, z)), 0);
       // pula filhos cuja caixa está mais longe que o melhor resultado (como no shader)
@@ -503,6 +508,13 @@ export function buildMat(s, t = 0, mat = {}) {
       return (x, y, z, tp) => {
         const r = c0(x, y, z, tp);
         return withD(r, (r.d + P.amt * (fbm(x / P.size, y / P.size, z / P.size) * 2 - 1)) * lip);
+      };
+    }
+    case 'pattern': {
+      const lip = patternLip(P);
+      return (x, y, z, tp) => {
+        const r = c0(x, y, z, tp);
+        return withD(r, (r.d + P.depth * patternG([x, y, z], P)) * lip);
       };
     }
     case 'union': {

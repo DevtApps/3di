@@ -103,6 +103,9 @@ const DOCS = {
   paint: 'Pinta a forma onde ela está dentro de `region` (focinho, peito, patas, manchas). A cor e o material vêm da região; `blend` suaviza a borda; `relief` levanta (> 0) ou afunda (< 0) a superfície ali: faixas, placas, vincos, emendas.',
   merge: 'Junta formas com acabamento só na linha de contato: `r` = raio do filete (ou largura), `profile` round (filete), chamfer (chanfro) ou groove (sulco), `colors` sharp (cada forma com sua cor) ou blend, `seam` = cor da emenda.',
   light: 'Luzes de estúdio além do sol: `rim` = contorno na silhueta, `fill` = preenchimento do lado da câmera, `ao` = força da oclusão de ambiente.',
+  planks: 'Tábuas de verdade na superfície (sulcos que mudam a silhueta e a sombra): largura `width`, correndo ao longo de `axis`; com `length`, emendas desencontradas. `gap` = fresta, `depth` = profundidade, `vary` (0 a 1) afunda algumas tábuas. Custo constante: não cria primitivas.',
+  shingles: 'Telhas em fileiras de `height` que se sobrepõem (cada uma mais grossa embaixo), separadas a cada `width`. Para telhados (prism, caixas inclinadas). Custo constante.',
+  masonry: 'Alvenaria: pedras/tijolos de `length` x `height` em amarração (fileiras deslocadas meia peça), juntas de `gap` e cantos gastos; `vary` afunda algumas pedras. Custo constante.',
   spline: 'Curva suave (Catmull-Rom) que passa por todos os `points`; `closed=True` fecha o laço. Devolve uma curva para sweep/along.',
   bezier: 'Curva de Bézier: início, pontos de controle e fim (2 a 16 pontos). A curva começa e termina nos extremos e é puxada pelos controles.',
   sweep: 'Varre um perfil ao longo de uma curva (ou lista de pontos): `profile` = raio (tubo, corda, galho), (raio_início, raio_fim) (afinando), ("box", largura, altura) (viga, trilho, faixa de caminho) ou pontos (x, y) de um perfil. `steps` = trechos (padrão pelo tamanho).',
@@ -229,6 +232,6 @@ export function languageSummary() {
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
     `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,
-    'Dicas: prefira layout semântico (on, beside, place, mirror), escopos (split, tile, fill) para fachadas, móveis e grades âncoras (anchor + attach) para encaixar componentes e curvas (spline/bezier + sweep/along) para canos, cordas, vigas curvas e fileiras a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
+    'Dicas: prefira layout semântico (on, beside, place, mirror), escopos (split, tile, fill) para fachadas, móveis e grades âncoras (anchor + attach) para encaixar componentes curvas (spline/bezier + sweep/along) para canos, cordas, vigas curvas e fileiras, e planks/shingles/masonry para tábuas, telhas e pedras sem uma primitiva por peça a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
   ].join('\n\n');
 }

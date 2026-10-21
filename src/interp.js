@@ -10,6 +10,7 @@ import { rigBuiltins } from './rig.js';
 import { scopeBuiltins, setScopeCaller } from './scope.js';
 import './anchor.js'; // registra anchor/attach/point/facing nas formas
 import { curveBuiltins } from './curve.js';
+import './pattern.js'; // registra planks/shingles/masonry nas formas
 
 class Scope {
   constructor(parent = null) { this.vars = new Map(); this.parent = parent; }

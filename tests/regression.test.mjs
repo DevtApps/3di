@@ -751,3 +751,38 @@ test('curvas: spline e bezier por comprimento de arco, sweep varre perfis e alon
     assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
   }
 });
+
+test('padrões de superfície: planks, shingles e masonry afundam juntas reais sem criar primitivas', async () => {
+  const fns = (src) => {
+    const r = runScript(src);
+    assert.equal(r.ok, true, `${src}: ${r.error?.toString()} ${r.error?.hint ?? ''}`);
+    const out = compileScene(r.scene);
+    assert.match(out.glsl, /patG\(/);
+    return { f: buildSceneFns(r.scene.shapes[0]), out, shape: r.scene.shapes[0] };
+  };
+  // tábuas verticais de 0.2 m na face da frente (z = 0.5): junta em x = -0.3, meio da tábua em x = -0.2
+  let { f, out, shape } = fns('show(box(1).planks(0.2, vary=0))');
+  assert.ok(f.dist(-0.3, 0, 0.495) > 0, 'dentro da junta não há material');
+  assert.ok(f.dist(-0.2, 0, 0.495) < 0, 'no meio da tábua continua sólido');
+  assert.equal(out.leaves, 1, 'o padrão não cria primitivas');
+  assert.deepEqual(shape.bbox, runScript('show(box(1))').scene.shapes[0].bbox, 'sulcos não mudam a caixa');
+  // alvenaria: fileiras de 0.2 com juntas horizontais; a fileira de cima desloca meia pedra
+  ({ f } = fns('show(box(2, 1, 0.4).ground().masonry(0.4, 0.2, vary=0))'));
+  assert.ok(f.dist(0, 0.2, 0.195) > 0, 'junta horizontal');
+  assert.ok(f.dist(-0.6, 0.1, 0.195) > 0 && f.dist(-0.4, 0.3, 0.195) > 0, 'juntas verticais desencontradas');
+  assert.ok(f.dist(-0.8, 0.1, 0.195) < 0, 'centro da pedra sólido');
+  // telhas: cada fileira afina de baixo para cima
+  ({ f } = fns('show(box(2, 1, 0.2).ground().shingles(0.25, 0.2, vary=0))'));
+  assert.ok(f.dist(0.12, 0.02, 0.095) < f.dist(0.12, 0.17, 0.095), 'a base da fileira fica mais para fora que o topo');
+  // exporta como malha (sem malha direta para o padrão)
+  const { glb, stats } = await exportGLB(runScript('show(box(1).planks(0.2))').scene, { res: 48 });
+  assert.ok(stats.triangles > 12, 'os sulcos viram geometria na malha');
+  assert.ok(glb.byteLength > 1000);
+
+  const errs = [['box(1).planks(0)', /width/], ['box(1).masonry(vary=2)', /vary/], ['plane().shingles()', /infinitas/], ['box(1).planks(axis="w")', /axis/]];
+  for (const [src, re] of errs) {
+    const r = runScript(`show(${src})`);
+    assert.equal(r.ok, false, src);
+    assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
+  }
+});

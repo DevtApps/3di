@@ -128,6 +128,7 @@ function computeBBox(s) {
     }
     case 'scale': return clampInf(bb(c0.bbox.min.map((v, i) => v * val0(p.s[i])), c0.bbox.max.map((v, i) => v * val0(p.s[i]))));
     case 'displace': return expand(c0.bbox, p.amt);
+    case 'pattern': return c0.bbox;
     case 'mirror': {
       const b = c0.bbox;
       const min = [...b.min], max = [...b.max];

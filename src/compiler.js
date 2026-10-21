@@ -6,6 +6,7 @@ import { ScriptError } from './parser.js';
 import { isExpr, glslOf } from './expr.js';
 import { resolveRig } from './rig.js';
 import { polygonGlsl } from './profile.js';
+import { PATTERN_GLSL, patternLip } from './pattern.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
 export const INSTANCE_THRESHOLD = 40;  // abaixo disso, tudo vira código (mais rápido por pixel)
@@ -27,6 +28,7 @@ float fbm(vec3 p) {
   for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.02 + vec3(1.7, 9.2, 3.1); a *= 0.5; }
   return s / 0.96875;
 }
+${PATTERN_GLSL}
 mat3 rotEuler(vec3 deg) {
   vec3 r = radians(deg);
   float cx = cos(r.x), sx = sin(r.x), cy = cos(r.y), sy = sin(r.y), cz = cos(r.z), sz = sin(r.z);
@@ -231,7 +233,7 @@ const v4 = (v) => `vec4(${v.map(f).join(', ')})`;
 
 // Nós caros de avaliar (ruído, repetição, torção) valem uma checagem de caixa antes, mesmo sozinhos:
 // um bloco com displace chama fbm (5 oitavas) em todo passo do raio se não for pulado de longe.
-const HEAVY = new Set(['displace', 'repeat', 'twist', 'bend', 'taper', 'polar', 'extrude', 'lathe', 'implicit']);
+const HEAVY = new Set(['displace', 'pattern', 'repeat', 'twist', 'bend', 'taper', 'polar', 'extrude', 'lathe', 'implicit']);
 export function isHeavy(sh) {
   return (sh._heavy ??= HEAVY.has(sh.kind) || sh.children.some(isHeavy));
 }
@@ -404,6 +406,12 @@ class Gen {
         const lip = 1 / (1 + (2.5 * P.amt) / P.size);
         return this.mapDist(this.emit(c0, p, mat),
           (d) => `(${d} + ${f(P.amt)} * (fbm(${p} / ${f(P.size)}) * 2.0 - 1.0)) * ${f(lip)}`);
+      }
+      case 'pattern': {
+        // tábuas, telhas, alvenaria: sulcos calculados na face dominante da caixa da peça
+        const v3s = (v) => `vec3(${v.map(f).join(', ')})`;
+        const call = `patG(${p}, ${v3s(P.bmin)}, ${v3s(P.bc)}, ${v3s(P.hf)}, ${P.kind}, vec2(${f(P.sz[0])}, ${f(P.sz[1])}), ${f(P.gap)}, ${P.ax}, ${f(P.vary)})`;
+        return this.mapDist(this.emit(c0, p, mat), (d) => `(${d} + ${f(P.depth)} * ${call}) * ${f(patternLip(P))}`);
       }
       case 'material': {
         const merged = { ...mat };
