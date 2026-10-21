@@ -1,5 +1,5 @@
-// Lado do navegador da ponte com o servidor MCP (tools/mcp.mjs): recebe comandos por SSE,
-// executa na IDE e responde por POST. Sem o servidor MCP (ex: tools/serve.py), não faz nada.
+// Lado do navegador da ponte com o servidor MCP (src/services/mcp.ts): recebe comandos por SSE,
+// executa na IDE e responde por POST. Sem o servidor MCP (ex: scripts/serve.py), não faz nada.
 
 export function connectBridge(api, onState = () => {}) {
   if (typeof EventSource === 'undefined') return;

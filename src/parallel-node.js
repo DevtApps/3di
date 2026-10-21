@@ -1,4 +1,4 @@
-// Malha as peças do export GLB em vários núcleos (Node: CLI, MCP, app desktop, extensão).
+// Malha as peças do export GLB em vários núcleos (Node: CLI, MCP, app desktop).
 // Cada worker roda o script uma vez; a fila entrega a próxima peça a quem terminar primeiro.
 import { Worker } from 'node:worker_threads';
 import { availableParallelism, cpus } from 'node:os';

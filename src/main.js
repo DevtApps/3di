@@ -640,7 +640,7 @@ connectBridge({
 }, (on) => {
   $('mcpState').classList.toggle('on', on);
   $('bridgeLabel').textContent = on ? 'Ponte ativa' : 'Ponte offline';
-  $('mcpState').title = on ? 'ponte do editor conectada; confira o estado do agente externo no próprio cliente' : 'sem servidor MCP (rode node tools/mcp.mjs ou o app 3DI)';
+  $('mcpState').title = on ? 'ponte do editor conectada; confira o estado do agente externo no próprio cliente' : 'sem servidor MCP (rode npm run dev ou o app 3DI)';
 });
 
 // ---------- início: arquivo da linha de comando, rascunho salvo ou exemplo ----------

@@ -1,8 +1,8 @@
 appId: dev.3di.studio
 productName: 3DI
 directories:
-  app: dist-desktop
-  output: release
+  app: build/desktop
+  output: build/releases
 asar: true
 asarUnpack:
   - desktop/engine-worker.cjs

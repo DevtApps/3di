@@ -14,17 +14,17 @@ show(plane(), mesa, perna, caneca)
 ## Rodar
 
 ```bash
-python3 tools/serve.py
+python3 scripts/serve.py
 ```
 
 Abra http://localhost:8327. O editor recompila enquanto você digita (Ctrl+Enter força).
 
-Para exportar para glTF: `node tools/export.mjs cena.3di` (veja "Exportar glTF / GLB").
+Para exportar para glTF: `node scripts/export.mjs cena.3di` (veja "Exportar glTF / GLB").
 
 Para validar um script sem navegador (útil para agentes de IA):
 
 ```bash
-node tools/check.mjs examples/mesa.3di
+node scripts/check.mjs examples/mesa.3di
 ```
 
 Esse comando mostra os erros com linha e dica, ou então o tamanho e a posição de cada peça nomeada com `.name()`.
@@ -32,8 +32,8 @@ Esse comando mostra os erros com linha e dica, ou então o tamanho e a posição
 Para **ver** a cena sem abrir o editor (também útil para agentes de IA conferirem o que montaram):
 
 ```bash
-node tools/render.mjs examples/mesa.3di mesa.png
-node tools/render.mjs examples/boneco.3di boneco.png --t 1.5
+node scripts/render.mjs examples/mesa.3di mesa.png
+node scripts/render.mjs examples/boneco.3di boneco.png --t 1.5
 ```
 
 Gera um PNG com 4 vistas numa grade 2x2: **frente** (de +z), **lado** (de +x), **topo** (de +y) e
@@ -392,7 +392,7 @@ Isso não depende do formato: OBJ ou FBX teriam a mesma diferença, porque ela v
 ## Exportar glTF / GLB
 
 ```bash
-node tools/export.mjs examples/boneco.3di out/boneco.glb --res 128
+node scripts/export.mjs examples/boneco.3di out/boneco.glb --res 128
 ```
 
 No editor, o botão **GLB** faz o mesmo e baixa o arquivo. O resultado:
@@ -413,7 +413,7 @@ No editor, o botão **GLB** faz o mesmo e baixa o arquivo. O resultado:
   exportado em t = 0. Para animar no glTF, use um osso.
 - **Chão:** `plane()` vira um piso recortado em volta da cena.
 
-Para conferir num motor padrão, abra `tools/viewer.html?file=/out/boneco.glb` com o servidor rodando
+Para conferir num motor padrão, abra `scripts/viewer.html?file=/out/boneco.glb` com o servidor rodando
 (three.js, toca a animação) ou arraste um `.glb` para a página.
 
 ## Medir
@@ -450,12 +450,12 @@ Não há `import`, classes nem arquivos.
 - Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) a fazer contas de coordenadas.
 - Use `.mirror()` e `.repeat()` para simetrias e cópias, porque não pesam nada.
 - Cópias feitas com loop custam uma primitiva cada. Quando são simples (formas posicionadas, giradas,
-  coloridas e agrupadas com `group()`), elas vão para a BVH e cabem aos milhares (até 16.000).
-- Subtrações, `smooth`, `mirror`, `repeat`, `twist`, `round` e `shell` viram código no shader. Até
-  2.000 primitivas dentro delas; o shader demora mais para compilar quanto mais código houver
+  coloridas e agrupadas com `group()`), elas vão para a BVH, sem teto fixo de instâncias; a capacidade depende da GPU.
+- Subtrações, `smooth`, `mirror`, `repeat`, `twist`, `round` e `shell` viram código no shader, sem teto fixo de primitivas;
+  o shader demora mais para compilar quanto mais código houver
   (a vila, com 78, leva ~0,6 s). A compilação roda em segundo plano, sem travar o editor.
-- Dê `.name()` às peças principais e rode `node tools/check.mjs` para conferir tamanhos e posições.
-- Depois, rode `node tools/render.mjs cena.3di cena.png` e olhe a imagem: as vistas de frente, lado e
+- Dê `.name()` às peças principais e rode `node scripts/check.mjs` para conferir tamanhos e posições.
+- Depois, rode `node scripts/render.mjs cena.3di cena.png` e olhe a imagem: as vistas de frente, lado e
   topo mostram peças flutuando, atravessadas ou fora do lugar que os números não deixam ver.
 - Os erros dizem a linha e trazem uma dica do tipo "você quis dizer 'sphere'?".
 
@@ -498,25 +498,25 @@ src/renderer.js  WebGL2: raymarching, sombras suaves, AO, PBR simples, texturas.
                  compilador da GPU copia a função da cena em cada chamada, então isso
                  mantém a compilação rápida. Compila em segundo plano (KHR_parallel_shader_compile).
 src/main.js      editor + câmera orbital + 4 vistas; window.tdi é a API de automação
-tools/render.mjs Chrome headless (protocolo DevTools por pipe, sem npm) → tdi.views() → PNG
+scripts/render.mjs Chrome headless (protocolo DevTools por pipe, sem npm) → tdi.views() → PNG
 ```
 
 ## IDE e app desktop
 
 ```bash
 npm install                        # Monaco local (o editor funciona offline)
-node tools/app.mjs cena.3di        # abre a IDE numa janela do Chrome em modo app
-node tools/install-desktop.mjs     # atalho "3DI (dev)" no menu, sem encobrir o app instalado (--default associa os .3di; --uninstall remove)
+node scripts/app.mjs cena.3di        # abre a IDE numa janela do Chrome em modo app
+node scripts/install-desktop.mjs     # atalho "3DI (dev)" no menu, sem encobrir o app instalado (--default associa os .3di; --uninstall remove)
 ```
 
 - **Editor (Monaco):** cores, autocomplete pelo contexto (métodos de forma, de osso e de esqueleto,
   cores, texturas e parâmetros), assinaturas, documentação ao passar o mouse, snippets e erros na linha.
 - **Arquivos:** Novo/Abrir/Salvar (Ctrl+O, Ctrl+S, Ctrl+Shift+S); PNG e GLB abrem "salvar como".
 - **Câmera:** botões Frente/Lado/Topo/Persp.; clique numa peça do painel Peças para enquadrá-la.
-- **MCP** (`.mcp.json`, `tools/mcp.mjs`): `describe_language`, `check_script`, `get_script`,
+- **MCP** (`.mcp.json`, `src/services/mcp.ts`): `describe_language`, `check_script`, `get_script`,
   `set_script`, `save_script`, `screenshot` (vista, peça, grade de 4 vistas, instante), `set_reference`, `compare_reference`, `set_camera`,
   `frame`, `list_parts`, `set_time`, `export_glb`. O ponto verde no editor indica a ponte conectada.
-  O app e o MCP compartilham o mesmo servidor (porta 8327 rodando do código-fonte; o app instalado usa 8317).
+  A IDE usa 8327 e o MCP HTTP usa 8328 no desenvolvimento; no app instalado usam 8317 e 8318.
 
 ## Verificação de regressões
 
@@ -529,4 +529,4 @@ limite de 120 segundos. `window.tdi.views()` devolve uma Promise com a imagem.
 
 A ponte HTTP usa token e verifica Host/Origin. A IDE obtém a sessão por uma requisição
 na mesma origem; clientes HTTP da ponte enviam `X-3DI-Token` e SSE usa o token na URL.
-A resolução de exportação deve ser um inteiro entre 1 e 2048.
+A resolução de exportação deve ser um inteiro positivo representável com precisão. Não há teto fixo nem redução automática de resolução. A malha direta aumenta o detalhe das curvas com a resolução; a amostragem mantém uma proteção de memória de 40 milhões de células e informa erro quando excedida.

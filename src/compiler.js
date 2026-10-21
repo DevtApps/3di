@@ -8,8 +8,6 @@ import { resolveRig } from './rig.js';
 import { polygonGlsl } from './profile.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
-export const MAX_LEAVES = 2000;        // primitivas compiladas como código
-export const MAX_INSTANCES = 16000;    // primitivas guardadas como dados (BVH)
 export const INSTANCE_THRESHOLD = 40;  // abaixo disso, tudo vira código (mais rápido por pixel)
 
 export const GLSL_LIB = /* glsl */ `
@@ -638,12 +636,22 @@ function buildBVH(instances) {
 const GLSL_BVH = /* glsl */ `
 uniform highp sampler2D uInst;
 uniform highp sampler2D uBvh;
+vec4 instFetch(int col, int row) {
+  int index = row * ${INST_W} + col;
+  int width = textureSize(uInst, 0).x;
+  return texelFetch(uInst, ivec2(index % width, index / width), 0);
+}
+vec4 bvhFetch(int col, int row) {
+  int index = row * ${BVH_W} + col;
+  int width = textureSize(uBvh, 0).x;
+  return texelFetch(uBvh, ivec2(index % width, index / width), 0);
+}
 float instD(vec3 p, int i) {
-  vec4 a = texelFetch(uInst, ivec2(0, i), 0);
-  vec4 b = texelFetch(uInst, ivec2(1, i), 0);
-  vec4 r0 = texelFetch(uInst, ivec2(2, i), 0);
-  vec4 r1 = texelFetch(uInst, ivec2(3, i), 0);
-  vec4 r2 = texelFetch(uInst, ivec2(4, i), 0);
+  vec4 a = instFetch(0, i);
+  vec4 b = instFetch(1, i);
+  vec4 r0 = instFetch(2, i);
+  vec4 r1 = instFetch(3, i);
+  vec4 r2 = instFetch(4, i);
   vec3 q = vec3(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
   int t = int(a.x);
   float d;
@@ -659,8 +667,8 @@ float instD(vec3 p, int i) {
   return d * b.y;
 }
 float boxDist(vec3 p, int ni) {
-  vec3 mn = texelFetch(uBvh, ivec2(0, ni), 0).xyz;
-  vec3 mx = texelFetch(uBvh, ivec2(1, ni), 0).xyz;
+  vec3 mn = bvhFetch(0, ni).xyz;
+  vec3 mx = bvhFetch(1, ni).xyz;
   return sdBox(p - (mn + mx) * 0.5, (mx - mn) * 0.5);
 }
 // Percorre a BVH a partir da melhor distância já conhecida; devolve a nova melhor e o índice atingido.
@@ -670,9 +678,9 @@ float bvhD(vec3 p, float best, out int hit) {
   int sp = 0;
   int ni = 0;
   if (boxDist(p, 0) >= best) return best;
-  for (int it = 0; it < 2048; it++) {
-    vec4 a = texelFetch(uBvh, ivec2(0, ni), 0);
-    int cnt = int(texelFetch(uBvh, ivec2(1, ni), 0).w);
+  while (true) {
+    vec4 a = bvhFetch(0, ni);
+    int cnt = int(bvhFetch(1, ni).w);
     if (cnt > 0) {
       int st = int(a.w);
       for (int k = 0; k < cnt; k++) {
@@ -707,16 +715,8 @@ export function compileScene(scene) {
   }
   const { instances, residual } = splitScene(shapes);
   const useBVH = instances.length >= INSTANCE_THRESHOLD;
-  if (instances.length > MAX_INSTANCES) {
-    throw new ScriptError(`cena grande demais (${instances.length} primitivas, máximo ${MAX_INSTANCES})`, null,
-      'use .repeat() ou .mirror(): eles não custam primitivas extras');
-  }
   const codeRoot = useBVH ? (residual.length ? union(residual) : null) : union(shapes);
   const codeLeaves = codeRoot ? codeRoot.leaves : 0;
-  if (codeLeaves > MAX_LEAVES) {
-    throw new ScriptError(`cena complexa demais (${codeLeaves} primitivas dentro de booleanas/smooth/mirror, máximo ${MAX_LEAVES})`, null,
-      'subtrações e uniões suaves viram código no shader; prefira group() simples quando possível');
-  }
 
   let mBody = `  return ${M_FAR};`;
   let funcs = '';
@@ -740,11 +740,11 @@ M mapAll(vec3 p, bool wantMat) {
   int hit;
   r.d = bvhD(p, r.d, hit);
   if (hit >= 0 && wantMat) {
-    vec4 bb = texelFetch(uInst, ivec2(1, hit), 0);
-    vec4 c = texelFetch(uInst, ivec2(5, hit), 0);
-    vec4 e = texelFetch(uInst, ivec2(6, hit), 0);
-    vec4 c2 = texelFetch(uInst, ivec2(7, hit), 0);
-    vec4 t0 = texelFetch(uInst, ivec2(8, hit), 0), t1 = texelFetch(uInst, ivec2(9, hit), 0), t2 = texelFetch(uInst, ivec2(10, hit), 0);
+    vec4 bb = instFetch(1, hit);
+    vec4 c = instFetch(5, hit);
+    vec4 e = instFetch(6, hit);
+    vec4 c2 = instFetch(7, hit);
+    vec4 t0 = instFetch(8, hit), t1 = instFetch(9, hit), t2 = instFetch(10, hit);
     vec3 tp = vec3(dot(t0.xyz, p) + t0.w, dot(t1.xyz, p) + t1.w, dot(t2.xyz, p) + t2.w);
     r = M(r.d, c.rgb, vec3(c.a, e.x, e.y), c2.rgb, vec4(e.z, e.w, c2.a, bb.z), tp, bb.w);
   }

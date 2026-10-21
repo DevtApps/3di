@@ -1,11 +1,10 @@
 node_modules/
+build/
+out/
 .DS_Store
 *.png
-out/
 *.glb
+.serena/
 
-dist/
-*.vsix
-
-dist-desktop/
-release/
+# Screenshots published in the project documentation
+!assets/readme/*.png

@@ -298,8 +298,6 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   const fillet = Math.min(Infinity, ...fillets(p.shape).filter((r) => r >= partMax / 60));
   const featureCell = Number.isFinite(fillet) ? Math.max(fillet * 0.6, partMax / 160) : Infinity;
   let cell = infinite ? dims.map(() => partMax / res) : dims.map((d) => Math.min(base, featureCell, Math.max(d, 1e-4) / 6));
-  const cells = () => dims.reduce((n, d, i) => n * (Math.ceil(d / cell[i]) + 5), 1);
-  while (cells() > 12e6) cell = cell.map((c) => c * 1.25);
   const { dist, mat: matFn } = buildSceneFns(p.shape);
   // A textured SDF has a procedural color in the preview; it is baked into a PNG atlas (textured)
   // or into vertex colors (COLOR_0) so standard viewers show it.
@@ -332,7 +330,7 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   let mesh = null, how = 'amostragem';
   // peças pintadas vão pela amostragem: triângulos pequenos e uniformes seguram bem o atlas
   if (method !== 'sample' && !infinite && !facet && !hasPaint(p.shape)) {
-    mesh = nativeMesh(p.shape, { seg: Math.max(12, Math.min(64, Math.round(res / 4))) });
+    mesh = nativeMesh(p.shape, { seg: Math.max(12, Math.round(res / 4)) });
     if (mesh) {
       how = 'direta';
       mesh.colors = new Float32Array(mesh.positions.length);
@@ -344,7 +342,7 @@ export async function partGeometry(p, pi, { res, sceneBB, sceneMax, method = 'au
   // tenta de novo com voxel menor
   for (let tries = 0; !mesh && tries < 3; tries++) {
     cell = cell.map((c) => c / 2);
-    if (cells() > 12e6) break;
+    // O mesher verifica a capacidade da grade sem reduzir silenciosamente o detalhe.
     mesh = meshSDF(dist, bb, { cell, colorAt, simplify });
   }
   const name = p.name ?? `parte${pi}`;
@@ -471,7 +469,7 @@ export function partSession(scene, res, method = 'auto') {
  * Devolve { glb: Uint8Array, stats }.
  */
 export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto' } = {}) {
-  if (!Number.isInteger(res) || res < 1 || res > 2048) throw new Error('res deve ser um inteiro entre 1 e 2048');
+  if (!Number.isSafeInteger(res) || res < 1) throw new Error('res deve ser um inteiro positivo representável com precisão');
   const { duration = 4, fps = 30 } = scene.anim ?? {};
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
     throw new Error('animação deve ter duration e fps positivos e no máximo 100000 amostras');

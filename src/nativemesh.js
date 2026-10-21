@@ -267,12 +267,12 @@ const det3 = (m) => m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m
 
 /**
  * Coleta { s (primitiva), m, t } de toda a árvore, ou lança Unsupported.
- * limit: máximo de instâncias (repetições grandes caem na amostragem).
+ * limit: orçamento opcional de instâncias; excedê-lo produz erro explícito.
  */
 function collect(shape, limit) {
   const out = [];
   const visit = (s, m, t) => {
-    if (out.length > limit) throw new Unsupported('instâncias demais');
+    if (out.length > limit) throw new Error('A malha direta excedeu o orçamento explícito de instâncias; a qualidade não foi reduzida.');
     const P = s.props, c0 = s.children[0];
     switch (s.kind) {
       case 'translate': { const v = P.v.map(val0); const mv = mulMV(m, v); return visit(c0, m, t.map((x, i) => x + mv[i])); }
@@ -332,15 +332,16 @@ function collect(shape, limit) {
     out.push({ s, m, t });
   };
   visit(shape, IDENT, [0, 0, 0]);
+  if (out.length > limit) throw new Error('A malha direta excedeu o orçamento explícito de instâncias; a qualidade não foi reduzida.');
   return out;
 }
 
 /**
  * Malha direta de uma forma: { positions, normals, indices } (Float32Array/Uint32Array) ou null se
  * alguma parte da árvore não tem tesselação direta. seg = segmentos nas formas redondas.
- * maxTriangles limita o tamanho (acima disso, a amostragem é mais barata).
+ * maxTriangles/maxInstances são orçamentos opcionais; não reduzem a qualidade silenciosamente.
  */
-export function nativeMesh(shape, { seg = 32, maxTriangles = 3e6, maxInstances = 200000 } = {}) {
+export function nativeMesh(shape, { seg = 32, maxTriangles = Infinity, maxInstances = Infinity } = {}) {
   let items;
   try { items = collect(shape, maxInstances); } catch (e) { if (e instanceof Unsupported) return null; throw e; }
   if (!items.length) return null;
@@ -361,7 +362,7 @@ export function nativeMesh(shape, { seg = 32, maxTriangles = 3e6, maxInstances =
     const g = local(it.s);
     if (!g) return null;
     tris += g.I.length / 3;
-    if (tris > maxTriangles) return null;
+    if (tris > maxTriangles) throw new Error('A malha direta excedeu o orçamento explícito de triângulos; a qualidade não foi reduzida.');
     geoms.push(g);
   }
   const nv = geoms.reduce((n, g) => n + g.P.length / 3, 0);
