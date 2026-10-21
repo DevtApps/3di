@@ -9,6 +9,7 @@ import { libBuiltins } from './lib/index.js';
 import { rigBuiltins } from './rig.js';
 import { scopeBuiltins, setScopeCaller } from './scope.js';
 import './anchor.js'; // registra anchor/attach/point/facing nas formas
+import { curveBuiltins } from './curve.js';
 
 class Scope {
   constructor(parent = null) { this.vars = new Map(); this.parent = parent; }
@@ -282,7 +283,7 @@ export class Interpreter {
       randint: N('randint', ['a', 'b'], ({ a, b }) => a + Math.floor((b - a + 1) * this.rng())),
       choice: N('choice', ['xs'], ({ xs }) => { const a = iterate(xs); return a[Math.floor(this.rng() * a.length)]; }),
     };
-    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...scopeBuiltins(), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
+    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...scopeBuiltins(), ...curveBuiltins(), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
   }
 
   toNum(x, what) {

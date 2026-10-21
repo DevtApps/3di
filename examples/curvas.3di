@@ -1,0 +1,31 @@
+# Curvas: uma ponte em arco sobre um riacho, cerca que acompanha o caminho e cordas.
+# spline/bezier descrevem o caminho; sweep varre um perfil por ele; along distribui cópias.
+seed(3)
+
+# ---- riacho e margens
+agua = box(3, 0.05, 14).at(0, 0.02, 0).material("#3d6e8c", rough=0.1, metal=0.2)
+margens = box(6, 0.5, 14).at(-4.5, 0.25, 0).color("#5f7a3e").mirror("x")
+
+# ---- ponte: duas vigas em arco (bézier) e tábuas distribuídas pelo arco
+arco = bezier((-3.2, 0.5, 0), (-1.2, 1.6, 0), (1.2, 1.6, 0), (3.2, 0.5, 0))
+vigas = sweep(("box", 0.14, 0.2), arco.offset(0, -0.12, 0.7)).color("#5a3d25").mirror("z")
+tabua = box(0.16, 0.05, 1.7).color("#8a6440")
+tabuas = tabua.along(arco, spacing=0.2, orient="full")
+
+# guarda-corpo: postes ao longo do arco e um corrimão que segue a mesma curva, 0.9 m acima
+poste = cylinder(0.04, 0.9).place(0, 0, 0).color("#5a3d25")
+postes = poste.along(arco.offset(0, 0, 0.8), count=9, orient="none").mirror("z")
+corrimao = sweep(0.04, arco.offset(0, 0.9, 0.8)).color("#6b4a2e").mirror("z")
+
+# ---- caminho curvo com cerca de estacas e uma corda que pende entre elas
+caminho = spline([(3.4, 0.5, 0), (5, 0.5, 1.5), (5.5, 0.5, 4), (4.2, 0.5, 6.5)])
+chao_caminho = sweep(("box", 1.2, 0.04), caminho).color("#9a8a6a")
+borda = caminho.offset(0.8, 0, 0)
+estaca = cone(0.06, 0.9, top=0.03).place(0, 0, 0).color("#6b4a2e")
+estacas = estaca.along(borda, spacing=1.2, orient="none")
+pts = borda.offset(0, 0.75, 0).points(24)
+corda = sweep(0.015, spline([(x, y - 0.12 * sin(i / 24 * pi * 5) ** 2, z) for i, (x, y, z) in enumerate(pts)])).color("#c8b48a")
+
+show(plane().color("#6f8a4a"), agua, margens, vigas, tabuas, postes, corrimao, chao_caminho, estacas, corda)
+sun(0.4, 0.9, 0.6)
+camera(pos=(8, 5, 9), look=(1, 0.8, 1.5))

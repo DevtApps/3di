@@ -148,6 +148,36 @@ Os escopos são sempre alinhados aos eixos: monte a peça na orientação natura
 Cada `fill` com cor é uma caixa (uma primitiva); para grades muito densas e iguais, `repeat` continua
 mais barato. Veja `casa-longa.3di`.
 
+## Curvas: spline, bezier, sweep e along
+
+Uma **curva** descreve um caminho; não aparece sozinha. Com ela você **varre** um perfil (`sweep`: canos,
+cordas, vigas curvas, corrimãos, trilhos, faixas de caminho) ou **distribui** cópias (`along`: postes,
+estacas, tábuas de uma ponte, pedras de um caminho). Tudo é medido por **comprimento de arco**: `t = 0.5`
+é o meio do caminho de verdade, e as cópias ficam igualmente espaçadas.
+
+| | |
+|---|---|
+| `spline(points, closed=False)` | curva suave que passa por todos os pontos (Catmull-Rom centrípeta, sem laçadas); `closed=True` fecha o laço |
+| `bezier(p0, c1, ..., pn)` | curva de Bézier de 2 a 16 pontos: começa em `p0`, termina em `pn` e é puxada pelos controles do meio |
+| `sweep(profile, path, steps=None, smooth=0)` | varre o perfil pela curva (ou por uma lista de pontos). `profile`: raio (tubo), `(raio_início, raio_fim)` (afinando: galhos, chifres), `("box", largura, altura)` (a largura fica na horizontal) ou pontos `(x, y)` de um perfil qualquer. `steps` = trechos retos (padrão pelo tamanho, até 256) |
+| `forma.along(path, count=None, spacing=None, orient="yaw", start=0, end=1)` | cópias da forma pela curva: `count` cópias ou uma a cada `spacing` metros, entre as frações `start` e `end`. `orient`: `"yaw"` gira em y para o +x da forma seguir a curva, `"full"` alinha o +x com a tangente (também em subidas), `"none"` não gira. Modele a peça centrada na origem, com o comprimento em x |
+| `c.point(t)`, `c.tangent(t)` | ponto e direção na fração `t` (0 a 1) do comprimento |
+| `c.points(n=16)` | `n + 1` pontos igualmente espaçados (servem para `chain`, `extrude`, listas) |
+| `c.offset(x, y, z)`, `c.reverse()` | a curva deslocada (corrimão 0.9 m acima, borda ao lado) ou invertida |
+| `c.length`, `c.start`, `c.end` | comprimento e extremos |
+
+```python
+arco = bezier((-3, 0.5, 0), (-1, 1.6, 0), (1, 1.6, 0), (3, 0.5, 0))
+vigas = sweep(("box", 0.14, 0.2), arco.offset(0, -0.12, 0.7)).color("wood").mirror("z")
+tabuas = box(0.16, 0.05, 1.7).color("wood").along(arco, spacing=0.2, orient="full")
+corrimao = sweep(0.04, arco.offset(0, 0.9, 0.8)).mirror("z")
+cerca = cylinder(0.05, 1).ground().along(spline([(0, 0, 0), (2, 0, 1), (4, 0, 0)]), spacing=0.8)
+```
+
+**Custo:** o sweep vira trechos retos. Tubos de raio constante e perfis `"box"` são primitivas simples e
+vão para a BVH (baratos, aos milhares); tubos que afinam e perfis de pontos viram código no shader, então
+use menos `steps` neles. `along` custa uma primitiva por cópia da forma. Veja `curvas.3di`.
+
 ## Âncoras: encaixar componentes
 
 Uma **âncora** é um ponto com direção guardado na forma ("porta", "cume", "apoio"). Ela acompanha
@@ -526,6 +556,7 @@ Não há `import`, classes nem arquivos.
 
 | arquivo | mostra |
 |---|---|
+| `curvas.3di` | ponte em arco, cerca e corda: `bezier`, `spline`, `sweep` e `along` |
 | `casa-longa.3di` | casa longa nórdica montada só com escopos: `split`, `tile`, `fill`, `inset` |
 | `vila.3di` | geração procedural: casas aleatórias, recortes com `repeat`, bosque, postes |
 | `pinguim.3di` | personagem com uniões suaves, `mirror`, materiais |

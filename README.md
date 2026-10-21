@@ -148,6 +148,7 @@ Abra o seletor **Exemplos** no editor ou consulte os arquivos:
 | [Materiais](examples/materiais.3di) | Texturas procedurais e acabamento |
 | [Gato](examples/gato.3di) | Personagem low poly, pintura e facetas |
 | [Robô](examples/robo.3di) | Chanfros, junções e relevo |
+| [Ponte e cerca](examples/curvas.3di) | Curvas: `bezier`, `spline`, `sweep` e `along` |
 | [Casa longa](examples/casa-longa.3di) | Fachada montada com escopos (`split`, `tile`, `fill`) e enfeites encaixados com `anchor`/`attach` |
 | [Castelo](examples/castelo.3di) | Arquitetura, recortes e repetição |
 | [Vila](examples/vila.3di) | Composição procedural de um cenário |

@@ -710,3 +710,44 @@ test('âncoras: anchor guarda ponto e direção que acompanham transformações;
     assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
   }
 });
+
+test('curvas: spline e bezier por comprimento de arco, sweep varre perfis e along distribui cópias', () => {
+  const run = (src) => {
+    const r = runScript(src);
+    assert.equal(r.ok, true, `${src}: ${r.error?.toString()} ${r.error?.hint ?? ''}`);
+    return r;
+  };
+  // bezier quadrática simétrica: o meio do comprimento é o topo; spline passa pelos pontos
+  assert.deepEqual(run('b = bezier((0, 0, 0), (1, 2, 0), (2, 0, 0))\nprint(b.point(0.5), b.start, b.end)').logs, ['(1, 1, 0) (0, 0, 0) (2, 0, 0)']);
+  const reta = run('c = spline([(0, 0, 0), (1, 0, 0), (3, 0, 0)])\nprint(c.length)\nprint(c.point(0.5))\nprint(len(c.points(8)))').logs;
+  assert.ok(Math.abs(+reta[0] - 3) < 1e-6, reta[0]);
+  assert.match(reta[1], /^\(1\.5\d*, 0, 0\)$|^\(1\.49\d*, 0, 0\)$/);
+  assert.equal(reta[2], '9');
+
+  // sweep: tubo de raio constante vira cápsulas (BVH); caixa e perfil de pontos seguem a curva
+  const bb = (src) => run(src).scene.shapes[0].bbox;
+  let b = bb('show(sweep(0.1, [(0, 0, 0), (0, 2, 0)]))');
+  assert.ok(Math.abs(b.max[1] - 2.1) < 1e-6 && Math.abs(b.max[0] - 0.1) < 1e-6);
+  b = bb('show(sweep(("box", 0.4, 0.2), bezier((0, 0, 0), (2, 0, 0))))');
+  assert.ok(Math.abs(b.max[2] - 0.2) < 1e-6 && Math.abs(b.max[1] - 0.1) < 1e-6, 'a largura fica na horizontal, a altura em y');
+  const tubo = compileScene(run('show(sweep(0.05, spline([(0, 0, 0), (1, 1, 0), (2, 0, 1), (3, 1, 1)])))').scene);
+  assert.equal(tubo.leaves, tubo.instances, 'o tubo de raio constante vai inteiro para a BVH');
+  compileScene(run('show(sweep((0.1, 0.02), [(0, 0, 0), (1, 1, 0)]), sweep([(0, 0), (0.1, 0), (0, 0.1)], [(0, 0, 0), (1, 0, 1)]))').scene);
+
+  // along: count e spacing por comprimento de arco; yaw alinha o +x da forma com a curva
+  const al = run('a = box(0.2, 0.1, 0.1).along(bezier((0, 0, 0), (0, 0, 4)), count=5)\nprint(a.size)\nb = sphere(0.1).along([(0, 0, 0), (2, 0, 0)], spacing=0.5)\nprint(b.size)').logs;
+  assert.deepEqual(al, ['(0.1, 0.1, 4.2)', '(2.2, 0.2, 0.2)']);
+  const anel = run('r = spline([(1, 0, 0), (0, 0, 1), (-1, 0, 0), (0, 0, -1)], closed=True)\nprint(r.start == r.end)\nshow(cube(0.1).along(r, count=4))');
+  assert.equal(anel.logs[0], 'True');
+
+  const errs = [
+    ['sweep("x", [(0, 0, 0), (1, 0, 0)])', /profile/], ['sweep(0.1, [(0, 0, 0), (0, 0, 0)])', /comprimento zero/],
+    ['box(1).along([(0, 0, 0), (1, 0, 0)])', /count=/], ['box(1).along(5, count=2)', /curva/], ['spline([(0, 0, 0)])', /2 a 256/],
+    ['box(1).along([(0, 0, 0), (1, 0, 0)], count=2, orient="x")', /orient/],
+  ];
+  for (const [src, re] of errs) {
+    const r = runScript(`show(${src})`);
+    assert.equal(r.ok, false, src);
+    assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
+  }
+});

@@ -7,6 +7,9 @@
   coordenadas. `inset` recua (molduras, folhas de porta). Exemplo: `casa-longa.3di`.
 - **Componentes com encaixe:** a função devolve a peça com âncoras (`.anchor("porta", "front", y=0)`);
   quem usa cola outras peças com `.attach(casa, "porta", to="back", align="bottom")`, mesmo depois de girar a casa.
+- **Curvas:** `spline(pontos)`/`bezier(...)` descrevem caminhos; `sweep(raio | ("box", w, h), curva)` faz canos,
+  cordas, vigas curvas, corrimãos e faixas de caminho; `forma.along(curva, spacing=...)` planta postes, estacas e
+  tábuas. `curva.offset(...)` dá corrimão e bordas paralelas. Exemplo: `curvas.3di`.
 - **Grades sem custo:** lajotas, cercas, telhas e janelas com `repeat`; simetrias com `mirror`; peças radiais com `polar`.
 - **Recortes:** portas e janelas com `-`; o cortador atravessa a parede com folga. Batentes e caixilhos
   compartilham centro e nível com o recorte.

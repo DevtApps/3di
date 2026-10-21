@@ -103,6 +103,10 @@ const DOCS = {
   paint: 'Pinta a forma onde ela está dentro de `region` (focinho, peito, patas, manchas). A cor e o material vêm da região; `blend` suaviza a borda; `relief` levanta (> 0) ou afunda (< 0) a superfície ali: faixas, placas, vincos, emendas.',
   merge: 'Junta formas com acabamento só na linha de contato: `r` = raio do filete (ou largura), `profile` round (filete), chamfer (chanfro) ou groove (sulco), `colors` sharp (cada forma com sua cor) ou blend, `seam` = cor da emenda.',
   light: 'Luzes de estúdio além do sol: `rim` = contorno na silhueta, `fill` = preenchimento do lado da câmera, `ao` = força da oclusão de ambiente.',
+  spline: 'Curva suave (Catmull-Rom) que passa por todos os `points`; `closed=True` fecha o laço. Devolve uma curva para sweep/along.',
+  bezier: 'Curva de Bézier: início, pontos de controle e fim (2 a 16 pontos). A curva começa e termina nos extremos e é puxada pelos controles.',
+  sweep: 'Varre um perfil ao longo de uma curva (ou lista de pontos): `profile` = raio (tubo, corda, galho), (raio_início, raio_fim) (afinando), ("box", largura, altura) (viga, trilho, faixa de caminho) ou pontos (x, y) de um perfil. `steps` = trechos (padrão pelo tamanho).',
+  along: 'Distribui cópias da forma ao longo de uma curva por comprimento de arco: `count` cópias ou uma a cada `spacing` metros, entre `start` e `end` (0 a 1). `orient`: "yaw" gira em y para o +x seguir a curva, "full" alinha +x com a tangente (subidas), "none" não gira.',
   anchor: 'Guarda uma âncora (ponto + direção) com nome na forma; ela acompanha move/rotate/scale. `at`: nome de face ("front", "top"...) ou de outra âncora, ponto (x, y, z), forma ou escopo (o centro); `x`/`y`/`z` trocam essa coordenada; `dir`: "up", "front"... ou (x, y, z).',
   attach: 'Cola a peça na âncora `at` do alvo (forma ou escopo; faces padrão: top, bottom, left, right, front, back, center). Sem `to`, usa a face da peça que encara a âncora, sem girar; com `to` (âncora da peça), gira a peça para essa âncora encarar o alvo (`turn=False` não gira). `gap` afasta na direção da âncora, `offset` desloca, `align="bottom"` apoia a base na altura da âncora.',
   point: 'Posição (x, y, z) de uma âncora (declarada com anchor ou face padrão).',
@@ -125,7 +129,7 @@ const CATEGORY = {
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
   polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', implicit: 'primitiva',
-  space: 'estrutura', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
+  space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 
 // membros dos escopos (space(), forma.split(), forma.tile())
@@ -136,6 +140,18 @@ const SCOPE_MEMBERS = [
   { name: 'inset', signature: 'inset(x, y=None, z=None)', doc: 'Escopo recuado: um valor recua igual nos 3 eixos; (x, y, z) recua cada eixo dos dois lados.' },
   ...['w', 'h', 'd', 'size', 'center', 'x', 'y', 'z', 'left', 'right', 'bottom', 'top', 'back', 'front', 'min', 'max']
     .map((name) => ({ name, signature: name, doc: DOCS[name] ?? `${name} do escopo.`, property: true })),
+];
+
+// membros das curvas (spline(), bezier())
+const CURVE_MEMBERS = [
+  { name: 'point', signature: 'point(t)', doc: 'Ponto na fração t (0 a 1) do comprimento.' },
+  { name: 'tangent', signature: 'tangent(t)', doc: 'Direção da curva na fração t.' },
+  { name: 'points', signature: 'points(n=16)', doc: 'n + 1 pontos igualmente espaçados (para chain, extrude, listas).' },
+  { name: 'offset', signature: 'offset(x=0, y=0, z=0)', doc: 'A mesma curva deslocada (corrimão acima do caminho, borda ao lado).' },
+  { name: 'reverse', signature: 'reverse()', doc: 'A curva percorrida ao contrário.' },
+  { name: 'length', signature: 'length', doc: 'Comprimento em metros.', property: true },
+  { name: 'start', signature: 'start', doc: 'Primeiro ponto.', property: true },
+  { name: 'end', signature: 'end', doc: 'Último ponto.', property: true },
 ];
 
 const HIDDEN = new Set(['isinstance']);
@@ -186,6 +202,7 @@ export function languageCatalog() {
     properties,
     rig: RIG_MEMBERS,
     scope: SCOPE_MEMBERS,
+    curve: CURVE_MEMBERS,
     colors: Object.keys(COLORS),
     textures: Object.keys(TEXTURES),
     sides: Object.keys(SIDES),
@@ -204,6 +221,7 @@ export function languageSummary() {
     `Métodos de forma:\n${c.methods.map((m) => `  .${m.signature}  # ${m.doc}`).join('\n')}`,
     `Propriedades de forma: ${c.properties.map((p) => p.name).join(', ')}, anchors`,
     `Estrutura (escopos: caixas invisíveis para dividir e preencher, sem contas de coordenadas):\n${fn('estrutura')}\n${c.scope.filter((m) => !m.property).map((m) => `  escopo.${m.signature}  # ${m.doc}`).join('\n')}\n  propriedades: ${c.scope.filter((m) => m.property).map((m) => m.name).join(', ')}`,
+    `Curvas (avaliadas por comprimento de arco: t de 0 a 1 vai do início ao fim):\n${fn('curva')}\n${c.curve.map((m) => `  curva.${m.signature}  # ${m.doc}`).join('\n')}`,
     `Geradores (cada um aceita style="lowpoly"|"stylized"|"realistic" e seed=):\n${fn('gerador')}`,
     `Cena:\n${fn('cena')}`,
     `Rig:\n${fn('rig')}\n${c.rig.skeleton.map((m) => `  esq.${m.signature}  # ${m.doc}`).join('\n')}\n${c.rig.bone.map((m) => `  osso.${m.signature}  # ${m.doc}`).join('\n')}`,
@@ -211,6 +229,6 @@ export function languageSummary() {
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
     `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,
-    'Dicas: prefira layout semântico (on, beside, place, mirror), escopos (split, tile, fill) para fachadas, móveis e grades e âncoras (anchor + attach) para encaixar componentes a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
+    'Dicas: prefira layout semântico (on, beside, place, mirror), escopos (split, tile, fill) para fachadas, móveis e grades âncoras (anchor + attach) para encaixar componentes e curvas (spline/bezier + sweep/along) para canos, cordas, vigas curvas e fileiras a contas de coordenadas; mirror/repeat não custam primitivas; recortes devem atravessar a superfície; dê .name() às peças para conferir medidas.',
   ].join('\n\n');
 }
