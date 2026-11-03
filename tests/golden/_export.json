@@ -1646,5 +1646,387 @@
    "channels": 0,
    "primitives": 30
   }
+ },
+ {
+  "name": "aventureiros",
+  "palette": true,
+  "paletteColors": 29,
+  "parts": 45,
+  "vertices": 15948,
+  "triangles": 7778,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1148,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-sword",
+    "kind": "static",
+    "empty": false,
+    "triangles": 14,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-sword",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-sword",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-sword",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-shield",
+    "kind": "static",
+    "empty": false,
+    "triangles": 16,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-shield",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte7",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1108,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-axe",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-axe",
+    "kind": "static",
+    "empty": false,
+    "triangles": 14,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-round_shield",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-round_shield",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-round_shield",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte13",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1156,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 14,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 14,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-dagger",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte20",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1114,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-staff",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-staff",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-staff",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-book",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-book",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-book",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte27",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1124,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-bow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "equip-quiver",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte44",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 45,
+   "meshes": 45,
+   "materials": 45,
+   "images": 1,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 45
+  }
  }
 ]

@@ -14,6 +14,7 @@ const DOCS = {
   cone: 'Cone em pé, raio da base `r`, altura `h`; `top > 0` faz um tronco de cone; `sides=` deixa as faces planas.',
   hero: 'Herói chibi low poly: knight, barbarian, rogue, mage, ranger; âncoras mao_dir, mao_esq, braco_esq, costas, cabeca, cintura.',
   gear: 'Equipamento low poly (sword, axe, shield, bow, staff...) com a âncora "punho" para attach.',
+  loft: 'Tubo low poly por pontos com um raio em cada um (afina, alarga, cintura); côncavo e exato no GLB.',
   hull: 'Poliedro convexo de faces planas em volta de 4 a 64 pontos (x, y, z): low poly exato no GLB.',
   torus: 'Rosca deitada no plano xz.',
   capsule: 'Cápsula em pé; `h` é a altura total.',
@@ -134,7 +135,7 @@ const CATEGORY = {
   group: 'combinar', union: 'combinar', merge: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
-  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', implicit: 'primitiva',
+  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', loft: 'primitiva', implicit: 'primitiva',
   space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 

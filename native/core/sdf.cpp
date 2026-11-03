@@ -386,6 +386,23 @@ static DistFn primDist(const Shape &s) {
     double r1 = P.num("r1"), r2 = P.num("r2");
     return [=](double x, double y, double z) { return sdRoundCone(x, y, z, a, b, r1, r2); };
   }
+  if (k == "loft") {
+    std::vector<std::vector<std::array<double, 4>>> segs;
+    for (auto &sg : P["segs"].list()->items) {
+      std::vector<std::array<double, 4>> pl;
+      for (auto &v : sg.list()->items) pl.push_back({v[0].n(), v[1].n(), v[2].n(), v[3].n()});
+      segs.push_back(pl);
+    }
+    return [segs](double x, double y, double z) {
+      double best = INFINITY;
+      for (auto &pl : segs) {
+        double d = -INFINITY;
+        for (auto &q : pl) d = std::max(d, q[0] * x + q[1] * y + q[2] * z - q[3]);
+        best = std::min(best, d);
+      }
+      return best;
+    };
+  }
   if (k == "hull") {
     std::vector<std::array<double, 4>> pl;
     for (auto &v : P["planes"].list()->items) pl.push_back({v[0].n(), v[1].n(), v[2].n(), v[3].n()});

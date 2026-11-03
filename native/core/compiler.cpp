@@ -180,6 +180,22 @@ struct Gen {
     if (k == "prism") return leaf("sdPrism(" + p + ", " + f(num("w") / 2) + ", " + f(num("h")) + ", " + f(num("d") / 2) + ")", mat);
     if (k == "plane") return leaf(p + ".y", mat);
     if (k == "roundcone") return leaf("sdRoundCone(" + p + ", " + v3(P["a"]) + ", " + v3(P["b"]) + ", " + f(num("r1")) + ", " + f(num("r2")) + ")", mat);
+    if (k == "loft") {
+      std::string body;
+      bool first = true;
+      for (auto &sg : P["segs"].list()->items) {
+        std::string acc;
+        auto &pl = sg.list()->items;
+        for (size_t i = 0; i < pl.size(); i++) {
+          std::string term = "dot(p, " + v3(V3{pl[i][0].n(), pl[i][1].n(), pl[i][2].n()}) + ") - " + f(pl[i][3].n());
+          acc = i ? "max(" + acc + ", " + term + ")" : term;
+        }
+        body += (first ? "" : "\n") + std::string("  d = ") + acc + ";\n  r = min(r, d);";
+        first = false;
+      }
+      std::string name = fn("sdLoft", [&](const std::string &nm) { return "float " + nm + "(vec3 p) {\n  float r = 1e10, d;\n" + body + "\n  return r;\n}"; });
+      return leaf(name + "(" + p + ")", mat);
+    }
     if (k == "hull") {
       std::string rows;
       auto &pl = P["planes"].list()->items;

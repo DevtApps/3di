@@ -11,8 +11,8 @@
 //   gear("sword").attach(heroi, "mao_dir", to="punho")
 import { Native, didYouMean, num } from '../runtime.js';
 import { ScriptError } from '../parser.js';
-import { Shape, hullShape, METHODS } from '../shapes.js';
-import { ringPoints, lowSphere } from '../hull.js';
+import { Shape, hullShape, loftShape, METHODS } from '../shapes.js';
+import { ringPoints, lowSphere, chamferBoxPoints } from '../hull.js';
 import * as K from './kit.js';
 
 const M = (name, s, args) => METHODS[name][1](s, args);
@@ -21,7 +21,10 @@ const place = (s, x, y, z) => M('place', s, { x, y, z });
 const cbox = (w, h, d, c) => new Shape('cbox', { size: [w, h, d], c: Math.min(c, Math.min(w, h, d) / 2), r: 0 });
 const prism = (r, h, n) => hullShape([...ringPoints(r, -h / 2, n), ...ringPoints(r, h / 2, n)]);
 const lowCone = (r, h, top, n) => hullShape([...ringPoints(r, -h / 2, n), ...(top > 1e-9 ? ringPoints(top, h / 2, n) : [[0, h / 2, 0]])]);
-const ball = (r, n) => hullShape(lowSphere(r, n));
+const ball = (r, n, smooth = 0) => hullShape(lowSphere(r, n), 'hero()', { smooth });
+// tubo que afina (membros, tronco) e caixa arredondada (cabeça, mãos, botas): suaves, quinas leves
+const tube = (pts, radii, sides = 8, smooth = 50) => loftShape(pts, radii.map((r) => (Array.isArray(r) ? r : [r, r])), sides, { smooth });
+const softBox = (w, h, d, c, smooth = 50) => hullShape(chamferBoxPoints([w / 2, h / 2, d / 2], Math.min(c, Math.min(w, h, d) / 2)), 'hero()', { smooth });
 const anchor = (s, name, p, n) => new Shape('translate', { v: [0, 0, 0], anchors: [{ name, p, n }] }, [s]);
 
 const STEEL = '#c9ced6', STEEL_D = '#8d949e', LEATHER = '#7a4a2a', GOLD = '#e2b33c', DARK = '#2a2320', WOOD = '#8a5a34';
@@ -46,44 +49,52 @@ function hero(kind, o) {
   const c = (s, col) => K.color(s, col);
   const parts = [];
   const armor = kind === 'knight' ? STEEL : kind === 'barbarian' ? skin : main;
-  // pernas e botas
+  // pernas (afinam até o tornozelo) e botas com bico
   for (const x of [0.09, -0.09]) {
-    parts.push(c(place(cbox(0.15 * W, 0.24, 0.17, 0.03), x * W, 0.12, 0), kind === 'barbarian' ? LEATHER : dark));
-    parts.push(c(place(cbox(0.18 * W, 0.13, 0.24, 0.035), x * W, 0, 0.02), kind === 'mage' ? dark : LEATHER));
+    const X = x * W;
+    parts.push(c(tube([[X, 0.38, 0], [X, 0.24, 0.005], [X, 0.11, 0.01]], [[0.08 * W, 0.085], [0.07 * W, 0.075], [0.062 * W, 0.068]]), kind === 'barbarian' ? LEATHER : dark));
+    const bw = 0.09 * W;
+    parts.push(c(K.at(hullShape([[-bw, 0, -0.1], [bw, 0, -0.1], [-bw, 0, 0.15], [bw, 0, 0.15], [-bw * 0.9, 0.15, -0.09], [bw * 0.9, 0.15, -0.09], [-bw * 0.9, 0.15, 0.06], [bw * 0.9, 0.15, 0.06],
+      [-bw * 0.8, 0.08, 0.16], [bw * 0.8, 0.08, 0.16]], 'hero()', { bevel: 0.015, smooth: 40 }), X, 0, 0), kind === 'mage' ? dark : LEATHER));
   }
-  // tronco em trapézio (ombros largos)
-  const ch = (y, hw, hd) => [[-hw, y, -hd], [hw, y, -hd], [-hw, y, hd], [hw, y, hd]];
-  parts.push(c(place(hullShape([...ch(0, 0.2 * W, 0.13), ...ch(0.3, 0.25 * W, 0.15), ...ch(0.36, 0.18 * W, 0.11)]), 0, 0.4, 0), armor));
-  parts.push(c(place(cbox(0.42 * W, 0.06, 0.28, 0.015), 0, 0.36, 0), LEATHER));
-  parts.push(c(place(cbox(0.07, 0.06, 0.02, 0.01), 0, 0.36, 0.145), GOLD));
+  // tronco com cintura e peito largo, cinto com fivela
+  parts.push(c(tube([[0, 0.34, 0], [0, 0.46, 0], [0, 0.62, 0], [0, 0.75, 0]], [[0.19 * W, 0.13], [0.17 * W, 0.12], [0.235 * W, 0.15], [0.15 * W, 0.1]], 10, 40), armor));
+  parts.push(c(tube([[0, 0.39, 0], [0, 0.45, 0]], [[0.185 * W, 0.128], [0.18 * W, 0.125]], 10, 40), LEATHER));
+  parts.push(c(K.at(softBox(0.07, 0.06, 0.03, 0.012, 0), 0, 0.42, 0.13), GOLD));
   if (kind === 'knight') {
-    parts.push(c(place(cbox(0.3, 0.28, 0.02, 0.01), 0, 0.44, 0.15), main));
+    parts.push(c(K.at(softBox(0.28, 0.26, 0.03, 0.01, 0), 0, 0.56, 0.15), main));
     parts.push(c(K.at(hullShape([[0, 0.08, 0], [0.06, 0, 0], [0, -0.08, 0], [-0.06, 0, 0], [0, 0, 0.02]]), 0, 0.6, 0.165), GOLD));
-    parts.push(c(place(lowCone(0.23, 0.12, 0.21, 8), 0, 0.26, 0), STEEL_D));
+    parts.push(c(place(lowCone(0.22, 0.12, 0.2, 10), 0, 0.27, 0), STEEL_D));
   } else if (kind === 'mage') {
-    // túnica longa até as botas
-    parts.push(c(place(lowCone(0.3, 0.36, 0.2, 8), 0, 0.02, 0), main));
-    parts.push(c(place(cbox(0.08, 0.3, 0.02, 0.01), 0, 0.42, 0.15), GOLD));
+    parts.push(c(place(lowCone(0.3, 0.36, 0.2, 10), 0, 0.02, 0), main));
+    parts.push(c(K.at(softBox(0.07, 0.3, 0.02, 0.01, 0), 0, 0.55, 0.14), GOLD));
   } else if (kind === 'barbarian') {
-    // tanga de pele e cinto largo de couro
-    parts.push(c(place(lowCone(0.25 * W, 0.12, 0.22 * W, 8), 0, 0.26, 0), '#6b4a2a'));
+    parts.push(c(place(lowCone(0.24 * W, 0.12, 0.21 * W, 10), 0, 0.27, 0), '#6b4a2a'));
     parts.push(c(K.at(hullShape([[-0.12, 0, 0], [0.12, 0, 0], [0, 0.1, 0], [0, 0.05, 0.03]]), 0, 0.55, 0.14), LEATHER));
   } else {
-    parts.push(c(place(lowCone(0.23, 0.12, 0.21, 8), 0, 0.26, 0), dark));
+    parts.push(c(place(lowCone(0.22, 0.12, 0.2, 10), 0, 0.27, 0), dark));
   }
-  // braços: ombreira, braço e luva
+  // braços (ombro, cotovelo, pulso), ombreiras e mãos em luva com polegar
   for (const side of [1, -1]) {
     const x = side * 0.3 * W;
     const bare = kind === 'barbarian';
     const shoulder = kind === 'knight' ? STEEL : kind === 'barbarian' ? '#c9b48f' : kind === 'mage' ? main : dark;
-    parts.push(c(K.at(K.scale(ball(0.11 * W, 6), [1, 0.75, 1]), x, 0.72, 0), shoulder));
-    parts.push(c(place(cbox(0.11 * W, 0.26, 0.12, 0.025), x, 0.42, 0), bare ? skin : kind === 'knight' ? dark : main));
-    parts.push(c(place(cbox(0.13 * W, 0.11, 0.13, 0.03), x, 0.33, 0), bare ? LEATHER : kind === 'mage' ? skin : LEATHER));
+    parts.push(c(K.at(K.scale(ball(0.105 * W, 8), [1, 0.78, 1]), side * 0.27 * W, 0.71, 0), shoulder));
+    parts.push(c(tube([[side * 0.26 * W, 0.7, 0], [side * 0.29 * W, 0.53, 0.01], [x, 0.4, 0.03]], [0.062 * W, 0.054 * W, 0.047 * W]), bare ? skin : kind === 'knight' ? dark : main));
+    const glove = bare ? LEATHER : kind === 'mage' ? skin : LEATHER;
+    parts.push(c(K.at(softBox(0.1 * W, 0.1, 0.09, 0.03, 45), x, 0.33, 0.04), glove));
+    parts.push(c(tube([[x - side * 0.04 * W, 0.34, 0.07], [x - side * 0.065 * W, 0.37, 0.09]], [0.02, 0.016], 6), glove));
   }
-  // cabeça (chibi: ~1/3 da altura), olhos e cabelo
-  parts.push(c(place(cbox(0.38, 0.34, 0.34, 0.07), 0, 0.78, 0), skin));
-  parts.push(c(K.mirror(K.at(K.box(0.04, 0.05, 0.02), 0.07, 0.86, 0.172), 'x'), DARK));
-  const hullAt = (pts, x, y, z, col) => c(place(hullShape(pts), x, y, z), col);
+  // cabeça (chibi: ~1/3 da altura) arredondada, com orelhas, nariz, olhos, sobrancelhas e boca
+  const HY = 0.95;
+  parts.push(c(K.at(softBox(0.38, 0.34, 0.34, 0.085, 55), 0, HY, 0), skin));
+  parts.push(c(K.mirror(K.at(K.scale(ball(0.04, 6, 0), [0.6, 1, 0.8]), 0.19, HY - 0.01, 0), 'x'), skin));
+  parts.push(c(K.at(hullShape([[-0.022, 0, 0], [0.022, 0, 0], [0, 0.035, 0], [0, 0.01, 0.025]], 'hero()', { smooth: 0 }), 0, HY - 0.045, 0.17), skin));
+  parts.push(c(K.mirror(K.at(softBox(0.04, 0.055, 0.02, 0.012, 50), 0.075, HY + 0.02, 0.17), 'x'), DARK));
+  parts.push(c(K.mirror(K.at(K.rot(softBox(0.07, 0.018, 0.02, 0.006, 0), 0, 0, -8, [0, 0, 0]), 0.075, HY + 0.075, 0.172), 'x'), hair));
+  parts.push(c(K.at(softBox(0.06, 0.012, 0.015, 0.004, 0), 0, HY - 0.085, 0.171), '#8a3a2a'));
+  const ch = (y, hw, hd) => [[-hw, y, -hd], [hw, y, -hd], [-hw, y, hd], [hw, y, hd]];
+  const hullAt = (pts, x, y, z, col) => c(place(hullShape(pts, 'hero()', { bevel: 0.012, smooth: 35 }), x, y, z), col);
   const dome = (y0, hw, hd, h) => [...ch(0, hw, hd), ...ch(h * 0.68, hw * 0.92, hd * 0.92), ...ch(h, hw * 0.48, hd * 0.52)];
   if (kind === 'knight' && o.helmet) {
     parts.push(hullAt(dome(0, 0.22, 0.2, 0.32), 0, 0.9, 0, STEEL));

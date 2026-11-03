@@ -315,6 +315,12 @@ static BBox computeBBox(const Shape &s) {
     for (auto &v : p["pts"].list()->items) pts.push_back({v[0].n(), v[1].n(), v[2].n()});
     return fromPoints(pts);
   }
+  if (k == "loft") {
+    std::vector<V3> pts;
+    for (auto &r : p["rings"].list()->items)
+      for (auto &v : r.list()->items) pts.push_back({v[0].n(), v[1].n(), v[2].n()});
+    return fromPoints(pts);
+  }
   if (k == "roundcone") {
     V3 a = p.v3("a"), b = p.v3("b");
     double r1 = p.num("r1"), r2 = p.num("r2");
@@ -884,6 +890,12 @@ static int sidesOf(const Value &v, const std::string &what) {
   return (int)n;
 }
 
+static double smoothArg(const Value &v, const std::string &what) {
+  double x = num(v, "smooth");
+  if (x < 0 || x > 180) throw ScriptError(what + ": smooth é um ângulo de 0 a 180 graus", 0, "smooth=40 suaviza curvas e mantém quinas vivas");
+  return x;
+}
+
 static ShapeP extrudeShape(const std::vector<P2> &pts, double h, const std::string &axis, double round, const std::string &what) {
   if (axis != "z" && axis != "y") throw ScriptError(what + ": axis deve ser \"z\" (perfil em x,y) ou \"y\" (perfil em x,z)");
   if (round < 0) throw ScriptError(what + ": round não pode ser negativo");
@@ -910,38 +922,65 @@ Builtins shapeBuiltins(Scene &scene) {
     double s = positive(a["size"], "size");
     return mkShape("box", {{"size", nums({s, s, s})}, {"r", std::min(num(a["round"], "round"), s / 2)}});
   });
-  N("sphere", {"r=0.5", "sides=None"}, [](const Args &a) {
+  N("sphere", {"r=0.5", "sides=None", "smooth=0"}, [](const Args &a) {
     double r = positive(a["r"], "r");
     int n = sidesOf(a["sides"], "sphere()");
-    return n ? hullShape(lowSphere(r, n), "sphere()") : mkShape("sphere", {{"r", r}});
+    return n ? hullShape(lowSphere(r, n), "sphere()", 0, smoothArg(a["smooth"], "sphere()")) : mkShape("sphere", {{"r", r}});
   });
-  N("cylinder", {"r=0.5", "h=1", "round=0", "sides=None"}, [](const Args &a) {
+  N("cylinder", {"r=0.5", "h=1", "round=0", "sides=None", "smooth=0"}, [](const Args &a) {
     double r = positive(a["r"], "r"), h = positive(a["h"], "h");
     int n = sidesOf(a["sides"], "cylinder()");
     if (n) {
       auto pts = ringPoints(r, -h / 2, n);
       for (auto &p : ringPoints(r, h / 2, n)) pts.push_back(p);
-      return hullShape(pts, "cylinder()");
+      return hullShape(pts, "cylinder()", 0, smoothArg(a["smooth"], "cylinder()"));
     }
     return mkShape("cylinder", {{"r", r}, {"h", h}, {"round", std::min({num(a["round"], "round"), r, h / 2})}});
   });
-  N("cone", {"r=0.5", "h=1", "top=0", "sides=None"}, [](const Args &a) {
+  N("cone", {"r=0.5", "h=1", "top=0", "sides=None", "smooth=0"}, [](const Args &a) {
     double r = positive(a["r"], "r"), h = positive(a["h"], "h"), top = num(a["top"], "top");
     int n = sidesOf(a["sides"], "cone()");
     if (n) {
       auto pts = ringPoints(r, -h / 2, n);
       if (top > 1e-9) for (auto &p : ringPoints(top, h / 2, n)) pts.push_back(p);
       else pts.push_back({0, h / 2, 0});
-      return hullShape(pts, "cone()");
+      return hullShape(pts, "cone()", 0, smoothArg(a["smooth"], "cone()"));
     }
     return mkShape("cone", {{"r", r}, {"h", h}, {"top", top}});
   });
-  N("hull", {"points"}, [](const Args &a) {
+  N("hull", {"points", "bevel=0", "smooth=0"}, [](const Args &a) {
     const Value &P0 = a["points"];
     if (!P0.isList() || P0.size() < 4 || P0.size() > 64) throw ScriptError("hull(): points deve ser uma lista de 4 a 64 pontos (x, y, z)");
     std::vector<V3> pts;
     for (size_t i = 0; i < P0.size(); i++) pts.push_back(vec3(P0[i], "points[" + std::to_string(i) + "]"));
-    return hullShape(pts);
+    double bevel = num(a["bevel"], "bevel");
+    if (bevel < 0) throw ScriptError("hull(): bevel não pode ser negativo");
+    return hullShape(pts, "hull()", bevel, smoothArg(a["smooth"], "hull()"));
+  });
+  N("loft", {"points", "r=0.1", "sides=8", "smooth=45", "caps=True"}, [](const Args &a) {
+    const Value &P0 = a["points"];
+    if (!P0.isList() || P0.size() < 2 || P0.size() > 32) throw ScriptError("loft(): points deve ser uma lista de 2 a 32 pontos (x, y, z)");
+    std::vector<V3> path;
+    for (size_t i = 0; i < P0.size(); i++) path.push_back(vec3(P0[i], "points[" + std::to_string(i) + "]"));
+    auto one = [](const Value &v) -> std::array<double, 2> {
+      if (v.isList() && v.size() == 2) return {num(v[0], "r"), num(v[1], "r")};
+      double x = num(v, "r");
+      return {x, x};
+    };
+    const Value &r = a["r"];
+    std::vector<std::array<double, 2>> radii;
+    bool allNum = r.isList() && std::all_of(r.list()->items.begin(), r.list()->items.end(), [](const Value &v) { return v.isNum(); });
+    if (r.isList() && r.size() == path.size() && !(path.size() == 2 && allNum)) for (auto &v : r.list()->items) radii.push_back(one(v));
+    else if (r.isList() && r.size() == 2 && allNum)
+      for (size_t i = 0; i < path.size(); i++) {
+        double t = double(i) / (path.size() - 1), x = r[0].n() + (r[1].n() - r[0].n()) * t;
+        radii.push_back({x, x});
+      }
+    else for (size_t i = 0; i < path.size(); i++) radii.push_back(one(r));
+    for (auto &q : radii)
+      if (q[0] < 0 || q[1] < 0) throw ScriptError("loft(): os raios não podem ser negativos");
+    int n = sidesOf(a["sides"], "loft()");
+    return loftShape(path, radii, n, smoothArg(a["smooth"], "loft()"), truthy(a["caps"]));
   });
   N("torus", {"radius=0.5", "thickness=0.1"}, [](const Args &a) {
     return mkShape("torus", {{"R", positive(a["radius"], "radius")}, {"r", positive(a["thickness"], "thickness")}});

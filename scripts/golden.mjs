@@ -130,8 +130,8 @@ const runErrs = RUN_BAD.map((src) => { const r = runScript(src, { maxSteps: 2000
 }
 // exportação GLB (res baixa): partes, triângulos, texturas e a estrutura do glTF
 {
-  const EXPORTS = ['mesa', 'boneco', 'robo', 'castelo', 'gato', 'arvores', 'materiais', 'aventureiro'];
-  const PALETTE = new Set(['aventureiro']);
+  const EXPORTS = ['mesa', 'boneco', 'robo', 'castelo', 'gato', 'arvores', 'materiais', 'aventureiro', 'aventureiros'];
+  const PALETTE = new Set(['aventureiro', 'aventureiros']);
   const out = [];
   for (const name of EXPORTS) {
     const run = runScript(readFileSync(`${exDir}${name}.3di`, 'utf8'));

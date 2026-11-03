@@ -307,6 +307,12 @@ class Gen {
       case 'prism': return this.leaf(`sdPrism(${p}, ${f(P.w / 2)}, ${f(P.h)}, ${f(P.d / 2)})`, mat);
       case 'plane': return this.leaf(`${p}.y`, mat);
       case 'roundcone': return this.leaf(`sdRoundCone(${p}, ${v3(P.a)}, ${v3(P.b)}, ${f(P.r1)}, ${f(P.r2)})`, mat);
+      case 'loft': {
+        // união dos trechos convexos entre anéis (cada um: maior afastamento entre os seus planos)
+        const body = P.segs.map((pl) => `  d = ${pl.map((q) => `dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])}`).reduce((acc, t) => `max(${acc}, ${t})`)};\n  r = min(r, d);`);
+        const name = this.fn('sdLoft', (n) => `float ${n}(vec3 p) {\n  float r = 1e10, d;\n${body.join('\n')}\n  return r;\n}`);
+        return this.leaf(`${name}(${p})`, mat);
+      }
       case 'hull': {
         // distância = maior afastamento entre os planos das faces
         const rows = P.planes.map((q, i) => (i ? `  d = max(d, dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])});` : `  float d = dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])};`));

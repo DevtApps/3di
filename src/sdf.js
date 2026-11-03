@@ -320,6 +320,19 @@ function primDist(s) {
       };
     }
     case 'roundcone': return (x, y, z) => sdRoundCone(x, y, z, P.a, P.b, P.r1, P.r2);
+    case 'loft': {
+      // união dos trechos convexos entre anéis
+      const segs = P.segs;
+      return (x, y, z) => {
+        let best = Infinity;
+        for (const pl of segs) {
+          let d = -Infinity;
+          for (const q of pl) { const s = q[0] * x + q[1] * y + q[2] * z - q[3]; if (s > d) d = s; }
+          if (d < best) best = d;
+        }
+        return best;
+      };
+    }
     case 'hull': {
       // maior afastamento entre os planos das faces: exato dentro e perto das faces, nunca maior que a distância real
       const pl = P.planes;

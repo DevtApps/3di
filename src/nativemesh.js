@@ -154,9 +154,53 @@ function roundedBox(h, r, seg) {
   return M;
 }
 
+// Polígonos (índices em pts) com normais por ângulo: num vértice, a normal é a média das faces vizinhas
+// que formam menos de `smooth` graus com a face (0 = tudo chapado). Faces à toa: o visual low poly.
+function polysMesh(M, pts, polys, smooth = 0) {
+  const fn = polys.map((f) => faceNormal(pts[f[0]], pts[f[1]], pts[f[2]]));
+  const lim = Math.cos((smooth * Math.PI) / 180);
+  const around = new Map();
+  if (smooth > 0) polys.forEach((f, k) => f.forEach((i) => { if (!around.has(i)) around.set(i, []); around.get(i).push(k); }));
+  polys.forEach((f, k) => {
+    const n0 = fn[k];
+    const ids = f.map((i) => {
+      let n = n0;
+      if (smooth > 0) {
+        const s = [0, 0, 0];
+        for (const j of around.get(i)) { const m = fn[j]; if (m[0] * n0[0] + m[1] * n0[1] + m[2] * n0[2] >= lim) { s[0] += m[0]; s[1] += m[1]; s[2] += m[2]; } }
+        const l = Math.hypot(...s) || 1;
+        n = s.map((v) => v / l);
+      }
+      return addVertex(M, pts[i], n);
+    });
+    for (let q = 1; q + 1 < ids.length; q++) M.I.push(ids[0], ids[q], ids[q + 1]);
+  });
+  return M;
+}
+
 // poliedro convexo: cada face é um polígono plano com a própria normal (o visual low poly)
-function hullMesh(M, { pts, faces }) {
-  for (const f of faces) addFlat(M, f.map((i) => pts[i]));
+function hullMesh(M, { pts, faces, smooth = 0 }) {
+  return polysMesh(M, pts, faces, smooth);
+}
+
+// loft: anéis ligados por quadriláteros (anti-horários vistos de fora) e as tampas
+function loftMesh(M, { rings, smooth, caps }) {
+  const n = rings[0].length;
+  const pts = rings.flat();
+  const polys = [];
+  for (let i = 0; i + 1 < rings.length; i++) for (let k = 0; k < n; k++) {
+    const a = i * n + k, b = i * n + ((k + 1) % n), c = (i + 1) * n + ((k + 1) % n), d = (i + 1) * n + k;
+    polys.push([a, d, c, b]);
+  }
+  // quadriláteros que degeneram (raio zero numa ponta) viram triângulos
+  const clean = polys.map((f) => f.filter((v, q) => { const w = f[(q + 1) % f.length]; return Math.hypot(pts[v][0] - pts[w][0], pts[v][1] - pts[w][1], pts[v][2] - pts[w][2]) > 1e-9; })).filter((f) => f.length >= 3);
+  polysMesh(M, pts, clean, smooth);
+  if (caps) {
+    const ring0 = [...Array(n).keys()], last = ring0.map((k) => (rings.length - 1) * n + k);
+    const span = (ids) => Math.hypot(...[0, 1, 2].map((a) => pts[ids[0]][a] - pts[ids[Math.floor(n / 2)]][a]));
+    if (span(ring0) > 1e-9) polysMesh(M, pts, [ring0], 0);
+    if (span(last) > 1e-9) polysMesh(M, pts, [[...last].reverse()], 0);
+  }
   return M;
 }
 
@@ -164,6 +208,7 @@ function primitive(s, seg) {
   const P = s.props, M = newMesh();
   switch (s.kind) {
     case 'hull': return hullMesh(M, P);
+    case 'loft': return loftMesh(M, P);
     case 'cbox': {
       if (P.r > 1e-9) throw new Unsupported('caixa chanfrada e arredondada');
       return hullMesh(M, convexHull(chamferBoxPoints(P.size.map((v) => v / 2), P.c)));

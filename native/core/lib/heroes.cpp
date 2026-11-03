@@ -34,37 +34,57 @@ static ShapeP hero(const HeroKind &P, const HeroO &o) {
   Value skin = o.skin.isNone() ? Value(SKINS[o.variant % 4]) : o.skin, hair = o.hair.isNone() ? Value(HAIRS[o.variant % 4]) : o.hair;
   std::vector<ShapeP> parts;
   Value armor = kind == "knight" ? Value(STEEL) : kind == "barbarian" ? skin : main;
+  auto tube = [](const std::vector<V3> &pts, const std::vector<std::array<double, 2>> &radii, int sides = 8, double smooth = 50) { return loftShape(pts, radii, sides, smooth); };
+  auto tube1 = [&](const std::vector<V3> &pts, const std::vector<double> &radii, int sides = 8, double smooth = 50) {
+    std::vector<std::array<double, 2>> r;
+    for (double x : radii) r.push_back({x, x});
+    return tube(pts, r, sides, smooth);
+  };
+  auto softBox = [](double w, double h, double d, double cc, double smooth = 50) {
+    return hullShape(chamferBoxPoints({w / 2, h / 2, d / 2}, std::min(cc, std::min({w, h, d}) / 2)), "hero()", 0, smooth);
+  };
   for (double x : {0.09, -0.09}) {
-    parts.push_back(c(place(cbox(0.15 * W, 0.24, 0.17, 0.03), x * W, 0.12, 0), kind == "barbarian" ? Value(LEATHER) : dark));
-    parts.push_back(c(place(cbox(0.18 * W, 0.13, 0.24, 0.035), x * W, 0, 0.02), kind == "mage" ? dark : Value(LEATHER)));
+    double X = x * W;
+    parts.push_back(c(tube({{X, 0.38, 0}, {X, 0.24, 0.005}, {X, 0.11, 0.01}}, {{0.08 * W, 0.085}, {0.07 * W, 0.075}, {0.062 * W, 0.068}}), kind == "barbarian" ? Value(LEATHER) : dark));
+    double bw = 0.09 * W;
+    parts.push_back(c(at(hullShape({{-bw, 0, -0.1}, {bw, 0, -0.1}, {-bw, 0, 0.15}, {bw, 0, 0.15}, {-bw * 0.9, 0.15, -0.09}, {bw * 0.9, 0.15, -0.09}, {-bw * 0.9, 0.15, 0.06}, {bw * 0.9, 0.15, 0.06},
+                                    {-bw * 0.8, 0.08, 0.16}, {bw * 0.8, 0.08, 0.16}}, "hero()", 0.015, 40), X, 0.0, 0.0),
+                      kind == "mage" ? dark : Value(LEATHER)));
   }
-  parts.push_back(c(place(hullShape(cat({chRing(0, 0.2 * W, 0.13), chRing(0.3, 0.25 * W, 0.15), chRing(0.36, 0.18 * W, 0.11)})), 0, 0.4, 0), armor));
-  parts.push_back(c(place(cbox(0.42 * W, 0.06, 0.28, 0.015), 0, 0.36, 0), LEATHER));
-  parts.push_back(c(place(cbox(0.07, 0.06, 0.02, 0.01), 0, 0.36, 0.145), GOLD));
+  parts.push_back(c(tube({{0, 0.34, 0}, {0, 0.46, 0}, {0, 0.62, 0}, {0, 0.75, 0}}, {{0.19 * W, 0.13}, {0.17 * W, 0.12}, {0.235 * W, 0.15}, {0.15 * W, 0.1}}, 10, 40), armor));
+  parts.push_back(c(tube({{0, 0.39, 0}, {0, 0.45, 0}}, {{0.185 * W, 0.128}, {0.18 * W, 0.125}}, 10, 40), LEATHER));
+  parts.push_back(c(at(softBox(0.07, 0.06, 0.03, 0.012, 0), 0.0, 0.42, 0.13), GOLD));
   if (kind == "knight") {
-    parts.push_back(c(place(cbox(0.3, 0.28, 0.02, 0.01), 0, 0.44, 0.15), main));
+    parts.push_back(c(at(softBox(0.28, 0.26, 0.03, 0.01, 0), 0.0, 0.56, 0.15), main));
     parts.push_back(c(at(hullShape({{0, 0.08, 0}, {0.06, 0, 0}, {0, -0.08, 0}, {-0.06, 0, 0}, {0, 0, 0.02}}), 0.0, 0.6, 0.165), GOLD));
-    parts.push_back(c(place(lpCone(0.23, 0.12, 0.21, 8), 0, 0.26, 0), STEEL_D));
+    parts.push_back(c(place(lpCone(0.22, 0.12, 0.2, 10), 0, 0.27, 0), STEEL_D));
   } else if (kind == "mage") {
-    parts.push_back(c(place(lpCone(0.3, 0.36, 0.2, 8), 0, 0.02, 0), main));
-    parts.push_back(c(place(cbox(0.08, 0.3, 0.02, 0.01), 0, 0.42, 0.15), GOLD));
+    parts.push_back(c(place(lpCone(0.3, 0.36, 0.2, 10), 0, 0.02, 0), main));
+    parts.push_back(c(at(softBox(0.07, 0.3, 0.02, 0.01, 0), 0.0, 0.55, 0.14), GOLD));
   } else if (kind == "barbarian") {
-    parts.push_back(c(place(lpCone(0.25 * W, 0.12, 0.22 * W, 8), 0, 0.26, 0), "#6b4a2a"));
+    parts.push_back(c(place(lpCone(0.24 * W, 0.12, 0.21 * W, 10), 0, 0.27, 0), "#6b4a2a"));
     parts.push_back(c(at(hullShape({{-0.12, 0, 0}, {0.12, 0, 0}, {0, 0.1, 0}, {0, 0.05, 0.03}}), 0.0, 0.55, 0.14), LEATHER));
   } else {
-    parts.push_back(c(place(lpCone(0.23, 0.12, 0.21, 8), 0, 0.26, 0), dark));
+    parts.push_back(c(place(lpCone(0.22, 0.12, 0.2, 10), 0, 0.27, 0), dark));
   }
   for (int side : {1, -1}) {
     double x = side * 0.3 * W;
     bool bare = kind == "barbarian";
     Value shoulder = kind == "knight" ? Value(STEEL) : kind == "barbarian" ? Value("#c9b48f") : kind == "mage" ? main : dark;
-    parts.push_back(c(at(scale(ball(0.11 * W, 6), V3{1, 0.75, 1}), x, 0.72, 0.0), shoulder));
-    parts.push_back(c(place(cbox(0.11 * W, 0.26, 0.12, 0.025), x, 0.42, 0), bare ? skin : kind == "knight" ? dark : main));
-    parts.push_back(c(place(cbox(0.13 * W, 0.11, 0.13, 0.03), x, 0.33, 0), bare ? Value(LEATHER) : kind == "mage" ? skin : Value(LEATHER)));
+    parts.push_back(c(at(scale(ball(0.105 * W, 8), V3{1, 0.78, 1}), side * 0.27 * W, 0.71, 0.0), shoulder));
+    parts.push_back(c(tube1({{side * 0.26 * W, 0.7, 0}, {side * 0.29 * W, 0.53, 0.01}, {x, 0.4, 0.03}}, {0.062 * W, 0.054 * W, 0.047 * W}), bare ? skin : kind == "knight" ? dark : main));
+    Value glove = bare ? Value(LEATHER) : kind == "mage" ? skin : Value(LEATHER);
+    parts.push_back(c(at(softBox(0.1 * W, 0.1, 0.09, 0.03, 45), x, 0.33, 0.04), glove));
+    parts.push_back(c(tube1({{x - side * 0.04 * W, 0.34, 0.07}, {x - side * 0.065 * W, 0.37, 0.09}}, {0.02, 0.016}, 6), glove));
   }
-  parts.push_back(c(place(cbox(0.38, 0.34, 0.34, 0.07), 0, 0.78, 0), skin));
-  parts.push_back(c(mirror(at(box(0.04, 0.05, 0.02), 0.07, 0.86, 0.172), "x"), DARK));
-  auto hullAt = [&](const std::vector<V3> &pts, double x, double y, double z, const Value &col) { return c(place(hullShape(pts), x, y, z), col); };
+  const double HY = 0.95;
+  parts.push_back(c(at(softBox(0.38, 0.34, 0.34, 0.085, 55), 0.0, HY, 0.0), skin));
+  parts.push_back(c(mirror(at(scale(ball(0.04, 6), V3{0.6, 1, 0.8}), 0.19, HY - 0.01, 0.0), "x"), skin));
+  parts.push_back(c(at(hullShape({{-0.022, 0, 0}, {0.022, 0, 0}, {0, 0.035, 0}, {0, 0.01, 0.025}}, "hero()"), 0.0, HY - 0.045, 0.17), skin));
+  parts.push_back(c(mirror(at(softBox(0.04, 0.055, 0.02, 0.012, 50), 0.075, HY + 0.02, 0.17), "x"), DARK));
+  parts.push_back(c(mirror(at(rot(softBox(0.07, 0.018, 0.02, 0.006, 0), 0.0, 0.0, -8.0, O), 0.075, HY + 0.075, 0.172), "x"), hair));
+  parts.push_back(c(at(softBox(0.06, 0.012, 0.015, 0.004, 0), 0.0, HY - 0.085, 0.171), "#8a3a2a"));
+  auto hullAt = [&](const std::vector<V3> &pts, double x, double y, double z, const Value &col) { return c(place(hullShape(pts, "hero()", 0.012, 35), x, y, z), col); };
   auto dome = [&](double hw, double hd, double h) { return cat({chRing(0, hw, hd), chRing(h * 0.68, hw * 0.92, hd * 0.92), chRing(h, hw * 0.48, hd * 0.52)}); };
   if (kind == "knight" && o.helmet) {
     parts.push_back(hullAt(dome(0.22, 0.2, 0.32), 0, 0.9, 0, STEEL));

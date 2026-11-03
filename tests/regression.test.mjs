@@ -840,3 +840,21 @@ test('low poly: hull, sides= e exportação com paleta', async () => {
   assert.ok(j.meshes.every((m) => m.primitives.every((p) => 'TEXCOORD_0' in p.attributes && !('COLOR_0' in p.attributes))));
   for (const bad of ['hull([(0,0,0),(1,0,0),(0,1,0),(1,1,0)])', 'cylinder(sides=2)', 'hull([(0,0,0)])']) assert.equal(runScript(`show(${bad})`).ok, false, bad);
 });
+
+test('low poly: loft côncavo, bevel e smooth na malha direta', async () => {
+  const { nativeMesh } = await import('../src/nativemesh.js');
+  const { buildDist } = await import('../src/sdf.js');
+  const r = runScript('show(loft([(0,0,0),(0,0.3,0),(0,0.6,0)], r=[0.2, 0.08, 0.2], sides=8), hull([(0,0,0),(1,0,0),(0,1,0),(0,0,1)], bevel=0.05, smooth=60).at(2,0,0))');
+  assert.equal(r.ok, true, r.error?.toString());
+  const [vaso, gema] = r.scene.shapes;
+  const d = buildDist(vaso);
+  assert.ok(d(0, 0.3, 0) <= 0 && d(0.15, 0.3, 0) > 0, 'cintura fina: fora da cintura a 0,15 m do eixo');
+  assert.ok(d(0.15, 0.02, 0) < 0, 'base larga');
+  assert.equal(nativeMesh(vaso).indices.length / 3, 2 * 8 * 2 + 2 * 6, 'lados (2 trechos x 8 quads) + 2 tampas de 8 lados');
+  assert.ok(gema.children[0].props.faces.length > 4, 'bevel cria as facetas das arestas');
+  const m = nativeMesh(gema);
+  const ns = new Set();
+  for (let v = 0; v < m.normals.length; v += 3) ns.add(Array.from(m.normals.slice(v, v + 3), (x) => x.toFixed(3)).join());
+  assert.ok(ns.size > gema.children[0].props.faces.length, 'smooth mistura as normais entre faces próximas');
+  assert.equal(runScript('show(loft([(0,0,0)]))').ok, false);
+});

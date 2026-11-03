@@ -468,39 +468,49 @@ export function partSession(scene, res, method = 'auto') {
  * opts.runParts(n, onDone): opcional; malha as n peças em paralelo (workers) e devolve as geometrias em ordem.
  * Devolve { glb: Uint8Array, stats }.
  */
-// Paleta (estilo KayKit): as cores de vértice das peças sem textura viram células de uma textura pequena
-// compartilhada; cada vértice aponta o centro da sua célula. Um PNG só para a cena inteira, fácil de
-// trocar por outra paleta. Devolve null se houver cores demais (degradês contínuos).
-const PALETTE_CELL = 4, PALETTE_MAX = 16384;
+// Paleta com degradê (estilo KayKit): cada cor das peças sem textura vira uma faixa de PALETTE_SHADES tons,
+// do mais claro (em cima) ao mais escuro; cada vértice aponta o tom pela altura dentro da sua peça, o
+// que dá a luz suave de cima para baixo dos modelos KayKit. Um PNG só para a cena inteira.
+// Devolve null se houver cores demais (degradês contínuos).
+const PALETTE_CELL = 4, PALETTE_SHADES = 8, PALETTE_MAX = 4096;
+const shadeOf = (k) => 1.12 - (0.32 * k) / (PALETTE_SHADES - 1);
 async function buildPalette(geoms) {
   const index = new Map(), list = [];
   for (const g of geoms) for (const c of g.chunks ?? []) {
     if (c.uv || !c.colors) continue;
     for (let v = 0; v < c.colors.length; v += 3) {
-      const rgb = [linearToSrgb(c.colors[v]), linearToSrgb(c.colors[v + 1]), linearToSrgb(c.colors[v + 2])];
-      const key = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
-      if (!index.has(key)) { if (list.length >= PALETTE_MAX) return null; index.set(key, list.length); list.push(rgb); }
+      const key = (linearToSrgb(c.colors[v]) << 16) | (linearToSrgb(c.colors[v + 1]) << 8) | linearToSrgb(c.colors[v + 2]);
+      if (!index.has(key)) { if (list.length >= PALETTE_MAX) return null; index.set(key, list.length); list.push([c.colors[v], c.colors[v + 1], c.colors[v + 2]]); }
     }
   }
   if (!list.length) return null;
   const grid = Math.ceil(Math.sqrt(list.length));
   const width = Math.max(16, 2 ** Math.ceil(Math.log2(grid * PALETTE_CELL)));
-  const rgba = new Uint8Array(width * width * 4);
-  list.forEach((rgb, i) => {
-    const x0 = (i % grid) * PALETTE_CELL, y0 = Math.floor(i / grid) * PALETTE_CELL;
-    for (let y = 0; y < PALETTE_CELL; y++) for (let x = 0; x < PALETTE_CELL; x++) rgba.set([...rgb, 255], ((y0 + y) * width + x0 + x) * 4);
+  const height = Math.max(16, 2 ** Math.ceil(Math.log2(Math.ceil(list.length / grid) * PALETTE_CELL * PALETTE_SHADES)));
+  const rgba = new Uint8Array(width * height * 4);
+  list.forEach((lin, i) => {
+    const x0 = (i % grid) * PALETTE_CELL, y0 = Math.floor(i / grid) * PALETTE_CELL * PALETTE_SHADES;
+    for (let k = 0; k < PALETTE_SHADES; k++) {
+      const f = shadeOf(k);
+      const rgb = lin.map((x) => linearToSrgb(x * f));
+      for (let y = 0; y < PALETTE_CELL; y++) for (let x = 0; x < PALETTE_CELL; x++) rgba.set([...rgb, 255], ((y0 + k * PALETTE_CELL + y) * width + x0 + x) * 4);
+    }
   });
-  const uvOf = (colors) => {
+  const uvOf = (colors, positions) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let v = 1; v < positions.length; v += 3) { lo = Math.min(lo, positions[v]); hi = Math.max(hi, positions[v]); }
+    const span = Math.max(hi - lo, 1e-9);
     const uv = new Float32Array((colors.length / 3) * 2);
     for (let v = 0, k = 0; v < colors.length; v += 3, k += 2) {
       const key = (linearToSrgb(colors[v]) << 16) | (linearToSrgb(colors[v + 1]) << 8) | linearToSrgb(colors[v + 2]);
       const i = index.get(key);
+      const shade = Math.round((1 - (positions[v + 1] - lo) / span) * (PALETTE_SHADES - 1));
       uv[k] = ((i % grid) * PALETTE_CELL + PALETTE_CELL / 2) / width;
-      uv[k + 1] = (Math.floor(i / grid) * PALETTE_CELL + PALETTE_CELL / 2) / width;
+      uv[k + 1] = (Math.floor(i / grid) * PALETTE_CELL * PALETTE_SHADES + shade * PALETTE_CELL + PALETTE_CELL / 2) / height;
     }
     return uv;
   };
-  return { png: await encodePng(width, width, rgba), width, colors: list.length, uvOf };
+  return { png: await encodePng(width, height, rgba), width, height, colors: list.length, uvOf };
 }
 
 export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto', palette = false } = {}) {
@@ -598,7 +608,7 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
         const attributes = {
           POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
           NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-          ...(pal ? { TEXCOORD_0: g.accessor(pal.uvOf(chunk.colors), GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }) }
+          ...(pal ? { TEXCOORD_0: g.accessor(pal.uvOf(chunk.colors, chunk.positions), GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }) }
             : { COLOR_0: g.accessor(chunk.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }) }),
           ...skinAttrs(nv),
         };

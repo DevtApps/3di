@@ -63,7 +63,8 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `sphere(r=0.5, sides=None)` | esfera; com `sides=8` vira um poliedro low poly de faces planas |
 | `cylinder(r=0.5, h=1, round=0, sides=None)` | cilindro em pé; `sides=6` faz um prisma hexagonal |
 | `cone(r=0.5, h=1, top=0, sides=None)` | cone em pé; `top>0` faz um tronco de cone; `sides=` deixa as faces planas |
-| `hull(points)` | poliedro convexo de faces planas que envolve de 4 a 64 pontos (x, y, z): gemas, rochas, armaduras e lâminas low poly |
+| `hull(points, bevel=0, smooth=0)` | poliedro convexo de faces planas que envolve de 4 a 64 pontos (x, y, z): gemas, rochas, armaduras e lâminas low poly. `bevel` chanfra todas as arestas (m) e `smooth` suaviza no GLB as faces que se encontram abaixo desse ângulo (graus) |
+| `loft(points, r=0.1, sides=8, smooth=45, caps=True)` | tubo low poly que passa por pontos (x, y, z) com um raio em cada um (um número, `(lado, frente)` ou `(início, fim)`): membros que afinam, troncos com cintura, mangas, chifres. Pode ser côncavo e sai exato no GLB |
 | `torus(radius=0.5, thickness=0.1)` | rosca deitada (no plano xz) |
 | `capsule(r=0.25, h=1)` | cápsula em pé (h é a altura total) |
 | `ellipsoid(x=0.5, y=0.3, z=0.5)` | elipsoide (raios) |
@@ -571,7 +572,9 @@ Para personagens e objetos low poly de faces planas, use `box(bevel=)`, `hull(po
 poucos triângulos e quinas vivas. Evite `smooth`, `subtract` e `round` nelas, porque esses nós forçam
 a amostragem. Exporte com `node scripts/export.mjs cena.3di --palette`, ou `3di-cli export cena.3di
 --palette`, para juntar as cores numa textura de paleta pequena e compartilhada, como nos pacotes
-KayKit. Veja `examples/aventureiro.3di`.
+KayKit. A paleta tem um degradê de claro (em cima) a escuro em cada cor, como a luz suave dos modelos
+KayKit. No preview as faces aparecem sempre chapadas: a suavização (`smooth=`) vale para o GLB. Veja
+`examples/aventureiro.3di`.
 
 Heróis prontos: `hero(kind="knight")` monta um corpo chibi low poly. Os tipos são `knight`, `barbarian`,
 `rogue`, `mage` e `ranger`, e os parâmetros `color=`, `skin=`, `hair=`, `helmet=` e `variant=` mudam a

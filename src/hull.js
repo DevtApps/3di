@@ -81,3 +81,43 @@ export function chamferBoxPoints(h, c) {
   }
   return out;
 }
+
+// Chanfro em todas as arestas: cada face encolhe no próprio plano (cada vértice anda b em direção ao
+// centro da face) e o novo casco junta as faces encolhidas; as arestas e os cantos viram facetas finas.
+export function bevelPoints({ pts, faces }, b) {
+  const out = [];
+  for (const f of faces) {
+    const c = [0, 1, 2].map((a) => f.reduce((s, i) => s + pts[i][a], 0) / f.length);
+    for (const i of f) {
+      const d = sub(c, pts[i]);
+      const l = Math.hypot(...d);
+      const k = l > 1e-12 ? Math.min(0.45, b / l) : 0;
+      out.push([pts[i][0] + d[0] * k, pts[i][1] + d[1] * k, pts[i][2] + d[2] * k]);
+    }
+  }
+  return out;
+}
+
+// Anéis de um loft: um anel de `sides` pontos em volta de cada ponto do caminho, perpendicular à
+// tangente (mesmo referencial do sweep: o lado fica na horizontal). r: número ou (r_lado, r_normal).
+export function loftRings(path, radii, sides, phase = 0) {
+  const n = path.length;
+  return path.map((p, i) => {
+    const a = path[Math.max(0, i - 1)], b = path[Math.min(n - 1, i + 1)];
+    let T = sub(b, a);
+    const tl = Math.hypot(...T) || 1;
+    T = T.map((v) => v / tl);
+    let S = cross([0, 1, 0], T);
+    if (Math.hypot(...S) < 1e-6) S = cross([0, 0, 1], T);
+    const sl = Math.hypot(...S);
+    S = S.map((v) => v / sl);
+    const N = cross(T, S);
+    const [rs, rn] = radii[i];
+    const ring = [];
+    for (let k = 0; k < sides; k++) {
+      const ang = phase + (k / sides) * 2 * Math.PI, cs = Math.cos(ang), sn = Math.sin(ang);
+      ring.push([p[0] + rs * cs * S[0] + rn * sn * N[0], p[1] + rs * cs * S[1] + rn * sn * N[1], p[2] + rs * cs * S[2] + rn * sn * N[2]]);
+    }
+    return ring;
+  });
+}

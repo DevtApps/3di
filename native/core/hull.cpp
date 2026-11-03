@@ -105,8 +105,75 @@ std::vector<V3> chamferBoxPoints(const V3 &h, double c) {
   return out;
 }
 
-ShapeP hullShape(const std::vector<V3> &points, const std::string &what) {
+std::vector<V3> bevelPoints(const Hull &h, double b) {
+  std::vector<V3> out;
+  for (auto &f : h.faces) {
+    V3 c{0, 0, 0};
+    for (int i : f)
+      for (int a = 0; a < 3; a++) c[a] += h.pts[i][a];
+    for (auto &v : c) v /= f.size();
+    for (int i : f) {
+      V3 d = sub(c, h.pts[i]);
+      double l = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+      double k = l > 1e-12 ? std::min(0.45, b / l) : 0;
+      out.push_back({h.pts[i][0] + d[0] * k, h.pts[i][1] + d[1] * k, h.pts[i][2] + d[2] * k});
+    }
+  }
+  return out;
+}
+
+std::vector<std::vector<V3>> loftRings(const std::vector<V3> &path, const std::vector<std::array<double, 2>> &radii, int sides, double phase) {
+  size_t n = path.size();
+  std::vector<std::vector<V3>> out;
+  for (size_t i = 0; i < n; i++) {
+    const V3 &a = path[i > 0 ? i - 1 : 0], &b = path[std::min(n - 1, i + 1)];
+    V3 T = sub(b, a);
+    double tl = std::sqrt(T[0] * T[0] + T[1] * T[1] + T[2] * T[2]);
+    if (tl == 0) tl = 1;
+    for (auto &v : T) v /= tl;
+    double up[3] = {0, 1, 0}, fz[3] = {0, 0, 1};
+    V3 S = cross(up, T);
+    if (std::sqrt(S[0] * S[0] + S[1] * S[1] + S[2] * S[2]) < 1e-6) S = cross(fz, T);
+    double sl = std::sqrt(S[0] * S[0] + S[1] * S[1] + S[2] * S[2]);
+    for (auto &v : S) v /= sl;
+    V3 N = cross(T.data(), S);
+    double rs = radii[i][0], rn = radii[i][1];
+    std::vector<V3> ring;
+    for (int k = 0; k < sides; k++) {
+      double ang = phase + (double(k) / sides) * 2 * M_PI, cs = std::cos(ang), sn = std::sin(ang);
+      const V3 &p = path[i];
+      ring.push_back({p[0] + rs * cs * S[0] + rn * sn * N[0], p[1] + rs * cs * S[1] + rn * sn * N[1], p[2] + rs * cs * S[2] + rn * sn * N[2]});
+    }
+    out.push_back(ring);
+  }
+  return out;
+}
+
+static Value planesValue(const std::vector<std::array<double, 4>> &pl) {
+  std::vector<Value> out;
+  for (auto &q : pl) out.push_back(nums({q[0], q[1], q[2], q[3]}));
+  return list(out);
+}
+
+ShapeP loftShape(const std::vector<V3> &path, const std::vector<std::array<double, 2>> &radii, int sides, double smooth, bool caps, const std::string &what) {
+  auto rings = loftRings(path, radii, sides);
+  std::vector<Value> rv, segs;
+  for (auto &r : rings) {
+    std::vector<Value> pts;
+    for (auto &p : r) pts.push_back(nums3(p));
+    rv.push_back(list(pts));
+  }
+  for (size_t i = 0; i + 1 < rings.size(); i++) {
+    std::vector<V3> both = rings[i];
+    both.insert(both.end(), rings[i + 1].begin(), rings[i + 1].end());
+    segs.push_back(planesValue(convexHull(both, what).planes));
+  }
+  return mkShape("loft", {{"rings", list(rv)}, {"segs", list(segs)}, {"smooth", smooth}, {"caps", caps}});
+}
+
+ShapeP hullShape(const std::vector<V3> &points, const std::string &what, double bevel, double smooth) {
   Hull h = convexHull(points, what);
+  if (bevel > 0) h = convexHull(bevelPoints(h, bevel), what);
   std::vector<Value> pts, planes, faces;
   for (auto &p : h.pts) pts.push_back(nums3(p));
   for (auto &q : h.planes) planes.push_back(nums({q[0], q[1], q[2], q[3]}));
@@ -114,7 +181,9 @@ ShapeP hullShape(const std::vector<V3> &points, const std::string &what) {
     std::vector<Value> ids(f.begin(), f.end());
     faces.push_back(list(ids));
   }
-  return mkShape("hull", {{"pts", list(pts)}, {"planes", list(planes)}, {"faces", list(faces)}});
+  Props p{{"pts", list(pts)}, {"planes", list(planes)}, {"faces", list(faces)}};
+  if (smooth > 0) p.set("smooth", smooth);
+  return mkShape("hull", p);
 }
 
 Hull hullOf(const Props &p) {

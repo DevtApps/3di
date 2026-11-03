@@ -174,12 +174,75 @@ static LMesh roundedBox(const V3 &h, double r, int seg) {
   return M;
 }
 
-static LMesh hullMesh(const Hull &h) {
+// polígonos com normais por ângulo (port de polysMesh)
+static void polysMesh(LMesh &M, const std::vector<V3> &pts, const std::vector<std::vector<int>> &polys, double smooth) {
+  std::vector<V3> fn;
+  for (auto &f : polys) fn.push_back(faceNormal(pts[f[0]], pts[f[1]], pts[f[2]]));
+  double lim = std::cos((smooth * M_PI) / 180);
+  std::map<int, std::vector<int>> around;
+  if (smooth > 0)
+    for (size_t k = 0; k < polys.size(); k++)
+      for (int i : polys[k]) around[i].push_back((int)k);
+  for (size_t k = 0; k < polys.size(); k++) {
+    const V3 &n0 = fn[k];
+    std::vector<int> ids;
+    for (int i : polys[k]) {
+      V3 n = n0;
+      if (smooth > 0) {
+        V3 sm{0, 0, 0};
+        for (int j : around[i]) {
+          const V3 &m = fn[j];
+          if (m[0] * n0[0] + m[1] * n0[1] + m[2] * n0[2] >= lim) for (int a = 0; a < 3; a++) sm[a] += m[a];
+        }
+        double l = std::sqrt(sm[0] * sm[0] + sm[1] * sm[1] + sm[2] * sm[2]);
+        if (l == 0) l = 1;
+        n = {sm[0] / l, sm[1] / l, sm[2] / l};
+      }
+      ids.push_back(addVertex(M, pts[i], n));
+    }
+    for (size_t q = 1; q + 1 < ids.size(); q++) M.I.insert(M.I.end(), {ids[0], ids[q], ids[q + 1]});
+  }
+}
+
+static LMesh hullMesh(const Hull &h, double smooth = 0) {
   LMesh M;
-  for (auto &f : h.faces) {
-    std::vector<V3> pts;
-    for (int i : f) pts.push_back(h.pts[i]);
-    addFlat(M, pts);
+  polysMesh(M, h.pts, h.faces, smooth);
+  return M;
+}
+
+static LMesh loftMesh(const Props &P) {
+  LMesh M;
+  std::vector<std::vector<V3>> rings;
+  for (auto &r : P["rings"].list()->items) {
+    std::vector<V3> ring;
+    for (auto &v : r.list()->items) ring.push_back({v[0].n(), v[1].n(), v[2].n()});
+    rings.push_back(ring);
+  }
+  int n = (int)rings[0].size();
+  std::vector<V3> pts;
+  for (auto &r : rings) pts.insert(pts.end(), r.begin(), r.end());
+  std::vector<std::vector<int>> clean;
+  for (size_t i = 0; i + 1 < rings.size(); i++)
+    for (int k = 0; k < n; k++) {
+      int a = (int)i * n + k, b = (int)i * n + (k + 1) % n, c = (int)(i + 1) * n + (k + 1) % n, d = (int)(i + 1) * n + k;
+      std::vector<int> f{a, d, c, b}, g;
+      for (size_t q = 0; q < f.size(); q++) {
+        const V3 &u = pts[f[q]], &w = pts[f[(q + 1) % f.size()]];
+        if (std::sqrt((u[0] - w[0]) * (u[0] - w[0]) + (u[1] - w[1]) * (u[1] - w[1]) + (u[2] - w[2]) * (u[2] - w[2])) > 1e-9) g.push_back(f[q]);
+      }
+      if (g.size() >= 3) clean.push_back(g);
+    }
+  polysMesh(M, pts, clean, P.num("smooth"));
+  if (truthy(P["caps"])) {
+    std::vector<int> ring0, last;
+    for (int k = 0; k < n; k++) { ring0.push_back(k); last.push_back((int)(rings.size() - 1) * n + k); }
+    auto span = [&](const std::vector<int> &ids) {
+      const V3 &a = pts[ids[0]], &b = pts[ids[n / 2]];
+      return std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
+    };
+    if (span(ring0) > 1e-9) polysMesh(M, pts, {ring0}, 0);
+    std::reverse(last.begin(), last.end());
+    if (span(last) > 1e-9) polysMesh(M, pts, {last}, 0);
   }
   return M;
 }
@@ -188,7 +251,8 @@ static LMesh primitive(const Shape &s, int seg) {
   const Props &P = s.props;
   LMesh M;
   const std::string &k = s.kind;
-  if (k == "hull") return hullMesh(hullOf(P));
+  if (k == "hull") return hullMesh(hullOf(P), P["smooth"].isNone() ? 0 : P.num("smooth"));
+  if (k == "loft") return loftMesh(P);
   if (k == "cbox") {
     if (P.num("r") > 1e-9) throw Unsupported{};
     V3 sz = P.v3("size");

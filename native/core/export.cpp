@@ -670,54 +670,64 @@ static void prewarm(const Shape &s, std::set<const Shape *> &seen) {
   for (auto &c : s.children) prewarm(*c, seen);
 }
 
-// Paleta: as cores de vértice das peças sem textura viram células de uma textura pequena compartilhada
+// Paleta com degradê: cada cor vira uma faixa de tons (claro em cima), escolhidos pela altura na peça
+static const int PALETTE_CELL = 4, PALETTE_SHADES = 8, PALETTE_MAX = 4096;
+static double shadeOf(int k) { return 1.12 - (0.32 * k) / (PALETTE_SHADES - 1); }
 namespace {
 struct Palette {
   std::vector<uint8_t> png;
-  int width = 0, grid = 0, colors = 0;
+  int width = 0, height = 0, grid = 0, colors = 0;
   std::map<int, int> index;
-  std::vector<float> uvOf(const std::vector<float> &colors) const {
+  std::vector<float> uvOf(const std::vector<float> &colors, const std::vector<float> &positions) const {
+    double lo = INFINITY, hi = -INFINITY;
+    for (size_t v = 1; v < positions.size(); v += 3) { lo = std::min(lo, (double)positions[v]); hi = std::max(hi, (double)positions[v]); }
+    double span = std::max(hi - lo, 1e-9);
     std::vector<float> uv(colors.size() / 3 * 2);
     for (size_t v = 0, k = 0; v < colors.size(); v += 3, k += 2) {
       int key = linearToSrgb(colors[v]) << 16 | linearToSrgb(colors[v + 1]) << 8 | linearToSrgb(colors[v + 2]);
       int i = index.at(key);
-      uv[k] = (float)(((i % grid) * 4 + 2.0) / width);
-      uv[k + 1] = (float)(((i / grid) * 4 + 2.0) / width);
+      int shade = jround((1 - (positions[v + 1] - lo) / span) * (PALETTE_SHADES - 1));
+      uv[k] = (float)(((i % grid) * PALETTE_CELL + PALETTE_CELL / 2.0) / width);
+      uv[k + 1] = (float)(((i / grid) * PALETTE_CELL * PALETTE_SHADES + shade * PALETTE_CELL + PALETTE_CELL / 2.0) / height);
     }
     return uv;
   }
 };
 }  // namespace
-static const int PALETTE_CELL = 4, PALETTE_MAX = 16384;
 static std::optional<Palette> buildPalette(const std::vector<Geom> &geoms) {
   Palette p;
-  std::vector<std::array<int, 3>> list;
+  std::vector<std::array<float, 3>> list;
   for (auto &g : geoms)
     for (auto &c : g.chunks) {
       if (!c.uv.empty() || c.colors.empty()) continue;
       for (size_t v = 0; v < c.colors.size(); v += 3) {
-        std::array<int, 3> rgb{linearToSrgb(c.colors[v]), linearToSrgb(c.colors[v + 1]), linearToSrgb(c.colors[v + 2])};
-        int key = rgb[0] << 16 | rgb[1] << 8 | rgb[2];
+        int key = linearToSrgb(c.colors[v]) << 16 | linearToSrgb(c.colors[v + 1]) << 8 | linearToSrgb(c.colors[v + 2]);
         if (!p.index.count(key)) {
           if ((int)list.size() >= PALETTE_MAX) return std::nullopt;
           p.index[key] = (int)list.size();
-          list.push_back(rgb);
+          list.push_back({c.colors[v], c.colors[v + 1], c.colors[v + 2]});
         }
       }
     }
   if (list.empty()) return std::nullopt;
   p.grid = (int)std::ceil(std::sqrt((double)list.size()));
   p.width = std::max(16, 1 << (int)std::ceil(std::log2((double)p.grid * PALETTE_CELL)));
-  std::vector<uint8_t> rgba((size_t)p.width * p.width * 4, 0);
+  int rows = (int)std::ceil((double)list.size() / p.grid);
+  p.height = std::max(16, 1 << (int)std::ceil(std::log2((double)rows * PALETTE_CELL * PALETTE_SHADES)));
+  std::vector<uint8_t> rgba((size_t)p.width * p.height * 4, 0);
   for (size_t i = 0; i < list.size(); i++) {
-    int x0 = (int)(i % p.grid) * PALETTE_CELL, y0 = (int)(i / p.grid) * PALETTE_CELL;
-    for (int y = 0; y < PALETTE_CELL; y++)
-      for (int x = 0; x < PALETTE_CELL; x++) {
-        size_t at = ((size_t)(y0 + y) * p.width + x0 + x) * 4;
-        rgba[at] = (uint8_t)list[i][0]; rgba[at + 1] = (uint8_t)list[i][1]; rgba[at + 2] = (uint8_t)list[i][2]; rgba[at + 3] = 255;
-      }
+    int x0 = (int)(i % p.grid) * PALETTE_CELL, y0 = (int)(i / p.grid) * PALETTE_CELL * PALETTE_SHADES;
+    for (int k = 0; k < PALETTE_SHADES; k++) {
+      double f = shadeOf(k);
+      int rgb[3] = {linearToSrgb(list[i][0] * f), linearToSrgb(list[i][1] * f), linearToSrgb(list[i][2] * f)};
+      for (int y = 0; y < PALETTE_CELL; y++)
+        for (int x = 0; x < PALETTE_CELL; x++) {
+          size_t at = ((size_t)(y0 + k * PALETTE_CELL + y) * p.width + x0 + x) * 4;
+          rgba[at] = (uint8_t)rgb[0]; rgba[at + 1] = (uint8_t)rgb[1]; rgba[at + 2] = (uint8_t)rgb[2]; rgba[at + 3] = 255;
+        }
+    }
   }
-  p.png = encodePng(p.width, p.width, rgba);
+  p.png = encodePng(p.width, p.height, rgba);
   p.colors = (int)list.size();
   return p;
 }
@@ -917,7 +927,7 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
         int material = g.add("materials", mat);
         attrs.set("POSITION", g.accessor(ch.positions, FLOAT, "VEC3", ARRAY_BUFFER, true));
         attrs.set("NORMAL", g.accessor(ch.normals, FLOAT, "VEC3", ARRAY_BUFFER));
-        if (pal) attrs.set("TEXCOORD_0", g.accessor(pal->uvOf(ch.colors), FLOAT, "VEC2", ARRAY_BUFFER));
+        if (pal) attrs.set("TEXCOORD_0", g.accessor(pal->uvOf(ch.colors, ch.positions), FLOAT, "VEC2", ARRAY_BUFFER));
         else attrs.set("COLOR_0", g.accessor(ch.colors, FLOAT, "VEC3", ARRAY_BUFFER));
         skinAttrs(attrs, nv);
         int indices;

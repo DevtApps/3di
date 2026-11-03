@@ -3,7 +3,7 @@ import { ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
 import { isExpr, val0, sym as esym } from './expr.js';
 import { parsePoints, regularPolygon, starPoints, smoothOpen, lathePolygon, boundsOf } from './profile.js';
-import { convexHull, ringPoints, lowSphere } from './hull.js';
+import { convexHull, ringPoints, lowSphere, bevelPoints, loftRings } from './hull.js';
 
 export const INF = 1e4;
 
@@ -192,6 +192,7 @@ function computeBBox(s) {
     // relevo positivo sai da forma: a caixa cresce junto (senão a malha seria cortada ali)
     case 'paint': return p.relief > 0 ? expand(c0.bbox, p.relief * 1.01) : c0.bbox;
     case 'hull': return fromPoints(p.pts);
+    case 'loft': return fromPoints(p.rings.flat());
     case 'roundcone':
       return bb([0, 1, 2].map((i) => Math.min(p.a[i] - p.r1, p.b[i] - p.r2)), [0, 1, 2].map((i) => Math.max(p.a[i] + p.r1, p.b[i] + p.r2)));
   }
@@ -687,9 +688,25 @@ export function shapeBinary(op, a, b) {
 // ---------- funções globais ----------
 
 // poliedro convexo (low poly): props.pts, planes e faces vêm de convexHull
-export function hullShape(points, what = 'hull()') {
-  const { pts, planes, faces } = convexHull(points, what);
-  return new Shape('hull', { pts, planes, faces });
+export function hullShape(points, what = 'hull()', { bevel = 0, smooth = 0 } = {}) {
+  let h = convexHull(points, what);
+  if (bevel > 0) h = convexHull(bevelPoints(h, bevel), what);
+  const { pts, planes, faces } = h;
+  return new Shape('hull', smooth > 0 ? { pts, planes, faces, smooth } : { pts, planes, faces });
+}
+
+// tubo low poly por anéis: cada trecho entre dois anéis é um casco convexo (SDF), a malha é a superfície
+export function loftShape(path, radii, sides, { smooth = 0, caps = true, what = 'loft()' } = {}) {
+  const rings = loftRings(path, radii, sides);
+  const segs = [];
+  for (let i = 0; i + 1 < rings.length; i++) segs.push(convexHull([...rings[i], ...rings[i + 1]], what).planes);
+  return new Shape('loft', { rings, segs, smooth, caps });
+}
+
+function smoothArg(v, what) {
+  const x = num(v, 'smooth');
+  if (x < 0 || x > 180) throw new ScriptError(`${what}: smooth é um ângulo de 0 a 180 graus`, null, 'smooth=40 suaviza curvas e mantém quinas vivas');
+  return x;
 }
 
 // sides= das formas redondas: inteiro de 3 a 64, ou None para a forma lisa
@@ -729,24 +746,45 @@ export function shapeBuiltins(scene) {
       const s = positive(a.size, 'size');
       return new Shape('box', { size: [s, s, s], r: Math.min(num(a.round, 'round'), s / 2) });
     }),
-    sphere: N('sphere', ['r=0.5', 'sides=None'], (a) => {
+    sphere: N('sphere', ['r=0.5', 'sides=None', 'smooth=0'], (a) => {
       const r = positive(a.r, 'r'), n = sidesOf(a.sides, 'sphere()');
-      return n ? hullShape(lowSphere(r, n), 'sphere()') : new Shape('sphere', { r });
+      return n ? hullShape(lowSphere(r, n), 'sphere()', { smooth: smoothArg(a.smooth, 'sphere()') }) : new Shape('sphere', { r });
     }),
-    cylinder: N('cylinder', ['r=0.5', 'h=1', 'round=0', 'sides=None'], (a) => {
+    cylinder: N('cylinder', ['r=0.5', 'h=1', 'round=0', 'sides=None', 'smooth=0'], (a) => {
       const r = positive(a.r, 'r'), h = positive(a.h, 'h'), n = sidesOf(a.sides, 'cylinder()');
-      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...ringPoints(r, h / 2, n)], 'cylinder()');
+      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...ringPoints(r, h / 2, n)], 'cylinder()', { smooth: smoothArg(a.smooth, 'cylinder()') });
       return new Shape('cylinder', { r, h, round: Math.min(num(a.round, 'round'), r, h / 2) });
     }),
-    cone: N('cone', ['r=0.5', 'h=1', 'top=0', 'sides=None'], (a) => {
+    cone: N('cone', ['r=0.5', 'h=1', 'top=0', 'sides=None', 'smooth=0'], (a) => {
       const r = positive(a.r, 'r'), h = positive(a.h, 'h'), top = num(a.top, 'top'), n = sidesOf(a.sides, 'cone()');
-      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...(top > 1e-9 ? ringPoints(top, h / 2, n) : [[0, h / 2, 0]])], 'cone()');
+      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...(top > 1e-9 ? ringPoints(top, h / 2, n) : [[0, h / 2, 0]])], 'cone()', { smooth: smoothArg(a.smooth, 'cone()') });
       return new Shape('cone', { r, h, top });
     }),
-    // poliedro convexo de faces planas a partir de pontos (x, y, z): gemas, rochas, armaduras low poly
-    hull: N('hull', ['points'], (a) => {
+    // poliedro convexo de faces planas a partir de pontos (x, y, z): gemas, rochas, armaduras low poly.
+    // bevel chanfra todas as arestas (m); smooth suaviza as faces que se encontram abaixo desse ângulo (graus)
+    hull: N('hull', ['points', 'bevel=0', 'smooth=0'], (a) => {
       if (!Array.isArray(a.points) || a.points.length < 4 || a.points.length > 64) throw new ScriptError('hull(): points deve ser uma lista de 4 a 64 pontos (x, y, z)', null);
-      return hullShape(a.points.map((p, i) => vec3(p, `points[${i}]`)));
+      const bevel = num(a.bevel, 'bevel');
+      if (bevel < 0) throw new ScriptError('hull(): bevel não pode ser negativo', null);
+      return hullShape(a.points.map((p, i) => vec3(p, `points[${i}]`)), 'hull()', { bevel, smooth: smoothArg(a.smooth, 'hull()') });
+    }),
+    // tubo low poly que passa por pontos (x, y, z) com um raio em cada um (número ou (lado, frente)):
+    // membros que afinam, troncos com cintura, mangas, botas, chifres. Côncavo e exato no GLB
+    loft: N('loft', ['points', 'r=0.1', 'sides=8', 'smooth=45', 'caps=True'], (a) => {
+      if (!Array.isArray(a.points) || a.points.length < 2 || a.points.length > 32) throw new ScriptError('loft(): points deve ser uma lista de 2 a 32 pontos (x, y, z)', null);
+      const path = a.points.map((p, i) => vec3(p, `points[${i}]`));
+      const one = (v, what) => {
+        if (Array.isArray(v) && v.length === 2) return v.map((x) => num(x, what));
+        const x = num(v, what);
+        return [x, x];
+      };
+      let radii;
+      if (Array.isArray(a.r) && a.r.length === path.length && !(path.length === 2 && a.r.every((v) => typeof v === 'number'))) radii = a.r.map((v) => one(v, 'r'));
+      else if (Array.isArray(a.r) && a.r.length === 2 && a.r.every((v) => typeof v === 'number')) radii = path.map((_, i) => { const t = i / (path.length - 1); return [a.r[0] + (a.r[1] - a.r[0]) * t, a.r[0] + (a.r[1] - a.r[0]) * t]; });
+      else radii = path.map(() => one(a.r, 'r'));
+      if (radii.some(([x, y]) => x < 0 || y < 0)) throw new ScriptError('loft(): os raios não podem ser negativos', null);
+      const n = sidesOf(a.sides, 'loft()');
+      return loftShape(path, radii, n, { smooth: smoothArg(a.smooth, 'loft()'), caps: !!a.caps });
     }),
     torus: N('torus', ['radius=0.5', 'thickness=0.1'], (a) => new Shape('torus', { R: positive(a.radius, 'radius'), r: positive(a.thickness, 'thickness') })),
     capsule: N('capsule', ['r=0.25', 'h=1'], (a) => {
