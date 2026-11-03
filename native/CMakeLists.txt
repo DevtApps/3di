@@ -34,7 +34,9 @@ target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
 # núcleo sem janela (parser, interpretador, compilador...): usado pelo app, pelo CLI e pelos testes
 add_library(tdi_core STATIC core/json.cpp core/lexer.cpp core/parser.cpp core/ast.cpp core/value.cpp core/expr.cpp
-  core/shape.cpp core/profile.cpp core/color.cpp core/interp.cpp core/stubs.cpp)
+  core/shape.cpp core/profile.cpp core/color.cpp core/interp.cpp core/scope.cpp core/anchor.cpp
+  core/curve.cpp core/pattern.cpp core/rig.cpp core/modules.cpp core/lib/style.cpp core/lib/grass.cpp core/lib/plants.cpp
+  core/lib/trees.cpp core/lib/people.cpp core/lib/vehicles.cpp)
 target_include_directories(tdi_core PUBLIC core)
 if(MSVC)
   target_compile_options(tdi_core PRIVATE /W4 /utf-8)

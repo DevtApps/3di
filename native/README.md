@@ -12,6 +12,11 @@ Port em andamento do 3DI para um executável nativo. O plano completo está em
 - **Fase 2, pronta:** `core/lexer`, `core/parser` e `core/ast` são o port do `parser.js`. O AST de
   todos os exemplos e as mensagens dos erros de sintaxe são iguais aos do JS (`native/build/tdi_tests`).
 
+- **Fases 3 e 4, prontas:** interpretador, valores, expressões com `time`, formas, escopos, âncoras,
+  curvas, padrões, rig e os geradores (grama, plantas, árvores, pessoas e veículos). Os 30 exemplos
+  dão a mesma árvore de formas e os mesmos prints do JS, com o mesmo aleatório. 37 erros de
+  execução dão a mesma mensagem, linha e dica.
+
 ## Compilar
 
 As dependências (SDL 3.4 e Dear ImGui) são baixadas pelo CMake. Se houver um SDL3 instalado no

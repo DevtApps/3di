@@ -1,0 +1,187 @@
+[
+ {
+  "src": "x = y",
+  "error": "linha 1: 'y' não está definido\n  dica: você quis dizer 'pi'?",
+  "logs": []
+ },
+ {
+  "src": "box(1).at(1, 2, 3, 4)",
+  "error": "linha 1: at() recebeu argumentos demais (4)\n  dica: assinatura: at(x=0, y=0, z=0)",
+  "logs": []
+ },
+ {
+  "src": "box(-1)",
+  "error": "linha 1: w deve ser maior que zero",
+  "logs": []
+ },
+ {
+  "src": "sphere(r=\"a\")",
+  "error": "linha 1: r deve ser um número, recebeu texto 'a'",
+  "logs": []
+ },
+ {
+  "src": "box(1).colr(\"red\")",
+  "error": "linha 1: forma não tem o método/atributo 'colr'\n  dica: você quis dizer 'color'?",
+  "logs": []
+ },
+ {
+  "src": "box(1).color(\"vermelhoo\")",
+  "error": "linha 1: cor desconhecida 'vermelhoo'\n  dica: você quis dizer 'vermelho'?",
+  "logs": []
+ },
+ {
+  "src": "x = [1, 2][5]",
+  "error": "linha 1: índice 5 fora da lista (tamanho 2)",
+  "logs": []
+ },
+ {
+  "src": "x = 1 / 0",
+  "error": "linha 1: divisão por zero",
+  "logs": []
+ },
+ {
+  "src": "x = \"a\" + 1",
+  "error": "linha 1: operação '+' não suportada entre texto e número\n  dica: use str(x) para converter números em texto, ou f\"...{x}...\"",
+  "logs": []
+ },
+ {
+  "src": "def f(a):\n    return a\nf()",
+  "error": "linha 3: f() precisa do argumento 'a'",
+  "logs": []
+ },
+ {
+  "src": "def f(a):\n    return a\nf(1, b=2)",
+  "error": "linha 3: f() não tem o parâmetro 'b'\n  dica: você quis dizer 'a'?",
+  "logs": []
+ },
+ {
+  "src": "for i in 5:\n    pass",
+  "error": "linha 1: não é possível percorrer número com for\n  dica: use uma lista ou range(n)",
+  "logs": []
+ },
+ {
+  "src": "x = {1: 2}[3]",
+  "error": "linha 1: chave 3 não existe no dict",
+  "logs": []
+ },
+ {
+  "src": "show(1)",
+  "error": "linha 1: show() espera formas, recebeu número\n  dica: para posicionar use .at(x, y, z)",
+  "logs": []
+ },
+ {
+  "src": "box(1).texture(\"madera\")",
+  "error": "linha 1: textura desconhecida 'madera'\n  dica: você quis dizer 'madeira'?",
+  "logs": []
+ },
+ {
+  "src": "x = (1, 2)\nx[0] = 3",
+  "error": "linha 2: tuplas não podem ser alteradas\n  dica: use uma lista [..]",
+  "logs": []
+ },
+ {
+  "src": "while True:\n    pass",
+  "error": "linha 2: o script executou passos demais (loop infinito?)\n  dica: reduza o número de repetições",
+  "logs": []
+ },
+ {
+  "src": "def f(n):\n    return f(n + 1)\nf(0)",
+  "error": "linha 2: recursão profunda demais",
+  "logs": []
+ },
+ {
+  "src": "box(1).mirror(\"w\")",
+  "error": "linha 1: eixos inválidos 'w'\n  dica: use \"x\", \"z\", \"xz\"...",
+  "logs": []
+ },
+ {
+  "src": "x = time\nif x:\n    pass",
+  "error": "linha 2: valores com time não podem ser usados em if/while/and/or\n  dica: para variar com o tempo (ou numa fórmula de implicit) use contas e funções: sin, cos, abs, min, max, clamp, lerp, smoothstep, step, osc",
+  "logs": []
+ },
+ {
+  "src": "plane().place(0, 0, 0)",
+  "error": "linha 1: place() não funciona com formas infinitas (plane)\n  dica: mostre o plane separadamente: show(plane(), objeto)",
+  "logs": []
+ },
+ {
+  "src": "space(1).split(\"y\", [2, \"~\"]).x",
+  "error": "linha 1: split(): os tamanhos fixos somam 2 m, mais que os 1 m do eixo y",
+  "logs": []
+ },
+ {
+  "src": "space(2).split(\"y\", [0.5, 0.5])",
+  "error": "linha 1: split(): os tamanhos somam 1 m mas o eixo y tem 2 m\n  dica: use \"~\" numa das partes para ela ocupar o que sobrar",
+  "logs": []
+ },
+ {
+  "src": "tree(kind=\"carvalho\")",
+  "error": "linha 1: tree(): tipo desconhecido 'carvalho'\n  dica: use oak, pine, birch, palm, willow, dead, round, bonsai",
+  "logs": []
+ },
+ {
+  "src": "box(1).attach(box(1), \"porta\")",
+  "error": "linha 1: attach(): âncora 'porta' não existe\n  dica: âncoras disponíveis: top, bottom, right, left, front, back, center",
+  "logs": []
+ },
+ {
+  "src": "sweep(0.1, [(0, 0, 0)])",
+  "error": "linha 1: sweep() espera uma curva (spline/bezier) ou uma lista de pontos, recebeu lista",
+  "logs": []
+ },
+ {
+  "src": "box(1).along(spline([(0,0,0),(1,0,0)]))",
+  "error": "linha 1: along(): diga count= (quantas cópias) ou spacing= (distância em metros)",
+  "logs": []
+ },
+ {
+  "src": "person(pose=\"voar\")",
+  "error": "linha 1: person(): pose desconhecido 'voar'\n  dica: use stand, walk, sit, arms_up",
+  "logs": []
+ },
+ {
+  "src": "skeleton().bone(\"a\", (0, 0, 0)).rotate(w=1)",
+  "error": "linha 1: rotate() não tem o parâmetro 'w'\n  dica: você quis dizer 'x'?",
+  "logs": []
+ },
+ {
+  "src": "grass(kind=\"lawn\", density=0)",
+  "error": "linha 1: grass(): density deve ser maior que zero\n  dica: density=1 é o normal; 0.5 é ralo, 2 é denso",
+  "logs": []
+ },
+ {
+  "src": "box(1).planks(width=0)",
+  "error": "linha 1: planks(): width deve ser maior que zero",
+  "logs": []
+ },
+ {
+  "src": "print(len(5))",
+  "error": "linha 1: len() não funciona com número",
+  "logs": []
+ },
+ {
+  "src": "x = 1\nx.y = 2",
+  "error": "linha 2: formas são imutáveis: não dá para atribuir atributos\n  dica: use os métodos, ex: mesa = mesa.at(1, 0, 0)",
+  "logs": []
+ },
+ {
+  "src": "a, b = [1, 2, 3]",
+  "error": "linha 1: esperava 2 valores para desempacotar, recebeu 3",
+  "logs": []
+ },
+ {
+  "src": "isinstance(1, 2)",
+  "error": "linha 1: isinstance() não é suportado",
+  "logs": []
+ },
+ {
+  "src": "implicit(lambda x, y, z: 1)",
+  "error": "linha 1: implicit(): a fórmula precisa depender de x, y ou z\n  dica: use funções como sqrt, sin, abs, min, max, clamp; comparações (<, >) não funcionam: use min/max/step",
+  "logs": []
+ },
+ {
+  "src": "chain([(0,0,0)])",
+  "error": "linha 1: chain(): points deve ser uma lista de 2 a 64 pontos (x, y, z)",
+  "logs": []
+ }
+]

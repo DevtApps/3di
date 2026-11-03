@@ -63,8 +63,8 @@ substitui o JS quando a saída dele for idêntica (golden tests).
 | 0 | **Base de testes golden** ✅ | Script JS que, para cada `examples/*.3di`, grava o AST em JSON, a árvore de Shapes em JSON, o GLSL, os dados da BVH e amostras de `sdf(p)` | Arquivos em `tests/golden/` versionados |
 | 1 | **Esqueleto CMake + SDL3** ✅ | Janela, contexto GL, um shader fixo de teste, câmera orbital, ImGui | Roda em Linux; CI compila Linux/Windows |
 | 2 | **Lexer + parser** ✅ | Port de `parser.js` | AST idêntico ao golden em todos os exemplos |
-| 3 | **Interpretador + runtime** | `interp.js`, `runtime.js`, `expr.js`, `seed/uniform/choice` com o mesmo PRNG | Árvore de Shapes idêntica ao golden; mesmo `seed` dá a mesma vila |
-| 4 | **Shapes e módulos** | primitivas, CSG, transform, `scope`, `anchor`, `curve`, `pattern`, `rig`/`person` | Os testes de `regression.test.mjs` passam portados para doctest |
+| 3 | **Interpretador + runtime** ✅ | `interp.js`, `runtime.js`, `expr.js`, `seed/uniform/choice` com o mesmo PRNG | Árvore de Shapes idêntica ao golden; mesmo `seed` dá a mesma vila |
+| 4 | **Shapes e módulos** ✅ | primitivas, CSG, transform, `scope`, `anchor`, `curve`, `pattern`, `rig`/`person` | Os testes de `regression.test.mjs` passam portados para doctest |
 | 5 | **SDF na CPU** | `sdf.js` e `PATTERN_GLSL` espelhado | Amostras de `sdf(p)` iguais ao golden com erro abaixo de 1e-5 |
 | 6 | **Compilador GLSL** | `compiler.js`, incluindo BVH, `splitScene`, instâncias de código e `CODE_W` | GLSL byte a byte igual ao golden (fora o cabeçalho `#version`) |
 | 7 | **Renderizador** | Port de `renderer.js`: texturas `uInst`/`uBvh`/`uCode`, acumulação, pós, `tdi.bench` | Diferença de pixel menor que 0,1% contra `scripts/render.mjs` |

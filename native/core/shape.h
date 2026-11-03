@@ -112,6 +112,7 @@ std::vector<std::pair<std::string, MethodDef>> &shapeMethods();  // ordem de reg
 void addMethod(const std::string &name, std::vector<std::string> params, ShapeMethod fn);
 std::vector<std::pair<std::string, std::function<Value(const ShapeP &)>>> &shapeAttrs();
 Value getShapeAttr(const ShapeP &s, const std::string &name);
+Value callMethod(const std::string &name, const ShapeP &s, const Args &a);  // METHODS[name][1](s, a)
 Value shapeBinary(const std::string &op, const Value &a, const Value &b);
 
 // alvo de layout (on/under/beside/attach): uma forma, ou só uma caixa (escopos)

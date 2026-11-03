@@ -845,6 +845,13 @@ Value getShapeAttr(const ShapeP &s, const std::string &name) {
   throw ScriptError("forma não tem o método/atributo '" + name + "'", 0, h.empty() ? "métodos: " + all : h);
 }
 
+Value callMethod(const std::string &name, const ShapeP &s, const Args &a) {
+  ensureMethods();
+  for (auto &[k, d] : shapeMethods())
+    if (k == name) return d.fn(s, a);
+  throw std::runtime_error("método desconhecido " + name);
+}
+
 Value shapeBinary(const std::string &op, const Value &a, const Value &b) {
   if (a.isShape() && b.isShape()) {
     if (op == "+" || op == "|") return unionOf({a.shape(), b.shape()});

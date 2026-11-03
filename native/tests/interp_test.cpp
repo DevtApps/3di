@@ -50,21 +50,12 @@ static Json dag(const std::vector<ShapeP> &shapes) {
   return o;
 }
 
-// exemplos que dependem de módulos ainda não portados (rig, escopos, curvas, bibliotecas)
-static bool pending(const std::string &src) {
-  for (const char *w : {"tree(", "person(", "vehicle(", "grass(", "plant(", "skeleton(", "space(", "spline(", "bezier(", "sweep(",
-                        ".along(", ".anchor(", ".attach(", ".planks(", ".shingles(", ".masonry("})
-    if (src.find(w) != std::string::npos) return true;
-  return false;
-}
-
 TEST_CASE("formas iguais ao golden") {
   fs::path root = TDI_ROOT;
-  int ok = 0, skipped = 0;
+  int ok = 0;
   for (auto &ent : fs::directory_iterator(root / "examples")) {
     if (ent.path().extension() != ".3di") continue;
     std::string name = ent.path().filename().string(), src = slurp(ent.path());
-    if (pending(src)) { skipped++; continue; }
     Json want = Json::parse(slurp(root / "tests/golden" / (ent.path().stem().string() + ".json")));
     RunResult r = runScript(src);
     Json logs = Json::array();
@@ -80,5 +71,16 @@ TEST_CASE("formas iguais ao golden") {
     CHECK_MESSAGE(d.empty(), name, ": ", d);
     if (d.empty()) ok++;
   }
-  MESSAGE(ok, " exemplos iguais, ", skipped, " pendentes de módulos");
+  MESSAGE(ok, " exemplos iguais");
+  CHECK(ok >= 30);
+}
+
+TEST_CASE("erros de execução iguais aos do JS") {
+  Json cases = Json::parse(slurp(fs::path(TDI_ROOT) / "tests/golden/_run-errors.json"));
+  for (auto &c : cases.a) {
+    RunResult r = runScript(c["src"].s, 20000);
+    std::string got = r.ok ? "(sem erro)" : r.error.str();
+    std::string want = c["error"].isNull() ? "(sem erro)" : c["error"].s;
+    CHECK_MESSAGE(got == want, "fonte: ", c["src"].s, "\n  obtido:   ", got, "\n  esperado: ", want);
+  }
 }

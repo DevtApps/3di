@@ -108,5 +108,22 @@ const errs = BAD.map((src) => { try { parse(src); return { src, ok: true }; } ca
   if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
   else writeFileSync(outDir + f, text);
 }
+// erros de execução: mesma mensagem, linha e dica no port
+const RUN_BAD = [
+  'x = y', 'box(1).at(1, 2, 3, 4)', 'box(-1)', 'sphere(r="a")', 'box(1).colr("red")', 'box(1).color("vermelhoo")',
+  'x = [1, 2][5]', 'x = 1 / 0', 'x = "a" + 1', 'def f(a):\n    return a\nf()', 'def f(a):\n    return a\nf(1, b=2)',
+  'for i in 5:\n    pass', 'x = {1: 2}[3]', 'show(1)', 'box(1).texture("madera")', 'x = (1, 2)\nx[0] = 3',
+  'while True:\n    pass', 'def f(n):\n    return f(n + 1)\nf(0)', 'box(1).mirror("w")', 'x = time\nif x:\n    pass',
+  'plane().place(0, 0, 0)', 'space(1).split("y", [2, "~"]).x', 'space(2).split("y", [0.5, 0.5])', 'tree(kind="carvalho")',
+  'box(1).attach(box(1), "porta")', 'sweep(0.1, [(0, 0, 0)])', 'box(1).along(spline([(0,0,0),(1,0,0)]))', 'person(pose="voar")',
+  'skeleton().bone("a", (0, 0, 0)).rotate(w=1)', 'grass(kind="lawn", density=0)', 'box(1).planks(width=0)', 'print(len(5))',
+  'x = 1\nx.y = 2', 'a, b = [1, 2, 3]', 'isinstance(1, 2)', 'implicit(lambda x, y, z: 1)', 'chain([(0,0,0)])',
+];
+const runErrs = RUN_BAD.map((src) => { const r = runScript(src, { maxSteps: 20000 }); return { src, error: r.ok ? null : r.error.toString(), logs: r.logs }; });
+{
+  const text = `${JSON.stringify(runErrs, null, 1)}\n`, f = '_run-errors.json';
+  if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
+  else writeFileSync(outDir + f, text);
+}
 if (check) console.log(bad ? `${bad} arquivo(s) diferem` : 'golden ok');
 process.exit(bad ? 1 : 0);
