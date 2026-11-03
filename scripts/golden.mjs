@@ -96,5 +96,17 @@ for (const file of readdirSync(exDir).filter((f) => f.endsWith('.3di') && (!only
   }
   if (!check) console.log(`${name}: ${g.error ? `ERRO ${g.error}` : `${g.compile.leaves} primitivas, glsl ${glsl.length} bytes`}`);
 }
+// erros de sintaxe: o port precisa dar a mesma mensagem, linha e dica
+const BAD = [
+  'x = (1, 2', 'def f(:\n    pass', 'if x\n    y = 1', 'a = 1 b = 2', '  x = 1', 'x = "abc', 'f(a=1, 2)',
+  'for i in range(3):\nx = 1', 'x = 1\n    y = 2', 'x +', '1 = x', 'a, *b, *c = l', 'x = [1, 2', 'f(x', 'x = 1 if y',
+  'x = $', 'def f(x):\n  return x\n x = 1', 'print(f"{x")', 'x.1', 'y = (*a)', 'x = {1: }', 'lambda x x',
+];
+const errs = BAD.map((src) => { try { parse(src); return { src, ok: true }; } catch (e) { return { src, error: e.toString() }; } });
+{
+  const text = `${JSON.stringify(errs, null, 1)}\n`, f = '_parse-errors.json';
+  if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
+  else writeFileSync(outDir + f, text);
+}
 if (check) console.log(bad ? `${bad} arquivo(s) diferem` : 'golden ok');
 process.exit(bad ? 1 : 0);

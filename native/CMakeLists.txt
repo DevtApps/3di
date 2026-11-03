@@ -32,8 +32,25 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
+# núcleo sem janela (parser, interpretador, compilador...): usado pelo app, pelo CLI e pelos testes
+add_library(tdi_core STATIC core/json.cpp core/lexer.cpp core/parser.cpp core/ast.cpp)
+target_include_directories(tdi_core PUBLIC core)
+if(MSVC)
+  target_compile_options(tdi_core PRIVATE /W4 /utf-8)
+else()
+  target_compile_options(tdi_core PRIVATE -Wall -Wextra)
+endif()
+
+FetchContent_Declare(doctest GIT_REPOSITORY https://github.com/doctest/doctest.git GIT_TAG v2.5.3 GIT_SHALLOW ON)
+FetchContent_MakeAvailable(doctest)
+enable_testing()
+add_executable(tdi_tests tests/main.cpp tests/parser_test.cpp)
+target_link_libraries(tdi_tests PRIVATE tdi_core doctest::doctest)
+target_compile_definitions(tdi_tests PRIVATE TDI_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
+add_test(NAME tdi_tests COMMAND tdi_tests)
+
 add_executable(3di app/main.cpp app/gl.cpp app/camera.cpp)
-target_link_libraries(3di PRIVATE SDL3::SDL3 imgui)
+target_link_libraries(3di PRIVATE tdi_core SDL3::SDL3 imgui)
 if(MSVC)
   target_compile_options(3di PRIVATE /W4)
 else()

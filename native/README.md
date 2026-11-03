@@ -9,6 +9,9 @@ Port em andamento do 3DI para um executável nativo. O plano completo está em
 - **Fase 1, pronta:** janela SDL3 com OpenGL 3.3 core, um shader SDF de teste no formato do
   `mapAll`, câmera orbital e painel ImGui.
 
+- **Fase 2, pronta:** `core/lexer`, `core/parser` e `core/ast` são o port do `parser.js`. O AST de
+  todos os exemplos e as mensagens dos erros de sintaxe são iguais aos do JS (`native/build/tdi_tests`).
+
 ## Compilar
 
 As dependências (SDL 3.4 e Dear ImGui) são baixadas pelo CMake. Se houver um SDL3 instalado no
@@ -28,6 +31,12 @@ Controles da câmera:
 - arrastar com o botão direito, ou com Shift, move o alvo;
 - a roda aproxima;
 - Esc sai.
+
+Testes do núcleo:
+
+```bash
+native/build/tdi_tests
+```
 
 Teste de fumaça sem interação: o comando abaixo desenha 120 quadros, grava o último em BMP e
 imprime o tempo médio por quadro.

@@ -1,0 +1,90 @@
+[
+ {
+  "src": "x = (1, 2",
+  "error": "linha 1: esperado ')', encontrado fim de linha\n  dica: faltou fechar o parêntese"
+ },
+ {
+  "src": "def f(:\n    pass",
+  "error": "linha 1: esperado um nome, encontrado ':'"
+ },
+ {
+  "src": "if x\n    y = 1",
+  "error": "linha 1: esperado ':', encontrado fim de linha\n  dica: blocos (def, if, for...) terminam com dois-pontos"
+ },
+ {
+  "src": "a = 1 b = 2",
+  "error": "linha 1: 'b' inesperado\n  dica: cada comando deve ficar em sua própria linha"
+ },
+ {
+  "src": "  x = 1",
+  "error": "linha 1: indentação inesperada"
+ },
+ {
+  "src": "x = \"abc",
+  "error": "linha 1: texto (string) sem fechar aspas"
+ },
+ {
+  "src": "f(a=1, 2)",
+  "error": "linha 1: argumento posicional depois de argumento nomeado\n  dica: coloque os argumentos sem nome antes dos nomeados (ex: box(1, 2, 3, round=0.1))"
+ },
+ {
+  "src": "for i in range(3):\nx = 1",
+  "error": "linha 2: esperado um bloco indentado, encontrado 'x'\n  dica: o conteúdo do bloco deve ser indentado com 4 espaços"
+ },
+ {
+  "src": "x = 1\n    y = 2",
+  "error": "linha 2: indentação inesperada"
+ },
+ {
+  "src": "x +",
+  "error": "linha 1: fim de linha inesperado"
+ },
+ {
+  "src": "1 = x",
+  "error": "linha 1: não é possível atribuir a essa expressão\n  dica: do lado esquerdo do = deve vir um nome (ex: mesa = box(1, 1, 1))"
+ },
+ {
+  "src": "a, *b, *c = l",
+  "error": "linha 1: só um '*' por desempacotamento"
+ },
+ {
+  "src": "x = [1, 2",
+  "error": "linha 1: esperado ']', encontrado fim de linha\n  dica: faltou fechar o colchete da lista"
+ },
+ {
+  "src": "f(x",
+  "error": "linha 1: esperado ')', encontrado fim de linha\n  dica: faltou fechar o parêntese da chamada"
+ },
+ {
+  "src": "x = 1 if y",
+  "error": "linha 1: esperado 'else', encontrado fim de linha\n  dica: expressão condicional precisa de 'else'"
+ },
+ {
+  "src": "x = $",
+  "error": "linha 1: caractere inesperado '$'"
+ },
+ {
+  "src": "def f(x):\n  return x\n x = 1",
+  "error": "linha 3: indentação inconsistente\n  dica: use sempre 4 espaços por nível"
+ },
+ {
+  "src": "print(f\"{x\")",
+  "error": "linha 1: f-string com '{' sem fechar"
+ },
+ {
+  "src": "x.1",
+  "error": "linha 1: '0.1' inesperado\n  dica: cada comando deve ficar em sua própria linha"
+ },
+ {
+  "src": "y = (*a)",
+  "error": "linha 1: '*' inesperado"
+ },
+ {
+  "src": "x = {1: }",
+  "error": "linha 1: '}' inesperado"
+ },
+ {
+  "src": "lambda x x",
+  "error": "linha 1: esperado ':', encontrado 'x'"
+ }
+]
