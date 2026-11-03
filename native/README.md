@@ -22,6 +22,15 @@ Port em andamento do 3DI para um executável nativo. O plano completo está em
   até 1e-5 (o `sin`/`cos` da libm difere do V8 na última casa). `3di-cli check arquivo.3di` dá a mesma
   saída do `scripts/check.mjs`.
 
+- **Fases 7 e 8, prontas:** renderizador OpenGL (`render/`) com o mesmo shader do editor web, extraído de
+  `renderer.js` e conferido por `tests/golden/_frag.glsl`. O app (`app/`) abre um `.3di` pela linha de
+  comando, pelo botão Abrir ou arrastando o arquivo para a janela, e recarrega quando o arquivo muda.
+  Ele roda e compila a cena em segundo plano, e o shader compila em paralelo quando o driver tem
+  `KHR_parallel_shader_compile`. Mostra erros e prints, tem câmeras prontas, a lista de peças e as 4
+  vistas, desenha a cena só quando algo muda e baixa a resolução enquanto a câmera se move.
+  `3di cena.3di --views saida.png` faz o mesmo que `scripts/render.mjs`, sem Chrome: na vila, a diferença
+  média contra o render do Chrome foi de 1,7 em 255.
+
 ## Compilar
 
 As dependências (SDL 3.4 e Dear ImGui) são baixadas pelo CMake. Se houver um SDL3 instalado no
@@ -35,12 +44,28 @@ cmake -S native -B native/build -G Ninja && cmake --build native/build
 native/build/3di
 ```
 
+Abrir uma cena, ou gerar as 4 vistas sem abrir janela:
+
+```bash
+native/build/3di examples/vila.3di
+```
+
+```bash
+native/build/3di examples/vila.3di --views vila.png --size 512
+```
+
+Validar e medir uma cena sem GPU (como `scripts/check.mjs`):
+
+```bash
+native/build/3di-cli check examples/vila.3di
+```
+
 Controles da câmera:
 
 - arrastar com o botão esquerdo gira;
 - arrastar com o botão direito, ou com Shift, move o alvo;
 - a roda aproxima;
-- Esc sai.
+- R recarrega, F enquadra e Esc sai.
 
 Testes do núcleo:
 

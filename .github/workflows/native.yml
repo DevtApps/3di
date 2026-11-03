@@ -17,3 +17,5 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev
       - run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build native/build --config Release --parallel
+      # núcleo sem GPU: parser, interpretador, compilador e SDF contra os golden files do JS
+      - run: ctest --test-dir native/build -C Release --output-on-failure

@@ -67,8 +67,8 @@ substitui o JS quando a saída dele for idêntica (golden tests).
 | 4 | **Shapes e módulos** ✅ | primitivas, CSG, transform, `scope`, `anchor`, `curve`, `pattern`, `rig`/`person` | Os testes de `regression.test.mjs` passam portados para doctest |
 | 5 | **SDF na CPU** ✅ | `sdf.js` e `PATTERN_GLSL` espelhado | Amostras de `sdf(p)` iguais ao golden com erro abaixo de 1e-5 |
 | 6 | **Compilador GLSL** ✅ | `compiler.js`, incluindo BVH, `splitScene`, instâncias de código e `CODE_W` | GLSL byte a byte igual ao golden (fora o cabeçalho `#version`) |
-| 7 | **Renderizador** | Port de `renderer.js`: texturas `uInst`/`uBvh`/`uCode`, acumulação, pós, `tdi.bench` | Diferença de pixel menor que 0,1% contra `scripts/render.mjs` |
-| 8 | **App** | Editor de texto em ImGui, ou só um observador de arquivo com recarga; painel de erros; botão "Vistas" (4 vistas) | Abrir `vila.3di`, editar e ver a cena recarregar |
+| 7 | **Renderizador** ✅ | Port de `renderer.js`: texturas `uInst`/`uBvh`/`uCode`, acumulação, pós, `tdi.bench` | Diferença de pixel menor que 0,1% contra `scripts/render.mjs` |
+| 8 | **App** ✅ | Editor de texto em ImGui, ou só um observador de arquivo com recarga; painel de erros; botão "Vistas" (4 vistas) | Abrir `vila.3di`, editar e ver a cena recarregar |
 | 9 | **CLI e exportação** | `3di check`, `3di render --views`, `3di export cena.glb` (malha, simplificação, glTF) | Substitui `check.mjs`/`render.mjs` no fluxo e nos testes |
 | 10 | **Integração** | O servidor MCP chama o binário `3di` em vez de Chromium headless; Emscripten opcional para a web | `npm test` usa o CLI nativo; o Electron fica opcional |
 

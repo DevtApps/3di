@@ -11,6 +11,7 @@ import { runScript } from '../src/interp.js';
 import { compileScene } from '../src/compiler.js';
 import { buildSceneFns } from '../src/sdf.js';
 import { union } from '../src/shapes.js';
+import { fragSource } from '../src/renderer.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const exDir = `${root}examples/`, outDir = `${root}tests/golden/`;
@@ -123,6 +124,12 @@ const RUN_BAD = [
 const runErrs = RUN_BAD.map((src) => { const r = runScript(src, { maxSteps: 20000 }); return { src, error: r.ok ? null : r.error.toString(), logs: r.logs }; });
 {
   const text = `${JSON.stringify(runErrs, null, 1)}\n`, f = '_run-errors.json';
+  if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
+  else writeFileSync(outDir + f, text);
+}
+// shader principal do renderizador, com a cena no lugar de /*SCENE*/ (o port nativo usa o mesmo texto)
+{
+  const text = fragSource('/*SCENE*/'), f = '_frag.glsl';
   if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
   else writeFileSync(outDir + f, text);
 }
