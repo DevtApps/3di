@@ -12,6 +12,7 @@ import { compileScene } from '../src/compiler.js';
 import { buildSceneFns } from '../src/sdf.js';
 import { union } from '../src/shapes.js';
 import { fragSource } from '../src/renderer.js';
+import { exportGLB } from '../src/export.js';
 
 const root = new URL('..', import.meta.url).pathname;
 const exDir = `${root}examples/`, outDir = `${root}tests/golden/`;
@@ -124,6 +125,27 @@ const RUN_BAD = [
 const runErrs = RUN_BAD.map((src) => { const r = runScript(src, { maxSteps: 20000 }); return { src, error: r.ok ? null : r.error.toString(), logs: r.logs }; });
 {
   const text = `${JSON.stringify(runErrs, null, 1)}\n`, f = '_run-errors.json';
+  if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
+  else writeFileSync(outDir + f, text);
+}
+// exportação GLB (res baixa): partes, triângulos, texturas e a estrutura do glTF
+{
+  const EXPORTS = ['mesa', 'boneco', 'robo', 'castelo', 'gato', 'arvores', 'materiais'];
+  const out = [];
+  for (const name of EXPORTS) {
+    const run = runScript(readFileSync(`${exDir}${name}.3di`, 'utf8'));
+    const { glb, stats } = await exportGLB(run.scene, { res: 40 });
+    const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+    const j = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + dv.getUint32(12, true))));
+    const c = (k) => (j[k] ?? []).length;
+    out.push({
+      name, parts: stats.parts, vertices: stats.vertices, triangles: stats.triangles, bones: stats.bones, animated: stats.animated, warnings: stats.warnings,
+      partReports: stats.partReports.map((r) => ({ name: r.name, kind: r.kind ?? null, empty: !!r.empty, triangles: r.triangles ?? 0, textured: !!r.textured, method: r.method ?? null })),
+      gltf: { nodes: c('nodes'), meshes: c('meshes'), materials: c('materials'), images: c('images'), skins: c('skins'), channels: (j.animations?.[0]?.channels ?? []).length,
+        primitives: (j.meshes ?? []).reduce((n, m) => n + m.primitives.length, 0) },
+    });
+  }
+  const text = `${JSON.stringify(out, null, 1)}\n`, f = '_export.json';
   if (check) { if (!existsSync(outDir + f) || readFileSync(outDir + f, 'utf8') !== text) { console.error(`difere: tests/golden/${f}`); bad++; } }
   else writeFileSync(outDir + f, text);
 }

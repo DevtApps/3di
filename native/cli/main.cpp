@@ -1,5 +1,6 @@
 // 3di-cli: valida e compila um .3di sem janela (port de scripts/check.mjs).
 //   3di-cli check arquivo.3di [--glsl]   mostra primitivas, peças e medidas (e o GLSL)
+//   3di-cli export arquivo.3di [saida.glb] [--res 128] [--sample]   glTF binário (como scripts/export.mjs)
 //   3di-cli dump arquivo.3di N           primeiros N floats dos dados de instância (depuração)
 #include <cstdio>
 #include <cstring>
@@ -7,6 +8,7 @@
 #include <sstream>
 
 #include "compiler.h"
+#include "export.h"
 #include "interp.h"
 #include "rig.h"
 
@@ -30,6 +32,36 @@ int main(int argc, char **argv) {
   RunResult r = runScript(slurp(argv[2]));
   for (auto &l : r.logs) std::printf("print: %s\n", l.c_str());
   if (!r.ok) { std::fprintf(stderr, "ERRO %s\n", r.error.str().c_str()); return 1; }
+  if (cmd == "export") {
+    std::string outPath, file = argv[2];
+    int res = 128;
+    std::string method = "auto";
+    for (int i = 3; i < argc; i++) {
+      if (!std::strcmp(argv[i], "--res") && i + 1 < argc) res = std::atoi(argv[++i]);
+      else if (!std::strcmp(argv[i], "--sample")) method = "sample";
+      else outPath = argv[i];
+    }
+    if (outPath.empty()) outPath = (file.size() > 4 && file.substr(file.size() - 4) == ".3di" ? file.substr(0, file.size() - 4) : file) + ".glb";
+    ExportResult ex;
+    try {
+      ExportOpts o;
+      o.res = res;
+      o.method = method;
+      o.onProgress = [](int i, int n) { std::fprintf(stderr, "\rmalha %d/%d", i + 1, n); };
+      ex = exportGLB(r.it->scene, o);
+    } catch (const std::exception &e) {
+      std::fprintf(stderr, "\nERRO %s\n", e.what());
+      return 1;
+    }
+    std::fprintf(stderr, "\n");
+    std::ofstream f(outPath, std::ios::binary);
+    f.write(reinterpret_cast<const char *>(ex.glb.data()), (std::streamsize)ex.glb.size());
+    auto &st = ex.stats;
+    std::printf("ok: %s (%zu KB) · %d partes · %d vértices · %d triângulos%s%s · %.1f s\n", outPath.c_str(), st.bytes / 1024, st.parts, st.vertices, st.triangles,
+                st.bones ? (" · " + std::to_string(st.bones) + " ossos").c_str() : "", st.animated ? " · animado" : "", st.ms / 1000);
+    for (auto &w : st.warnings) std::printf("aviso: %s\n", w.c_str());
+    return 0;
+  }
   Compiled out;
   try {
     out = compileScene(r.it->scene);

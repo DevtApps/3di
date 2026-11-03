@@ -1,0 +1,1374 @@
+[
+ {
+  "name": "mesa",
+  "parts": 13,
+  "vertices": 3836,
+  "triangles": 4926,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 204,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "mesa",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "mesa",
+    "kind": "static",
+    "empty": false,
+    "triangles": 192,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "caneca",
+    "kind": "static",
+    "empty": false,
+    "triangles": 990,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "caneca",
+    "kind": "static",
+    "empty": false,
+    "triangles": 192,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte5",
+    "kind": "static",
+    "empty": false,
+    "triangles": 192,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte6",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira frente",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira frente",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira frente",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira fundo",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira fundo",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cadeira fundo",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 13,
+   "meshes": 13,
+   "materials": 13,
+   "images": 0,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 13
+  }
+ },
+ {
+  "name": "boneco",
+  "parts": 14,
+  "vertices": 15020,
+  "triangles": 7992,
+  "bones": 11,
+  "animated": true,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 3612,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco/quadril",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/coluna",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/cabeca",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 1572,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco/braco.E",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/antebraco.E",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 264,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/coxa.E",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/canela.E",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/canela.E",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/braco.D",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/antebraco.D",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 264,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/coxa.D",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/canela.D",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco/canela.D",
+    "kind": "skin",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 26,
+   "meshes": 14,
+   "materials": 14,
+   "images": 2,
+   "skins": 1,
+   "channels": 10,
+   "primitives": 14
+  }
+ },
+ {
+  "name": "robo",
+  "parts": 11,
+  "vertices": 27599,
+  "triangles": 12170,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1418,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1930,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 16,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 16,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1316,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1508,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1330,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1498,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1280,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "boneco",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1270,
+    "textured": true,
+    "method": "amostragem"
+   }
+  ],
+  "gltf": {
+   "nodes": 11,
+   "meshes": 11,
+   "materials": 11,
+   "images": 6,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 11
+  }
+ },
+ {
+  "name": "castelo",
+  "parts": 14,
+  "vertices": 5061,
+  "triangles": 4110,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 212,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 304,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "muralha",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte8",
+    "kind": "static",
+    "empty": false,
+    "triangles": 2236,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "torreão",
+    "kind": "static",
+    "empty": false,
+    "triangles": 194,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "torreão",
+    "kind": "static",
+    "empty": false,
+    "triangles": 612,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "torreão",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte12",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte13",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 14,
+   "meshes": 14,
+   "materials": 14,
+   "images": 0,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 14
+  }
+ },
+ {
+  "name": "gato",
+  "parts": 9,
+  "vertices": 18288,
+  "triangles": 7238,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1882,
+    "textured": true,
+    "method": "facetas"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1594,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1602,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 376,
+    "textured": false,
+    "method": "facetas"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 536,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 144,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "gato",
+    "kind": "static",
+    "empty": false,
+    "triangles": 864,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 9,
+   "meshes": 9,
+   "materials": 9,
+   "images": 3,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 9
+  }
+ },
+ {
+  "name": "arvores",
+  "parts": 81,
+  "vertices": 21789,
+  "triangles": 7864,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 160,
+    "textured": false,
+    "method": "amostragem"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-oak",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-pine",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-birch",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-palm",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "arvore-willow",
+    "kind": "static",
+    "empty": false,
+    "triangles": 96,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "parte78",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1056,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "parte79",
+    "kind": "static",
+    "empty": false,
+    "triangles": 216,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "parte80",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1104,
+    "textured": true,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 81,
+   "meshes": 81,
+   "materials": 81,
+   "images": 64,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 81
+  }
+ },
+ {
+  "name": "materiais",
+  "parts": 12,
+  "vertices": 62892,
+  "triangles": 20964,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "parte0",
+    "kind": "static",
+    "empty": false,
+    "triangles": 3096,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "parte1",
+    "kind": "static",
+    "empty": false,
+    "triangles": 4768,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "mesa",
+    "kind": "static",
+    "empty": false,
+    "triangles": 588,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "mesa",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "parte4",
+    "kind": "static",
+    "empty": false,
+    "triangles": 120,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "parte5",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6476,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "coluna",
+    "kind": "static",
+    "empty": false,
+    "triangles": 48,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "coluna",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "coluna",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": true,
+    "method": "direta"
+   },
+   {
+    "name": "rochas",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1932,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "rochas",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1932,
+    "textured": true,
+    "method": "amostragem"
+   },
+   {
+    "name": "rochas",
+    "kind": "static",
+    "empty": false,
+    "triangles": 1932,
+    "textured": true,
+    "method": "amostragem"
+   }
+  ],
+  "gltf": {
+   "nodes": 12,
+   "meshes": 12,
+   "materials": 12,
+   "images": 12,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 12
+  }
+ }
+]

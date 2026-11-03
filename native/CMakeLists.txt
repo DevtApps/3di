@@ -32,13 +32,19 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui PUBLIC SDL3::SDL3)
 
+# stb_image_write: PNG das texturas assadas na exportação (só o cabeçalho)
+FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG d14d46f6b44456eb88beac58cba833a4135d4c89)
+FetchContent_MakeAvailable(stb)
+
 # núcleo sem janela (parser, interpretador, compilador...): usado pelo app, pelo CLI e pelos testes
 add_library(tdi_core STATIC core/json.cpp core/lexer.cpp core/parser.cpp core/ast.cpp core/value.cpp core/expr.cpp
   core/shape.cpp core/profile.cpp core/color.cpp core/interp.cpp core/scope.cpp core/anchor.cpp
   core/curve.cpp core/pattern.cpp core/rig.cpp core/modules.cpp core/lib/style.cpp core/lib/grass.cpp core/lib/plants.cpp
   core/lib/trees.cpp core/lib/people.cpp core/lib/vehicles.cpp
-  core/compiler.cpp core/sdf.cpp core/sha256.cpp)
-target_include_directories(tdi_core PUBLIC core)
+  core/compiler.cpp core/sdf.cpp core/sha256.cpp core/mesh.cpp core/nativemesh.cpp core/export.cpp)
+target_include_directories(tdi_core PUBLIC core PRIVATE ${stb_SOURCE_DIR})
+find_package(Threads REQUIRED)
+target_link_libraries(tdi_core PUBLIC Threads::Threads)
 if(MSVC)
   target_compile_options(tdi_core PRIVATE /W4 /utf-8)
 else()
@@ -48,7 +54,7 @@ endif()
 FetchContent_Declare(doctest GIT_REPOSITORY https://github.com/doctest/doctest.git GIT_TAG v2.5.3 GIT_SHALLOW ON)
 FetchContent_MakeAvailable(doctest)
 enable_testing()
-add_executable(tdi_tests tests/main.cpp tests/parser_test.cpp tests/interp_test.cpp tests/compiler_test.cpp)
+add_executable(tdi_tests tests/main.cpp tests/parser_test.cpp tests/interp_test.cpp tests/compiler_test.cpp tests/export_test.cpp)
 target_link_libraries(tdi_tests PRIVATE tdi_core doctest::doctest)
 target_compile_definitions(tdi_tests PRIVATE TDI_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
 add_test(NAME tdi_tests COMMAND tdi_tests)
