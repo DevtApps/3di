@@ -670,6 +670,58 @@ static void prewarm(const Shape &s, std::set<const Shape *> &seen) {
   for (auto &c : s.children) prewarm(*c, seen);
 }
 
+// Paleta: as cores de vértice das peças sem textura viram células de uma textura pequena compartilhada
+namespace {
+struct Palette {
+  std::vector<uint8_t> png;
+  int width = 0, grid = 0, colors = 0;
+  std::map<int, int> index;
+  std::vector<float> uvOf(const std::vector<float> &colors) const {
+    std::vector<float> uv(colors.size() / 3 * 2);
+    for (size_t v = 0, k = 0; v < colors.size(); v += 3, k += 2) {
+      int key = linearToSrgb(colors[v]) << 16 | linearToSrgb(colors[v + 1]) << 8 | linearToSrgb(colors[v + 2]);
+      int i = index.at(key);
+      uv[k] = (float)(((i % grid) * 4 + 2.0) / width);
+      uv[k + 1] = (float)(((i / grid) * 4 + 2.0) / width);
+    }
+    return uv;
+  }
+};
+}  // namespace
+static const int PALETTE_CELL = 4, PALETTE_MAX = 16384;
+static std::optional<Palette> buildPalette(const std::vector<Geom> &geoms) {
+  Palette p;
+  std::vector<std::array<int, 3>> list;
+  for (auto &g : geoms)
+    for (auto &c : g.chunks) {
+      if (!c.uv.empty() || c.colors.empty()) continue;
+      for (size_t v = 0; v < c.colors.size(); v += 3) {
+        std::array<int, 3> rgb{linearToSrgb(c.colors[v]), linearToSrgb(c.colors[v + 1]), linearToSrgb(c.colors[v + 2])};
+        int key = rgb[0] << 16 | rgb[1] << 8 | rgb[2];
+        if (!p.index.count(key)) {
+          if ((int)list.size() >= PALETTE_MAX) return std::nullopt;
+          p.index[key] = (int)list.size();
+          list.push_back(rgb);
+        }
+      }
+    }
+  if (list.empty()) return std::nullopt;
+  p.grid = (int)std::ceil(std::sqrt((double)list.size()));
+  p.width = std::max(16, 1 << (int)std::ceil(std::log2((double)p.grid * PALETTE_CELL)));
+  std::vector<uint8_t> rgba((size_t)p.width * p.width * 4, 0);
+  for (size_t i = 0; i < list.size(); i++) {
+    int x0 = (int)(i % p.grid) * PALETTE_CELL, y0 = (int)(i / p.grid) * PALETTE_CELL;
+    for (int y = 0; y < PALETTE_CELL; y++)
+      for (int x = 0; x < PALETTE_CELL; x++) {
+        size_t at = ((size_t)(y0 + y) * p.width + x0 + x) * 4;
+        rgba[at] = (uint8_t)list[i][0]; rgba[at + 1] = (uint8_t)list[i][1]; rgba[at + 2] = (uint8_t)list[i][2]; rgba[at + 3] = 255;
+      }
+  }
+  p.png = encodePng(p.width, p.width, rgba);
+  p.colors = (int)list.size();
+  return p;
+}
+
 ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
   if (opts.res < 1) throw std::runtime_error("res deve ser um inteiro positivo");
   double duration = 4, fps = 30;
@@ -722,6 +774,29 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
   if (!firstError.empty()) throw std::runtime_error(firstError);
 
   Gltf g;
+  std::optional<Palette> pal;
+  if (opts.palette) {
+    pal = buildPalette(geoms);
+    if (!pal) warnings.push_back("paleta não gerada: cores demais (degradês contínuos); usando cores de vértice");
+  }
+  int palTexture = -1;
+  if (pal) {
+    Json img = Json::object();
+    img.set("name", "paleta.png");
+    img.set("bufferView", g.bufferView(pal->png.data(), pal->png.size()));
+    img.set("mimeType", "image/png");
+    int image = g.add("images", img);
+    Json smp = Json::object();
+    smp.set("magFilter", 9728);
+    smp.set("minFilter", 9728);
+    smp.set("wrapS", 33071);
+    smp.set("wrapT", 33071);
+    int sampler = g.add("samplers", smp);
+    Json tx = Json::object();
+    tx.set("sampler", sampler);
+    tx.set("source", image);
+    palTexture = g.add("textures", tx);
+  }
   auto bones = collectBones(scene.shapes);
   std::map<const Bone *, int> jointIndex;
   for (size_t i = 0; i < bones.size(); i++) jointIndex[bones[i].get()] = (int)i;
@@ -830,10 +905,20 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
         prim.set("material", material);
       } else {
         size_t nv = ch.positions.size() / 3;
-        int material = g.add("materials", geom.materialProps);
+        Json mat = geom.materialProps;
+        if (pal) {
+          Json pbr = mat["pbrMetallicRoughness"];
+          Json bct = Json::object();
+          bct.set("index", palTexture);
+          bct.set("texCoord", 0);
+          pbr.set("baseColorTexture", bct);
+          mat.set("pbrMetallicRoughness", pbr);
+        }
+        int material = g.add("materials", mat);
         attrs.set("POSITION", g.accessor(ch.positions, FLOAT, "VEC3", ARRAY_BUFFER, true));
         attrs.set("NORMAL", g.accessor(ch.normals, FLOAT, "VEC3", ARRAY_BUFFER));
-        attrs.set("COLOR_0", g.accessor(ch.colors, FLOAT, "VEC3", ARRAY_BUFFER));
+        if (pal) attrs.set("TEXCOORD_0", g.accessor(pal->uvOf(ch.colors), FLOAT, "VEC2", ARRAY_BUFFER));
+        else attrs.set("COLOR_0", g.accessor(ch.colors, FLOAT, "VEC3", ARRAY_BUFFER));
         skinAttrs(attrs, nv);
         int indices;
         if (nv < 65536) {
@@ -997,6 +1082,7 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
   res.stats.triangles = triangles;
   res.stats.bones = (int)bones.size();
   res.stats.animated = animated;
+  res.stats.paletteColors = pal ? pal->colors : 0;
   res.stats.bytes = res.glb.size();
   res.stats.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
   return res;

@@ -32,9 +32,11 @@ TEST_CASE("exportação GLB igual à do JS") {
     REQUIRE_MESSAGE(r.ok, name, ": ", r.error.str());
     ExportOpts o;
     o.res = 40;
+    o.palette = want["palette"].b;
     ExportResult ex = exportGLB(r.it->scene, o);
     auto &st = ex.stats;
     CHECK_MESSAGE(st.parts == (int)want["parts"].n, name, ": partes");
+    CHECK_MESSAGE(st.paletteColors == (int)want["paletteColors"].n, name, ": cores da paleta");
     CHECK_MESSAGE(st.bones == (int)want["bones"].n, name, ": ossos");
     CHECK_MESSAGE(st.animated == want["animated"].b, name, ": animado");
     CHECK_MESSAGE(near(st.triangles, want["triangles"].n), name, ": triângulos ", st.triangles, " != ", want["triangles"].n);

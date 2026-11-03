@@ -320,6 +320,15 @@ function primDist(s) {
       };
     }
     case 'roundcone': return (x, y, z) => sdRoundCone(x, y, z, P.a, P.b, P.r1, P.r2);
+    case 'hull': {
+      // maior afastamento entre os planos das faces: exato dentro e perto das faces, nunca maior que a distância real
+      const pl = P.planes;
+      return (x, y, z) => {
+        let d = -Infinity;
+        for (const q of pl) { const s = q[0] * x + q[1] * y + q[2] * z - q[3]; if (s > d) d = s; }
+        return d;
+      };
+    }
     case 'extrude': {
       const poly = polygonSDF(P.pts), half = P.h / 2;
       return P.axis === 'z' ? (x, y, z) => extrudeDist(poly(x, y), z, half, P.r) : (x, y, z) => extrudeDist(poly(x, z), y, half, P.r);

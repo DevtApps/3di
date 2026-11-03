@@ -468,7 +468,42 @@ export function partSession(scene, res, method = 'auto') {
  * opts.runParts(n, onDone): opcional; malha as n peças em paralelo (workers) e devolve as geometrias em ordem.
  * Devolve { glb: Uint8Array, stats }.
  */
-export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto' } = {}) {
+// Paleta (estilo KayKit): as cores de vértice das peças sem textura viram células de uma textura pequena
+// compartilhada; cada vértice aponta o centro da sua célula. Um PNG só para a cena inteira, fácil de
+// trocar por outra paleta. Devolve null se houver cores demais (degradês contínuos).
+const PALETTE_CELL = 4, PALETTE_MAX = 16384;
+async function buildPalette(geoms) {
+  const index = new Map(), list = [];
+  for (const g of geoms) for (const c of g.chunks ?? []) {
+    if (c.uv || !c.colors) continue;
+    for (let v = 0; v < c.colors.length; v += 3) {
+      const rgb = [linearToSrgb(c.colors[v]), linearToSrgb(c.colors[v + 1]), linearToSrgb(c.colors[v + 2])];
+      const key = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+      if (!index.has(key)) { if (list.length >= PALETTE_MAX) return null; index.set(key, list.length); list.push(rgb); }
+    }
+  }
+  if (!list.length) return null;
+  const grid = Math.ceil(Math.sqrt(list.length));
+  const width = Math.max(16, 2 ** Math.ceil(Math.log2(grid * PALETTE_CELL)));
+  const rgba = new Uint8Array(width * width * 4);
+  list.forEach((rgb, i) => {
+    const x0 = (i % grid) * PALETTE_CELL, y0 = Math.floor(i / grid) * PALETTE_CELL;
+    for (let y = 0; y < PALETTE_CELL; y++) for (let x = 0; x < PALETTE_CELL; x++) rgba.set([...rgb, 255], ((y0 + y) * width + x0 + x) * 4);
+  });
+  const uvOf = (colors) => {
+    const uv = new Float32Array((colors.length / 3) * 2);
+    for (let v = 0, k = 0; v < colors.length; v += 3, k += 2) {
+      const key = (linearToSrgb(colors[v]) << 16) | (linearToSrgb(colors[v + 1]) << 8) | linearToSrgb(colors[v + 2]);
+      const i = index.get(key);
+      uv[k] = ((i % grid) * PALETTE_CELL + PALETTE_CELL / 2) / width;
+      uv[k + 1] = (Math.floor(i / grid) * PALETTE_CELL + PALETTE_CELL / 2) / width;
+    }
+    return uv;
+  };
+  return { png: await encodePng(width, width, rgba), width, colors: list.length, uvOf };
+}
+
+export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto', palette = false } = {}) {
   if (!Number.isSafeInteger(res) || res < 1) throw new Error('res deve ser um inteiro positivo representável com precisão');
   const { duration = 4, fps = 30 } = scene.anim ?? {};
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
@@ -499,6 +534,15 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
 
   const g = new GltfBuilder();
   const J = g.json;
+  const pal = palette ? await buildPalette(geoms) : null;
+  if (palette && !pal) warnings.push('paleta não gerada: cores demais (degradês contínuos); usando cores de vértice');
+  let palTexture = null;
+  if (pal) {
+    const image = g.add('images', { name: 'paleta.png', bufferView: g.bufferView(pal.png), mimeType: 'image/png' });
+    // NEAREST: cada célula é uma cor chapada, sem misturar com as vizinhas
+    const sampler = g.add('samplers', { magFilter: 9728, minFilter: 9728, wrapS: 33071, wrapT: 33071 });
+    palTexture = g.add('textures', { sampler, source: image });
+  }
   const bones = collectBones(scene.shapes);
   const jointIndex = new Map(bones.map((b, i) => [b, i]));
   const skinParts = parts.filter((p) => p.kind === 'skin');
@@ -548,11 +592,14 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
         primitives.push({ attributes, indices, material });
       } else {
         const nv = chunk.positions.length / 3;
-        const material = g.add('materials', materialProps);
+        const material = pal
+          ? g.add('materials', { ...materialProps, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: palTexture, texCoord: 0 } } })
+          : g.add('materials', materialProps);
         const attributes = {
           POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
           NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-          COLOR_0: g.accessor(chunk.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+          ...(pal ? { TEXCOORD_0: g.accessor(pal.uvOf(chunk.colors), GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }) }
+            : { COLOR_0: g.accessor(chunk.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }) }),
           ...skinAttrs(nv),
         };
         const small = nv < 65536;
@@ -637,6 +684,6 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
   const glb = g.toGLB();
   return {
     glb,
-    stats: { parts: parts.length, partReports, vertices, triangles, bones: bones.length, animated, bytes: glb.byteLength, ms: Date.now() - t0, warnings },
+    stats: { parts: parts.length, partReports, vertices, triangles, bones: bones.length, animated, bytes: glb.byteLength, ms: Date.now() - t0, warnings, paletteColors: pal ? pal.colors : 0 },
   };
 }

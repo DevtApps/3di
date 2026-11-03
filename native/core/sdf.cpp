@@ -386,6 +386,15 @@ static DistFn primDist(const Shape &s) {
     double r1 = P.num("r1"), r2 = P.num("r2");
     return [=](double x, double y, double z) { return sdRoundCone(x, y, z, a, b, r1, r2); };
   }
+  if (k == "hull") {
+    std::vector<std::array<double, 4>> pl;
+    for (auto &v : P["planes"].list()->items) pl.push_back({v[0].n(), v[1].n(), v[2].n(), v[3].n()});
+    return [pl](double x, double y, double z) {
+      double d = -INFINITY;
+      for (auto &q : pl) d = std::max(d, q[0] * x + q[1] * y + q[2] * z - q[3]);
+      return d;
+    };
+  }
   if (k == "extrude") {
     auto pts = pointsOf(P["pts"]);
     double half = P.num("h") / 2, r = P.num("r");

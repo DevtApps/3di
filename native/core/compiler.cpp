@@ -180,6 +180,16 @@ struct Gen {
     if (k == "prism") return leaf("sdPrism(" + p + ", " + f(num("w") / 2) + ", " + f(num("h")) + ", " + f(num("d") / 2) + ")", mat);
     if (k == "plane") return leaf(p + ".y", mat);
     if (k == "roundcone") return leaf("sdRoundCone(" + p + ", " + v3(P["a"]) + ", " + v3(P["b"]) + ", " + f(num("r1")) + ", " + f(num("r2")) + ")", mat);
+    if (k == "hull") {
+      std::string rows;
+      auto &pl = P["planes"].list()->items;
+      for (size_t i = 0; i < pl.size(); i++) {
+        std::string term = "dot(p, " + v3(V3{pl[i][0].n(), pl[i][1].n(), pl[i][2].n()}) + ") - " + f(pl[i][3].n());
+        rows += i ? "\n  d = max(d, " + term + ");" : "  float d = " + term + ";";
+      }
+      std::string name = fn("sdHull", [&](const std::string &nm) { return "float " + nm + "(vec3 p) {\n" + rows + "\n  return d;\n}"; });
+      return leaf(name + "(" + p + ")", mat);
+    }
     if (k == "affine") {
       M3 mi = P.m3("minv");
       std::string cols;

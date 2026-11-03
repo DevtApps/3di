@@ -9,9 +9,10 @@ const DOCS = {
   // primitivas
   box: 'Caixa centrada na origem: largura (x), altura (y), profundidade (z). `round` arredonda as quinas.',
   cube: 'Cubo de lado `size`.',
-  sphere: 'Esfera de raio `r`.',
-  cylinder: 'Cilindro em pé (eixo y), raio `r` e altura `h`.',
-  cone: 'Cone em pé, raio da base `r`, altura `h`; `top > 0` faz um tronco de cone.',
+  sphere: 'Esfera de raio `r`; `sides=8` faz uma esfera low poly de faces planas.',
+  cylinder: 'Cilindro em pé (eixo y), raio `r` e altura `h`; `sides=6` faz um prisma de faces planas.',
+  cone: 'Cone em pé, raio da base `r`, altura `h`; `top > 0` faz um tronco de cone; `sides=` deixa as faces planas.',
+  hull: 'Poliedro convexo de faces planas em volta de 4 a 64 pontos (x, y, z): low poly exato no GLB.',
   torus: 'Rosca deitada no plano xz.',
   capsule: 'Cápsula em pé; `h` é a altura total.',
   ellipsoid: 'Elipsoide com raios x, y, z.',
@@ -131,7 +132,7 @@ const CATEGORY = {
   group: 'combinar', union: 'combinar', merge: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
-  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', implicit: 'primitiva',
+  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', implicit: 'primitiva',
   space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 

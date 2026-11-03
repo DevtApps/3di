@@ -817,3 +817,26 @@ test('instâncias de código: subárvores complexas repetidas compilam uma vez e
   // animadas ficam fora (o tempo muda a forma por cópia)
   assert.deepEqual(compile(`${casa}show([casa().at(i * 6, 0, 0).rotate(y=time * 10) for i in range(3)])`).codeGroups, []);
 });
+
+test('low poly: hull, sides= e exportação com paleta', async () => {
+  const { exportGLB } = await import('../src/export.js');
+  const { nativeMesh } = await import('../src/nativemesh.js');
+  const { buildDist } = await import('../src/sdf.js');
+  const r = runScript('show(hull([(0,0,0),(1,0,0),(0,1,0),(0,0,1),(0.2,0.2,0.2)]).color("red"), cylinder(0.3, 1, sides=6).at(2,0,0).color("blue"), box(1, bevel=0.2).at(0,0,3).color("red"))');
+  assert.equal(r.ok, true, r.error?.toString());
+  const [tet, prisma] = r.scene.shapes;
+  assert.equal(tet.children[0].props.faces.length, 4, 'o ponto de dentro não vira face');
+  assert.equal(prisma.children[0].children[0].props.faces.length, 8, 'prisma hexagonal: 6 lados + 2 tampas');
+  const d = buildDist(tet);
+  assert.ok(d(0.1, 0.1, 0.1) < 0 && d(1, 1, 1) > 0);
+  assert.ok(Math.abs(d(0.5, -0.5, 0.2) - 0.5) < 1e-9, 'face de baixo a 0,5 m');
+  const out = compileScene(r.scene);
+  assert.match(out.glsl, /float sdHull\d+\(vec3 p\)/);
+  assert.ok(nativeMesh(r.scene.shapes[2]), 'caixa chanfrada tem malha direta');
+  const { glb, stats } = await exportGLB(r.scene, { res: 32, palette: true });
+  assert.equal(stats.paletteColors, 2);
+  const j = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + new DataView(glb.buffer, glb.byteOffset).getUint32(12, true))));
+  assert.equal(j.images.length, 1, 'uma textura de paleta para a cena toda');
+  assert.ok(j.meshes.every((m) => m.primitives.every((p) => 'TEXCOORD_0' in p.attributes && !('COLOR_0' in p.attributes))));
+  for (const bad of ['hull([(0,0,0),(1,0,0),(0,1,0),(1,1,0)])', 'cylinder(sides=2)', 'hull([(0,0,0)])']) assert.equal(runScript(`show(${bad})`).ok, false, bad);
+});

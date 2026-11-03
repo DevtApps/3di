@@ -6,6 +6,7 @@
 
 #include "anchor.h"
 #include "expr.h"
+#include "hull.h"
 #include "mesh.h"
 #include "profile.h"
 
@@ -173,10 +174,26 @@ static LMesh roundedBox(const V3 &h, double r, int seg) {
   return M;
 }
 
+static LMesh hullMesh(const Hull &h) {
+  LMesh M;
+  for (auto &f : h.faces) {
+    std::vector<V3> pts;
+    for (int i : f) pts.push_back(h.pts[i]);
+    addFlat(M, pts);
+  }
+  return M;
+}
+
 static LMesh primitive(const Shape &s, int seg) {
   const Props &P = s.props;
   LMesh M;
   const std::string &k = s.kind;
+  if (k == "hull") return hullMesh(hullOf(P));
+  if (k == "cbox") {
+    if (P.num("r") > 1e-9) throw Unsupported{};
+    V3 sz = P.v3("size");
+    return hullMesh(convexHull(chamferBoxPoints({sz[0] / 2, sz[1] / 2, sz[2] / 2}, P.num("c"))));
+  }
   if (k == "box") {
     V3 sz = P.v3("size");
     double r = P.num("r");

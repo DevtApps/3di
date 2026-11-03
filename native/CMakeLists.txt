@@ -41,7 +41,7 @@ add_library(tdi_core STATIC core/json.cpp core/lexer.cpp core/parser.cpp core/as
   core/shape.cpp core/profile.cpp core/color.cpp core/interp.cpp core/scope.cpp core/anchor.cpp
   core/curve.cpp core/pattern.cpp core/rig.cpp core/modules.cpp core/lib/style.cpp core/lib/grass.cpp core/lib/plants.cpp
   core/lib/trees.cpp core/lib/people.cpp core/lib/vehicles.cpp
-  core/compiler.cpp core/sdf.cpp core/sha256.cpp core/mesh.cpp core/nativemesh.cpp core/export.cpp)
+  core/compiler.cpp core/sdf.cpp core/sha256.cpp core/mesh.cpp core/nativemesh.cpp core/export.cpp core/hull.cpp)
 target_include_directories(tdi_core PUBLIC core PRIVATE ${stb_SOURCE_DIR})
 find_package(Threads REQUIRED)
 target_link_libraries(tdi_core PUBLIC Threads::Threads)

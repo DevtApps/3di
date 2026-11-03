@@ -20,6 +20,7 @@ struct PartReport {
 struct ExportStats {
   int parts = 0, vertices = 0, triangles = 0, bones = 0;
   bool animated = false;
+  int paletteColors = 0;
   size_t bytes = 0;
   double ms = 0;
   std::vector<PartReport> partReports;
@@ -30,6 +31,7 @@ struct ExportOpts {
   int res = 128;
   std::string method = "auto";  // "auto" ou "sample"
   int threads = 0;               // 0: um por núcleo
+  bool palette = false;          // cores numa textura de paleta compartilhada (estilo KayKit)
   std::function<void(int, int)> onProgress;
 };
 

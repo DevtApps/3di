@@ -60,9 +60,10 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 |---|---|
 | `box(w=1, h=w, d=w, round=0, bevel=0)` | caixa (largura x, altura y, profundidade z); `bevel` chanfra as arestas a 45° (placas, armaduras, móveis) |
 | `cube(size=1, round=0)` | cubo |
-| `sphere(r=0.5)` | esfera |
-| `cylinder(r=0.5, h=1, round=0)` | cilindro em pé |
-| `cone(r=0.5, h=1, top=0)` | cone em pé; `top>0` faz um tronco de cone |
+| `sphere(r=0.5, sides=None)` | esfera; com `sides=8` vira um poliedro low poly de faces planas |
+| `cylinder(r=0.5, h=1, round=0, sides=None)` | cilindro em pé; `sides=6` faz um prisma hexagonal |
+| `cone(r=0.5, h=1, top=0, sides=None)` | cone em pé; `top>0` faz um tronco de cone; `sides=` deixa as faces planas |
+| `hull(points)` | poliedro convexo de faces planas que envolve de 4 a 64 pontos (x, y, z): gemas, rochas, armaduras e lâminas low poly |
 | `torus(radius=0.5, thickness=0.1)` | rosca deitada (no plano xz) |
 | `capsule(r=0.25, h=1)` | cápsula em pé (h é a altura total) |
 | `ellipsoid(x=0.5, y=0.3, z=0.5)` | elipsoide (raios) |
@@ -562,6 +563,15 @@ isso não inclui automaticamente todas as funções numéricas.
 Desempacotamento com `*` também funciona (`porta, *janelas = lista`, `[*a, *b]`), inclusive com
 tuplas aninhadas no `for` (`for (a, b), c in ...`).
 Não há `import`, classes nem arquivos.
+
+## Low poly (estilo KayKit)
+
+Para personagens e objetos low poly de faces planas, use `box(bevel=)`, `hull(pontos)` e `sides=` em
+`sphere`, `cylinder` e `cone`. Essas formas saem no GLB como polígonos exatos, pela malha direta, com
+poucos triângulos e quinas vivas. Evite `smooth`, `subtract` e `round` nelas, porque esses nós forçam
+a amostragem. Exporte com `node scripts/export.mjs cena.3di --palette`, ou `3di-cli export cena.3di
+--palette`, para juntar as cores numa textura de paleta pequena e compartilhada, como nos pacotes
+KayKit. Veja `examples/aventureiro.3di`.
 
 ## Dicas para IA
 

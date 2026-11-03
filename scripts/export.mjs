@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Exporta um script .3di para .glb (glTF binário), com malhas, texturas PNG, esqueleto e animação.
-// Uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128]
+// Uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette]
+// --palette: cores numa textura de paleta compartilhada (estilo KayKit), em vez de cores por vértice
 // --res: células na maior dimensão de cada peça (mais = mais detalhe e arquivo maior)
 // THREEDI_SERIAL=1 malha num núcleo só (para comparar ou depurar)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -13,9 +14,10 @@ const args = process.argv.slice(2);
 const resIdx = args.indexOf('--res');
 const res = resIdx >= 0 ? Number(args[resIdx + 1]) : 128;
 const files = args.filter((a, i) => !a.startsWith('--') && (resIdx < 0 || i !== resIdx + 1));
+const palette = args.includes('--palette');
 const [input, output = input?.replace(/\.3di$/, '') + '.glb'] = files;
 if (!input) {
-  console.error('uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128]');
+  console.error('uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette]');
   process.exit(2);
 }
 
@@ -28,6 +30,7 @@ if (!run.ok) {
 }
 const { glb, stats } = await exportGLB(run.scene, {
   res,
+  palette,
   // as peças são malhadas em paralelo, uma por núcleo
   runParts: process.env.THREEDI_SERIAL ? null : nodePartRunner({ code, res, workerUrl: PARTS_WORKER }),
   onProgress: (i, n) => process.stderr.write(`\rmalha ${i + 1}/${n}`),
@@ -35,5 +38,5 @@ const { glb, stats } = await exportGLB(run.scene, {
 process.stderr.write('\n');
 writeFileSync(output, glb);
 console.log(`ok: ${output} (${(stats.bytes / 1024).toFixed(0)} KB) · ${stats.parts} partes · ${stats.vertices} vértices · ${stats.triangles} triângulos` +
-  `${stats.bones ? ` · ${stats.bones} ossos` : ''}${stats.animated ? ' · animado' : ''} · ${(stats.ms / 1000).toFixed(1)} s`);
+  `${stats.bones ? ` · ${stats.bones} ossos` : ''}${stats.animated ? ' · animado' : ''}${stats.paletteColors ? ` · paleta de ${stats.paletteColors} cores` : ''} · ${(stats.ms / 1000).toFixed(1)} s`);
 for (const w of stats.warnings) console.log(`aviso: ${w}`);

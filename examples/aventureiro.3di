@@ -1,0 +1,64 @@
+# Aventureiro low poly (estilo chibi): só faces planas. box(bevel=), hull() e sides= viram polígonos
+# exatos no GLB (malha direta), e o export com paleta junta as cores numa textura só:
+#   node scripts/export.mjs examples/aventureiro.3di --palette
+AZUL = "#3f6fb5"
+AZUL_ESC = "#2b4c80"
+ACO = "#c9ced6"
+ACO_ESC = "#8d949e"
+PELE = "#f0c39a"
+COURO = "#7a4a2a"
+OURO = "#e2b33c"
+
+# ---- pernas e botas
+def perna(x):
+    coxa = box(0.15, 0.24, 0.17, bevel=0.03).place(x, 0.12, 0).color(AZUL_ESC)
+    bota = box(0.18, 0.13, 0.24, bevel=0.035).place(x, 0, 0.02).color(COURO)
+    return [coxa, bota]
+
+# ---- tronco: peitoral em trapézio (ombros largos), cinto com fivela e saiote da cota
+peito = hull([(-0.2, 0.0, -0.13), (0.2, 0.0, -0.13), (-0.2, 0.0, 0.13), (0.2, 0.0, 0.13),
+              (-0.25, 0.3, -0.15), (0.25, 0.3, -0.15), (-0.25, 0.3, 0.15), (0.25, 0.3, 0.15),
+              (-0.18, 0.36, -0.11), (0.18, 0.36, -0.11), (-0.18, 0.36, 0.11), (0.18, 0.36, 0.11)]).place(0, 0.4, 0).color(ACO)
+gola = cylinder(0.1, 0.06, sides=8).place(0, 0.75, 0).color(ACO_ESC)
+tabardo = box(0.3, 0.28, 0.02, bevel=0.01).place(0, 0.44, 0.15).color(AZUL)
+emblema = hull([(0, 0.08, 0), (0.06, 0, 0), (0, -0.08, 0), (-0.06, 0, 0), (0, 0, 0.02)]).at(0, 0.6, 0.165).color(OURO)
+cinto = box(0.42, 0.06, 0.28, bevel=0.015).place(0, 0.36, 0).color(COURO)
+fivela = box(0.07, 0.06, 0.02, bevel=0.01).place(0, 0.36, 0.145).color(OURO)
+saiote = cone(0.23, 0.12, top=0.21, sides=8).place(0, 0.26, 0).color(ACO_ESC)
+
+# ---- braços: ombreira, braço e luva
+def braco(lado):
+    x = lado * 0.3
+    ombreira = sphere(0.11, sides=6).scale((1, 0.75, 1)).at(x, 0.72, 0).color(ACO)
+    braco_ = box(0.11, 0.26, 0.12, bevel=0.025).place(x, 0.42, 0).color(AZUL_ESC)
+    luva = box(0.13, 0.11, 0.13, bevel=0.03).place(x, 0.33, 0).color(COURO)
+    return [ombreira, braco_, luva]
+
+# ---- cabeça grande (chibi) e elmo com viseira em fenda
+cabeca = box(0.38, 0.34, 0.34, bevel=0.07).place(0, 0.78, 0).color(PELE)
+elmo = hull([(-0.22, 0.0, -0.2), (0.22, 0.0, -0.2), (-0.22, 0.0, 0.2), (0.22, 0.0, 0.2),
+             (-0.2, 0.22, -0.18), (0.2, 0.22, -0.18), (-0.2, 0.22, 0.18), (0.2, 0.22, 0.18),
+             (-0.1, 0.32, -0.1), (0.1, 0.32, -0.1), (-0.1, 0.32, 0.1), (0.1, 0.32, 0.1)]).place(0, 0.9, 0).color(ACO)
+viseira = box(0.3, 0.05, 0.03).at(0, 0.98, 0.205).color("#20242b")
+crista = hull([(0, 0, -0.14), (0, 0, 0.12), (0, 0.12, -0.06), (0.02, 0.04, 0), (-0.02, 0.04, 0)]).at(0, 1.21, 0).color(AZUL)
+olhos = box(0.04, 0.05, 0.02).at(0.07, 0.86, 0.172).mirror("x").color("#2a2320")
+
+# ---- espada (mão direita) e escudo (braço esquerdo)
+lamina = hull([(0, 0, 0.0), (0.035, 0.02, 0), (-0.035, 0.02, 0), (0, 0.02, 0.012), (0, 0.02, -0.012),
+               (0.03, 0.5, 0), (-0.03, 0.5, 0), (0, 0.5, 0.01), (0, 0.5, -0.01), (0, 0.58, 0)]).color(ACO)
+guarda = box(0.18, 0.035, 0.05, bevel=0.012).at(0, 0.0, 0).color(OURO)
+cabo = cylinder(0.018, 0.12, sides=6).place(0, -0.12, 0).color(COURO)
+pomo = sphere(0.028, sides=6).at(0, -0.135, 0).color(OURO)
+espada = group(lamina, guarda, cabo, pomo).rotate(x=20).at(0.3, 0.34, 0.07)
+
+disco = cylinder(0.2, 0.04, sides=8).rotate(x=90).color(AZUL)
+borda = cylinder(0.215, 0.03, sides=8).rotate(x=90).at(0, 0, -0.008).color(ACO_ESC)
+umbo = sphere(0.06, sides=6).at(0, 0, 0.02).color(OURO)
+escudo = group(disco, borda, umbo).rotate(y=-80).at(-0.4, 0.45, 0.02)
+
+cavaleiro = group(perna(0.09), perna(-0.09), peito, gola, tabardo, emblema, cinto, fivela, saiote,
+                  braco(1), braco(-1), cabeca, elmo, viseira, crista, olhos, espada, escudo).name("cavaleiro")
+base = cylinder(0.45, 0.06, sides=10).place(0, -0.06, 0).color("#6f8a4a").name("base")
+show(cavaleiro, base)
+sky("#b9d3e8")
+camera(pos=(1.6, 1.25, 2.4), look=(0, 0.58, 0))

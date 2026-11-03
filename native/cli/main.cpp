@@ -1,6 +1,6 @@
 // 3di-cli: valida e compila um .3di sem janela (port de scripts/check.mjs).
 //   3di-cli check arquivo.3di [--glsl]   mostra primitivas, peças e medidas (e o GLSL)
-//   3di-cli export arquivo.3di [saida.glb] [--res 128] [--sample]   glTF binário (como scripts/export.mjs)
+//   3di-cli export arquivo.3di [saida.glb] [--res 128] [--sample] [--palette]   glTF binário (como scripts/export.mjs)
 //   3di-cli dump arquivo.3di N           primeiros N floats dos dados de instância (depuração)
 #include <cstdio>
 #include <cstring>
@@ -36,9 +36,11 @@ int main(int argc, char **argv) {
     std::string outPath, file = argv[2];
     int res = 128;
     std::string method = "auto";
+    bool palette = false;
     for (int i = 3; i < argc; i++) {
       if (!std::strcmp(argv[i], "--res") && i + 1 < argc) res = std::atoi(argv[++i]);
       else if (!std::strcmp(argv[i], "--sample")) method = "sample";
+      else if (!std::strcmp(argv[i], "--palette")) palette = true;
       else outPath = argv[i];
     }
     if (outPath.empty()) outPath = (file.size() > 4 && file.substr(file.size() - 4) == ".3di" ? file.substr(0, file.size() - 4) : file) + ".glb";
@@ -47,6 +49,7 @@ int main(int argc, char **argv) {
       ExportOpts o;
       o.res = res;
       o.method = method;
+      o.palette = palette;
       o.onProgress = [](int i, int n) { std::fprintf(stderr, "\rmalha %d/%d", i + 1, n); };
       ex = exportGLB(r.it->scene, o);
     } catch (const std::exception &e) {
@@ -59,6 +62,7 @@ int main(int argc, char **argv) {
     auto &st = ex.stats;
     std::printf("ok: %s (%zu KB) · %d partes · %d vértices · %d triângulos%s%s · %.1f s\n", outPath.c_str(), st.bytes / 1024, st.parts, st.vertices, st.triangles,
                 st.bones ? (" · " + std::to_string(st.bones) + " ossos").c_str() : "", st.animated ? " · animado" : "", st.ms / 1000);
+    if (st.paletteColors) std::printf("paleta: %d cores numa textura\n", st.paletteColors);
     for (auto &w : st.warnings) std::printf("aviso: %s\n", w.c_str());
     return 0;
   }

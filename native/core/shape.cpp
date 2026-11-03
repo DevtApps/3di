@@ -7,6 +7,7 @@
 #include <regex>
 
 #include "expr.h"
+#include "hull.h"
 #include "profile.h"
 
 namespace tdi {
@@ -309,6 +310,11 @@ static BBox computeBBox(const Shape &s) {
     return r;
   }
   if (k == "paint") { double rel = p.num("relief"); return rel > 0 ? expand(c0->bbox(), rel * 1.01) : c0->bbox(); }
+  if (k == "hull") {
+    std::vector<V3> pts;
+    for (auto &v : p["pts"].list()->items) pts.push_back({v[0].n(), v[1].n(), v[2].n()});
+    return fromPoints(pts);
+  }
   if (k == "roundcone") {
     V3 a = p.v3("a"), b = p.v3("b");
     double r1 = p.num("r1"), r2 = p.num("r2");
@@ -870,6 +876,14 @@ static double positive(const Value &v, const std::string &what) {
   return x;
 }
 
+static int sidesOf(const Value &v, const std::string &what) {
+  if (v.isNone()) return 0;
+  double n = num(v, "sides");
+  if (!isInt(n) || n < 3 || n > 64)
+    throw ScriptError(what + ": sides deve ser um inteiro de 3 a 64", 0, "sides=6 dá um prisma hexagonal; None (padrão) deixa a forma lisa");
+  return (int)n;
+}
+
 static ShapeP extrudeShape(const std::vector<P2> &pts, double h, const std::string &axis, double round, const std::string &what) {
   if (axis != "z" && axis != "y") throw ScriptError(what + ": axis deve ser \"z\" (perfil em x,y) ou \"y\" (perfil em x,z)");
   if (round < 0) throw ScriptError(what + ": round não pode ser negativo");
@@ -896,13 +910,38 @@ Builtins shapeBuiltins(Scene &scene) {
     double s = positive(a["size"], "size");
     return mkShape("box", {{"size", nums({s, s, s})}, {"r", std::min(num(a["round"], "round"), s / 2)}});
   });
-  N("sphere", {"r=0.5"}, [](const Args &a) { return mkShape("sphere", {{"r", positive(a["r"], "r")}}); });
-  N("cylinder", {"r=0.5", "h=1", "round=0"}, [](const Args &a) {
+  N("sphere", {"r=0.5", "sides=None"}, [](const Args &a) {
+    double r = positive(a["r"], "r");
+    int n = sidesOf(a["sides"], "sphere()");
+    return n ? hullShape(lowSphere(r, n), "sphere()") : mkShape("sphere", {{"r", r}});
+  });
+  N("cylinder", {"r=0.5", "h=1", "round=0", "sides=None"}, [](const Args &a) {
     double r = positive(a["r"], "r"), h = positive(a["h"], "h");
+    int n = sidesOf(a["sides"], "cylinder()");
+    if (n) {
+      auto pts = ringPoints(r, -h / 2, n);
+      for (auto &p : ringPoints(r, h / 2, n)) pts.push_back(p);
+      return hullShape(pts, "cylinder()");
+    }
     return mkShape("cylinder", {{"r", r}, {"h", h}, {"round", std::min({num(a["round"], "round"), r, h / 2})}});
   });
-  N("cone", {"r=0.5", "h=1", "top=0"}, [](const Args &a) {
-    return mkShape("cone", {{"r", positive(a["r"], "r")}, {"h", positive(a["h"], "h")}, {"top", num(a["top"], "top")}});
+  N("cone", {"r=0.5", "h=1", "top=0", "sides=None"}, [](const Args &a) {
+    double r = positive(a["r"], "r"), h = positive(a["h"], "h"), top = num(a["top"], "top");
+    int n = sidesOf(a["sides"], "cone()");
+    if (n) {
+      auto pts = ringPoints(r, -h / 2, n);
+      if (top > 1e-9) for (auto &p : ringPoints(top, h / 2, n)) pts.push_back(p);
+      else pts.push_back({0, h / 2, 0});
+      return hullShape(pts, "cone()");
+    }
+    return mkShape("cone", {{"r", r}, {"h", h}, {"top", top}});
+  });
+  N("hull", {"points"}, [](const Args &a) {
+    const Value &P0 = a["points"];
+    if (!P0.isList() || P0.size() < 4 || P0.size() > 64) throw ScriptError("hull(): points deve ser uma lista de 4 a 64 pontos (x, y, z)");
+    std::vector<V3> pts;
+    for (size_t i = 0; i < P0.size(); i++) pts.push_back(vec3(P0[i], "points[" + std::to_string(i) + "]"));
+    return hullShape(pts);
   });
   N("torus", {"radius=0.5", "thickness=0.1"}, [](const Args &a) {
     return mkShape("torus", {{"R", positive(a["radius"], "radius")}, {"r", positive(a["thickness"], "thickness")}});

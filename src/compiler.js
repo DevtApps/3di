@@ -307,6 +307,12 @@ class Gen {
       case 'prism': return this.leaf(`sdPrism(${p}, ${f(P.w / 2)}, ${f(P.h)}, ${f(P.d / 2)})`, mat);
       case 'plane': return this.leaf(`${p}.y`, mat);
       case 'roundcone': return this.leaf(`sdRoundCone(${p}, ${v3(P.a)}, ${v3(P.b)}, ${f(P.r1)}, ${f(P.r2)})`, mat);
+      case 'hull': {
+        // distância = maior afastamento entre os planos das faces
+        const rows = P.planes.map((q, i) => (i ? `  d = max(d, dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])});` : `  float d = dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])};`));
+        const name = this.fn('sdHull', (n) => `float ${n}(vec3 p) {\n${rows.join('\n')}\n  return d;\n}`);
+        return this.leaf(`${name}(${p})`, mat);
+      }
       case 'affine': {
         const mi = P.minv;
         const cols = [0, 1, 2].flatMap((c) => [mi[c], mi[3 + c], mi[6 + c]]);

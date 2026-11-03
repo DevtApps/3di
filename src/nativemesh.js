@@ -14,6 +14,7 @@ import { rotMatrix, mul3, mulMV } from './shapes.js';
 import { inv3 } from './compiler.js';
 import { val0 } from './expr.js';
 import { buildDist } from './sdf.js';
+import { convexHull, chamferBoxPoints } from './hull.js';
 
 const SHARP_COS = Math.cos((40 * Math.PI) / 180);
 
@@ -153,9 +154,20 @@ function roundedBox(h, r, seg) {
   return M;
 }
 
+// poliedro convexo: cada face é um polígono plano com a própria normal (o visual low poly)
+function hullMesh(M, { pts, faces }) {
+  for (const f of faces) addFlat(M, f.map((i) => pts[i]));
+  return M;
+}
+
 function primitive(s, seg) {
   const P = s.props, M = newMesh();
   switch (s.kind) {
+    case 'hull': return hullMesh(M, P);
+    case 'cbox': {
+      if (P.r > 1e-9) throw new Unsupported('caixa chanfrada e arredondada');
+      return hullMesh(M, convexHull(chamferBoxPoints(P.size.map((v) => v / 2), P.c)));
+    }
     case 'box': {
       if (P.r > 1e-9) return roundedBox(P.size.map((v) => v / 2), P.r, seg);
       const [x, y, z] = P.size.map((v) => v / 2);

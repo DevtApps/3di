@@ -130,16 +130,17 @@ const runErrs = RUN_BAD.map((src) => { const r = runScript(src, { maxSteps: 2000
 }
 // exportação GLB (res baixa): partes, triângulos, texturas e a estrutura do glTF
 {
-  const EXPORTS = ['mesa', 'boneco', 'robo', 'castelo', 'gato', 'arvores', 'materiais'];
+  const EXPORTS = ['mesa', 'boneco', 'robo', 'castelo', 'gato', 'arvores', 'materiais', 'aventureiro'];
+  const PALETTE = new Set(['aventureiro']);
   const out = [];
   for (const name of EXPORTS) {
     const run = runScript(readFileSync(`${exDir}${name}.3di`, 'utf8'));
-    const { glb, stats } = await exportGLB(run.scene, { res: 40 });
+    const { glb, stats } = await exportGLB(run.scene, { res: 40, palette: PALETTE.has(name) });
     const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
     const j = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + dv.getUint32(12, true))));
     const c = (k) => (j[k] ?? []).length;
     out.push({
-      name, parts: stats.parts, vertices: stats.vertices, triangles: stats.triangles, bones: stats.bones, animated: stats.animated, warnings: stats.warnings,
+      name, palette: PALETTE.has(name), paletteColors: stats.paletteColors ?? 0, parts: stats.parts, vertices: stats.vertices, triangles: stats.triangles, bones: stats.bones, animated: stats.animated, warnings: stats.warnings,
       partReports: stats.partReports.map((r) => ({ name: r.name, kind: r.kind ?? null, empty: !!r.empty, triangles: r.triangles ?? 0, textured: !!r.textured, method: r.method ?? null })),
       gltf: { nodes: c('nodes'), meshes: c('meshes'), materials: c('materials'), images: c('images'), skins: c('skins'), channels: (j.animations?.[0]?.channels ?? []).length,
         primitives: (j.meshes ?? []).reduce((n, m) => n + m.primitives.length, 0) },

@@ -1,6 +1,8 @@
 [
  {
   "name": "mesa",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 13,
   "vertices": 3836,
   "triangles": 4926,
@@ -125,6 +127,8 @@
  },
  {
   "name": "boneco",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 14,
   "vertices": 15020,
   "triangles": 7992,
@@ -257,6 +261,8 @@
  },
  {
   "name": "robo",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 11,
   "vertices": 27599,
   "triangles": 12170,
@@ -365,6 +371,8 @@
  },
  {
   "name": "castelo",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 14,
   "vertices": 5061,
   "triangles": 4110,
@@ -497,6 +505,8 @@
  },
  {
   "name": "gato",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 9,
   "vertices": 18288,
   "triangles": 7238,
@@ -589,6 +599,8 @@
  },
  {
   "name": "arvores",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 81,
   "vertices": 21789,
   "triangles": 7864,
@@ -1257,6 +1269,8 @@
  },
  {
   "name": "materiais",
+  "palette": false,
+  "paletteColors": 0,
   "parts": 12,
   "vertices": 62892,
   "triangles": 20964,
@@ -1369,6 +1383,268 @@
    "skins": 0,
    "channels": 0,
    "primitives": 12
+  }
+ },
+ {
+  "name": "aventureiro",
+  "palette": true,
+  "paletteColors": 10,
+  "parts": 30,
+  "vertices": 1994,
+  "triangles": 908,
+  "bones": 0,
+  "animated": false,
+  "warnings": [],
+  "partReports": [
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 12,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 6,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 16,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 44,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 20,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 28,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "cavaleiro",
+    "kind": "static",
+    "empty": false,
+    "triangles": 24,
+    "textured": false,
+    "method": "direta"
+   },
+   {
+    "name": "parte29",
+    "kind": "static",
+    "empty": false,
+    "triangles": 36,
+    "textured": false,
+    "method": "direta"
+   }
+  ],
+  "gltf": {
+   "nodes": 30,
+   "meshes": 30,
+   "materials": 30,
+   "images": 1,
+   "skins": 0,
+   "channels": 0,
+   "primitives": 30
   }
  }
 ]

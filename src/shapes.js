@@ -3,6 +3,7 @@ import { ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
 import { isExpr, val0, sym as esym } from './expr.js';
 import { parsePoints, regularPolygon, starPoints, smoothOpen, lathePolygon, boundsOf } from './profile.js';
+import { convexHull, ringPoints, lowSphere } from './hull.js';
 
 export const INF = 1e4;
 
@@ -190,6 +191,7 @@ function computeBBox(s) {
       return c0.bbox;
     // relevo positivo sai da forma: a caixa cresce junto (senão a malha seria cortada ali)
     case 'paint': return p.relief > 0 ? expand(c0.bbox, p.relief * 1.01) : c0.bbox;
+    case 'hull': return fromPoints(p.pts);
     case 'roundcone':
       return bb([0, 1, 2].map((i) => Math.min(p.a[i] - p.r1, p.b[i] - p.r2)), [0, 1, 2].map((i) => Math.max(p.a[i] + p.r1, p.b[i] + p.r2)));
   }
@@ -684,6 +686,20 @@ export function shapeBinary(op, a, b) {
 
 // ---------- funções globais ----------
 
+// poliedro convexo (low poly): props.pts, planes e faces vêm de convexHull
+export function hullShape(points, what = 'hull()') {
+  const { pts, planes, faces } = convexHull(points, what);
+  return new Shape('hull', { pts, planes, faces });
+}
+
+// sides= das formas redondas: inteiro de 3 a 64, ou None para a forma lisa
+function sidesOf(v, what) {
+  if (v === null) return null;
+  const n = num(v, 'sides');
+  if (!Number.isInteger(n) || n < 3 || n > 64) throw new ScriptError(`${what}: sides deve ser um inteiro de 3 a 64`, null, 'sides=6 dá um prisma hexagonal; None (padrão) deixa a forma lisa');
+  return n;
+}
+
 function positive(v, what) {
   const x = num(v, what);
   if (x <= 0) throw new ScriptError(`${what} deve ser maior que zero`, null);
@@ -713,12 +729,25 @@ export function shapeBuiltins(scene) {
       const s = positive(a.size, 'size');
       return new Shape('box', { size: [s, s, s], r: Math.min(num(a.round, 'round'), s / 2) });
     }),
-    sphere: N('sphere', ['r=0.5'], (a) => new Shape('sphere', { r: positive(a.r, 'r') })),
-    cylinder: N('cylinder', ['r=0.5', 'h=1', 'round=0'], (a) => {
-      const r = positive(a.r, 'r'), h = positive(a.h, 'h');
+    sphere: N('sphere', ['r=0.5', 'sides=None'], (a) => {
+      const r = positive(a.r, 'r'), n = sidesOf(a.sides, 'sphere()');
+      return n ? hullShape(lowSphere(r, n), 'sphere()') : new Shape('sphere', { r });
+    }),
+    cylinder: N('cylinder', ['r=0.5', 'h=1', 'round=0', 'sides=None'], (a) => {
+      const r = positive(a.r, 'r'), h = positive(a.h, 'h'), n = sidesOf(a.sides, 'cylinder()');
+      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...ringPoints(r, h / 2, n)], 'cylinder()');
       return new Shape('cylinder', { r, h, round: Math.min(num(a.round, 'round'), r, h / 2) });
     }),
-    cone: N('cone', ['r=0.5', 'h=1', 'top=0'], (a) => new Shape('cone', { r: positive(a.r, 'r'), h: positive(a.h, 'h'), top: num(a.top, 'top') })),
+    cone: N('cone', ['r=0.5', 'h=1', 'top=0', 'sides=None'], (a) => {
+      const r = positive(a.r, 'r'), h = positive(a.h, 'h'), top = num(a.top, 'top'), n = sidesOf(a.sides, 'cone()');
+      if (n) return hullShape([...ringPoints(r, -h / 2, n), ...(top > 1e-9 ? ringPoints(top, h / 2, n) : [[0, h / 2, 0]])], 'cone()');
+      return new Shape('cone', { r, h, top });
+    }),
+    // poliedro convexo de faces planas a partir de pontos (x, y, z): gemas, rochas, armaduras low poly
+    hull: N('hull', ['points'], (a) => {
+      if (!Array.isArray(a.points) || a.points.length < 4 || a.points.length > 64) throw new ScriptError('hull(): points deve ser uma lista de 4 a 64 pontos (x, y, z)', null);
+      return hullShape(a.points.map((p, i) => vec3(p, `points[${i}]`)));
+    }),
     torus: N('torus', ['radius=0.5', 'thickness=0.1'], (a) => new Shape('torus', { R: positive(a.radius, 'radius'), r: positive(a.thickness, 'thickness') })),
     capsule: N('capsule', ['r=0.25', 'h=1'], (a) => {
       const r = positive(a.r, 'r');
