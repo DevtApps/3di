@@ -95,6 +95,15 @@ bool isHeavy(const Shape &s) {
   return false;
 }
 
+// raio (mm) da normal no preview para formas com smooth=
+static double smoothEps(const Shape &s) {
+  double sm = s.props["smooth"].isNone() ? 0 : s.props.num("smooth");
+  if (!(sm > 0)) return 0;
+  V3 e = size(s.bbox());
+  double ext = std::max({e[0], e[1], e[2]});
+  return std::max(1.0, std::floor(1000 * std::min(0.04, ext * 0.08) * std::min(1.0, sm / 45) + 0.5));
+}
+
 // ---------- Gen ----------
 
 namespace {
@@ -121,7 +130,7 @@ struct Gen {
     return q;
   }
 
-  std::string leaf(const std::string &expr, const MatCtx &mat) {
+  std::string leaf(const std::string &expr, const MatCtx &mat, double nEps = 0) {
     std::string m = tmp("m");
     const Props &P = mat.p;
     V3 color = P["color"].isNone() ? V3{0.6, 0.6, 0.62} : P.v3("color");
@@ -132,7 +141,7 @@ struct Gen {
     TexP tp = texParams(tex, color);
     std::string texP = !tex.isNone() ? (mat.texP ? *mat.texP : "undefined") : "vec3(0.0)";
     line("M " + m + " = M(" + expr + ", " + v3(color) + ", " + v3(std::vector<Value>{rough, metal, glow}) + ", " + v3(tp.c2) + ", " + v4(tp.tx) + ", " +
-         texP + ", " + f(facetCode(P["facet"], P["coat"].isNone() ? Value(0.0) : P["coat"])) + ");");
+         texP + ", " + f(facetCode(P["facet"], P["coat"].isNone() ? Value(0.0) : P["coat"]) + 16384 * nEps) + ");");
     return m;
   }
 
@@ -194,7 +203,7 @@ struct Gen {
         first = false;
       }
       std::string name = fn("sdLoft", [&](const std::string &nm) { return "float " + nm + "(vec3 p) {\n  float r = 1e10, d;\n" + body + "\n  return r;\n}"; });
-      return leaf(name + "(" + p + ")", mat);
+      return leaf(name + "(" + p + ")", mat, smoothEps(s));
     }
     if (k == "hull") {
       std::string rows;
@@ -204,7 +213,7 @@ struct Gen {
         rows += i ? "\n  d = max(d, " + term + ");" : "  float d = " + term + ";";
       }
       std::string name = fn("sdHull", [&](const std::string &nm) { return "float " + nm + "(vec3 p) {\n" + rows + "\n  return d;\n}"; });
-      return leaf(name + "(" + p + ")", mat);
+      return leaf(name + "(" + p + ")", mat, smoothEps(s));
     }
     if (k == "affine") {
       M3 mi = P.m3("minv");

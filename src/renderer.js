@@ -53,7 +53,7 @@ vec3 shade(M m, vec3 rd, vec3 n, float dif, float occ) {
   col += diff * uSunCol * uLight.y * 0.8 * clamp(dot(n, gFill), 0.0, 1.0) * (0.4 + 0.6 * occ);
   col += uRimCol * uLight.x * pow(1.0 - ndv, 3.0) * (0.35 + 0.65 * occ) * (0.5 + 0.5 * clamp(n.y + 0.5, 0.0, 1.0));
   // verniz: reflexo nítido por cima da cor, como plástico de brinquedo
-  float coat = floor(m.fc / 1024.0) * 0.1;
+  float coat = floor(mod(m.fc, 16384.0) / 1024.0) * 0.1;
   if (coat > 0.0) {
     float cf = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
     col += coat * (uSunCol * pow(clamp(dot(n, H), 0.0, 1.0), 900.0) * 30.0 * dif
@@ -104,13 +104,14 @@ void main() {
   float sh = 1.0, st = 0.003, occ = 0.0, sca = 1.0;
   M mat = M(0.0, vec3(0.5), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   vec3 fcell = vec3(0.0), fv[4];
+  float nEps = 0.0004;
   float fd[4];
   // uZero = 0 (uniform) impede o compilador de desenrolar o laço e duplicar a cena
   for (int it = uZero; it < 420; it++) {
     vec3 q;
     if (state == S_RAY) q = uRo + rd * t;
     else if (state == S_MAT) q = pos;
-    else if (state == S_NOR) q = pos + 0.0004 * tetra(k);
+    else if (state == S_NOR) q = pos + nEps * tetra(k);
     else if (state == S_FAC) q = fv[k];
     else if (state == S_SHADOW) q = pos + nor * 0.002 + L * st;
     else q = pos + nor * (0.01 + 0.04 * float(k));
@@ -128,6 +129,9 @@ void main() {
       }
     } else if (state == S_MAT) {
       mat = r;
+      // formas com smooth= trazem no material um raio maior para a normal: a diferença central
+      // mais larga mistura as faces vizinhas e o preview mostra a suavização do GLB
+      if (mat.fc >= 16384.0) nEps = floor(mat.fc / 16384.0) * 0.001;
       state = S_NOR;
     } else if (state == S_NOR) {
       nor += tetra(k) * d;

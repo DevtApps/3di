@@ -1,6 +1,6 @@
 // 3di-cli: valida e compila um .3di sem janela (port de scripts/check.mjs).
 //   3di-cli check arquivo.3di [--glsl]   mostra primitivas, peças e medidas (e o GLSL)
-//   3di-cli export arquivo.3di [saida.glb] [--res 128] [--sample] [--palette]   glTF binário (como scripts/export.mjs)
+//   3di-cli export arquivo.3di [saida.glb] [--res 128] [--sample] [--palette] [--merge]   glTF binário (como scripts/export.mjs)
 //   3di-cli dump arquivo.3di N           primeiros N floats dos dados de instância (depuração)
 #include <cstdio>
 #include <cstring>
@@ -36,11 +36,12 @@ int main(int argc, char **argv) {
     std::string outPath, file = argv[2];
     int res = 128;
     std::string method = "auto";
-    bool palette = false;
+    bool palette = false, merge = false;
     for (int i = 3; i < argc; i++) {
       if (!std::strcmp(argv[i], "--res") && i + 1 < argc) res = std::atoi(argv[++i]);
       else if (!std::strcmp(argv[i], "--sample")) method = "sample";
       else if (!std::strcmp(argv[i], "--palette")) palette = true;
+      else if (!std::strcmp(argv[i], "--merge")) merge = true;
       else outPath = argv[i];
     }
     if (outPath.empty()) outPath = (file.size() > 4 && file.substr(file.size() - 4) == ".3di" ? file.substr(0, file.size() - 4) : file) + ".glb";
@@ -50,6 +51,7 @@ int main(int argc, char **argv) {
       o.res = res;
       o.method = method;
       o.palette = palette;
+      o.merge = merge;
       o.onProgress = [](int i, int n) { std::fprintf(stderr, "\rmalha %d/%d", i + 1, n); };
       ex = exportGLB(r.it->scene, o);
     } catch (const std::exception &e) {

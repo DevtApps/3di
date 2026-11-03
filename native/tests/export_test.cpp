@@ -33,6 +33,7 @@ TEST_CASE("exportação GLB igual à do JS") {
     ExportOpts o;
     o.res = 40;
     o.palette = want["palette"].b;
+    o.merge = want["merge"].b;
     ExportResult ex = exportGLB(r.it->scene, o);
     auto &st = ex.stats;
     CHECK_MESSAGE(st.parts == (int)want["parts"].n, name, ": partes");

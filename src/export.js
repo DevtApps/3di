@@ -233,12 +233,13 @@ const MAX_PARTS = 64;
 // Separa a cena em partes: estáticas (malha comum) e presas a ossos (malha com skin).
 function splitParts(shapes) {
   const parts = [];
+  let root = 0;
   const visit = (s, m, t, ds, mat, name) => {
     const c0 = s.children[0];
-    if (!hasBound(s) && (!needsSplit(s) || parts.length >= MAX_PARTS)) { parts.push({ kind: 'static', shape: wrap(s, m, t, ds, mat), name }); return; }
+    if (!hasBound(s) && (!needsSplit(s) || parts.length >= MAX_PARTS)) { parts.push({ kind: 'static', shape: wrap(s, m, t, ds, mat), name, root }); return; }
     switch (s.kind) {
       case 'bound':
-        parts.push({ kind: 'skin', bone: s.props.bone, shape: wrap(resolveRig([c0])[0], m, t, ds, mat), outer: { m, t }, name: name ? `${name}/${s.props.bone.name}` : s.props.bone.name });
+        parts.push({ kind: 'skin', bone: s.props.bone, shape: wrap(resolveRig([c0])[0], m, t, ds, mat), outer: { m, t }, name: name ? `${name}/${s.props.bone.name}` : s.props.bone.name, root });
         return;
       case 'translate': {
         const mv = mulMV(m, s.props.v.map(val0));
@@ -257,9 +258,9 @@ function splitParts(shapes) {
       case 'union': s.children.forEach((c) => visit(c, m, t, ds, mat, name)); return;
     }
     // outra operação envolvendo ossos: exporta parada, na pose de t = 0
-    parts.push({ kind: 'static', shape: wrap(resolveRig([s])[0], m, t, ds, mat), name, posed: true });
+    parts.push({ kind: 'static', shape: wrap(resolveRig([s])[0], m, t, ds, mat), name, posed: true, root });
   };
-  shapes.forEach((s) => visit(s, IDENT, [0, 0, 0], 1, {}, null));
+  shapes.forEach((s, i) => { root = i; visit(s, IDENT, [0, 0, 0], 1, {}, null); });
   return parts;
 }
 
@@ -496,24 +497,38 @@ async function buildPalette(geoms) {
       for (let y = 0; y < PALETTE_CELL; y++) for (let x = 0; x < PALETTE_CELL; x++) rgba.set([...rgb, 255], ((y0 + k * PALETTE_CELL + y) * width + x0 + x) * 4);
     }
   });
-  const uvOf = (colors, positions) => {
-    let lo = Infinity, hi = -Infinity;
-    for (let v = 1; v < positions.length; v += 3) { lo = Math.min(lo, positions[v]); hi = Math.max(hi, positions[v]); }
-    const span = Math.max(hi - lo, 1e-9);
+  // pieces: quantos vértices tem cada peça juntada (o degradê vale dentro de cada peça)
+  const uvOf = (colors, positions, pieces = [positions.length / 3]) => {
     const uv = new Float32Array((colors.length / 3) * 2);
-    for (let v = 0, k = 0; v < colors.length; v += 3, k += 2) {
+    let start = 0;
+    for (const count of pieces) {
+      let lo = Infinity, hi = -Infinity;
+      for (let q = start; q < start + count; q++) { lo = Math.min(lo, positions[q * 3 + 1]); hi = Math.max(hi, positions[q * 3 + 1]); }
+      const span = Math.max(hi - lo, 1e-9);
+      for (let q = start; q < start + count; q++) {
+        const v = q * 3, k = q * 2;
       const key = (linearToSrgb(colors[v]) << 16) | (linearToSrgb(colors[v + 1]) << 8) | linearToSrgb(colors[v + 2]);
       const i = index.get(key);
       const shade = Math.round((1 - (positions[v + 1] - lo) / span) * (PALETTE_SHADES - 1));
       uv[k] = ((i % grid) * PALETTE_CELL + PALETTE_CELL / 2) / width;
       uv[k + 1] = (Math.floor(i / grid) * PALETTE_CELL * PALETTE_SHADES + shade * PALETTE_CELL + PALETTE_CELL / 2) / height;
+      }
+      start += count;
     }
     return uv;
   };
   return { png: await encodePng(width, height, rgba), width, height, colors: list.length, uvOf };
 }
 
-export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto', palette = false } = {}) {
+// primeiro .name() descendo pelas transformações e materiais (nome da malha juntada)
+function labelOf(s) {
+  for (let q = s; q; q = q.children.length === 1 ? q.children[0] : null) if (q.kind === 'label') return q.props.name;
+  return null;
+}
+
+// merge: cada forma mostrada vira um nó e uma malha só (como um personagem KayKit); peças com o mesmo
+// material viram um primitivo só
+export async function exportGLB(scene, { res = 128, onProgress = null, runParts = null, method = 'auto', palette = false, merge = false } = {}) {
   if (!Number.isSafeInteger(res) || res < 1) throw new Error('res deve ser um inteiro positivo representável com precisão');
   const { duration = 4, fps = 30 } = scene.anim ?? {};
   if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(fps) || fps <= 0 || duration * fps > 100000) {
@@ -559,6 +574,9 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
   let vertices = 0, triangles = 0;
   const partReports = [];
 
+  // nós de saída: uma peça cada, ou (merge) uma forma mostrada cada
+  const outs = [];
+  const outOf = new Map();
   for (let pi = 0; pi < parts.length; pi++) {
     const p = parts[pi];
     const geom = geoms[pi];
@@ -566,60 +584,88 @@ export async function exportGLB(scene, { res = 128, onProgress = null, runParts 
     partReports.push({ name: geom.name, kind: geom.kind, triangles: geom.triangles, textured: !!geom.chunks[0]?.uv, ...geom.quality });
     triangles += geom.triangles;
     vertices += geom.vertices;
-    const skinAttrs = (n) => {
-      if (p.kind !== 'skin') return {};
-      const ji = jointIndex.get(p.bone), big = bones.length > 255;
-      const joints = big ? new Uint16Array(n * 4) : new Uint8Array(n * 4);
-      const weights = new Float32Array(n * 4);
-      for (let v = 0; v < n; v++) { joints[v * 4] = ji; weights[v * 4] = 1; }
-      return {
-        JOINTS_0: g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER }),
-        WEIGHTS_0: g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER }),
-      };
+    const key = merge ? `${p.root}|${p.kind}` : `p${pi}`;
+    let o = outOf.get(key);
+    if (!o) { o = { name: p.name ?? (merge ? labelOf(p.shape) : null) ?? `parte${pi}`, kind: p.kind, entries: [] }; outOf.set(key, o); outs.push(o); }
+    const ji = p.kind === 'skin' ? jointIndex.get(p.bone) : 0;
+    for (const chunk of geom.chunks) o.entries.push({ chunk, ji, materialProps: geom.materialProps, matName: p.name ?? `material${pi}` });
+  }
+  const big = bones.length > 255;
+  const skinAttrs = (kind, jis) => {
+    if (kind !== 'skin') return {};
+    const joints = big ? new Uint16Array(jis.length * 4) : new Uint8Array(jis.length * 4);
+    const weights = new Float32Array(jis.length * 4);
+    jis.forEach((ji, v) => { joints[v * 4] = ji; weights[v * 4] = 1; });
+    return {
+      JOINTS_0: g.accessor(joints, big ? GL.USHORT : GL.UBYTE, 'VEC4', { target: GL.ARRAY_BUFFER }),
+      WEIGHTS_0: g.accessor(weights, GL.FLOAT, 'VEC4', { target: GL.ARRAY_BUFFER }),
     };
+  };
+  for (const o of outs) {
     const primitives = [];
-    const materialProps = geom.materialProps;
-    for (const chunk of geom.chunks) {
+    // sem textura própria: junta as peças de mesmo material num primitivo só
+    const buckets = [];
+    const bucketOf = new Map();
+    for (const e of o.entries) {
+      const { chunk } = e;
       if (chunk.uv) {
         const vertexCount = chunk.positions.length / 3;
-        const image = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}.png`, bufferView: g.bufferView(chunk.png), mimeType: 'image/png' });
+        const image = g.add('images', { name: `${e.matName}-${primitives.length}.png`, bufferView: g.bufferView(chunk.png), mimeType: 'image/png' });
         const sampler = g.add('samplers', { magFilter: 9729, minFilter: 9729, wrapS: 33071, wrapT: 33071 });
         const texture = g.add('textures', { sampler, source: image });
         const extra = {};
         if (chunk.normalPng) {
-          // normal map no mesmo atlas: o relevo (bump) da textura vai junto no GLB
-          const nImage = g.add('images', { name: `${p.name ?? `material${pi}`}-${primitives.length}-normal.png`, bufferView: g.bufferView(chunk.normalPng), mimeType: 'image/png' });
+          const nImage = g.add('images', { name: `${e.matName}-${primitives.length}-normal.png`, bufferView: g.bufferView(chunk.normalPng), mimeType: 'image/png' });
           extra.normalTexture = { index: g.add('textures', { sampler, source: nImage }), texCoord: 0 };
         }
-        const material = g.add('materials', { ...materialProps, ...extra, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
+        const material = g.add('materials', { ...e.materialProps, ...extra, pbrMetallicRoughness: { ...e.materialProps.pbrMetallicRoughness, baseColorTexture: { index: texture, texCoord: 0 } } });
         const attributes = {
           POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
           NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
           TEXCOORD_0: g.accessor(chunk.uv, GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }),
-          ...skinAttrs(vertexCount),
+          ...skinAttrs(o.kind, new Array(vertexCount).fill(e.ji)),
         };
         const indices = g.accessor(vertexCount < 65536 ? Uint16Array.from({ length: vertexCount }, (_, i) => i) : Uint32Array.from({ length: vertexCount }, (_, i) => i), vertexCount < 65536 ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
         primitives.push({ attributes, indices, material });
-      } else {
-        const nv = chunk.positions.length / 3;
-        const material = pal
-          ? g.add('materials', { ...materialProps, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: palTexture, texCoord: 0 } } })
-          : g.add('materials', materialProps);
-        const attributes = {
-          POSITION: g.accessor(chunk.positions, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
-          NORMAL: g.accessor(chunk.normals, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
-          ...(pal ? { TEXCOORD_0: g.accessor(pal.uvOf(chunk.colors, chunk.positions), GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }) }
-            : { COLOR_0: g.accessor(chunk.colors, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }) }),
-          ...skinAttrs(nv),
-        };
-        const small = nv < 65536;
-        const indices = g.accessor(small ? Uint16Array.from(chunk.indices) : chunk.indices, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
-        primitives.push({ attributes, indices, material });
+        continue;
       }
+      const { name: _n, ...rest } = e.materialProps;
+      const mk = merge ? JSON.stringify(rest) : `${buckets.length}`;
+      let bk = bucketOf.get(mk);
+      if (!bk) { bk = { materialProps: e.materialProps, items: [] }; bucketOf.set(mk, bk); buckets.push(bk); }
+      bk.items.push(e);
     }
-    const meshIndex = g.add('meshes', { name: p.name ?? `parte${pi}`, primitives });
-    const node = { name: p.name ?? `parte${pi}`, mesh: meshIndex };
-    if (p.kind === 'skin') node.skin = 0;
+    for (const bk of buckets) {
+      const nv = bk.items.reduce((n, e) => n + e.chunk.positions.length / 3, 0);
+      const ni = bk.items.reduce((n, e) => n + e.chunk.indices.length, 0);
+      const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3), idx = new Uint32Array(ni), jis = [];
+      let vo = 0, io = 0;
+      for (const e of bk.items) {
+        const c = e.chunk;
+        pos.set(c.positions, vo * 3); nor.set(c.normals, vo * 3); col.set(c.colors, vo * 3);
+        for (let k = 0; k < c.indices.length; k++) idx[io++] = c.indices[k] + vo;
+        const n = c.positions.length / 3;
+        for (let k = 0; k < n; k++) jis.push(e.ji);
+        vo += n;
+      }
+      const materialProps = merge ? { ...bk.materialProps, name: o.name } : bk.materialProps;
+      const material = pal
+        ? g.add('materials', { ...materialProps, pbrMetallicRoughness: { ...materialProps.pbrMetallicRoughness, baseColorTexture: { index: palTexture, texCoord: 0 } } })
+        : g.add('materials', materialProps);
+      const attributes = {
+        POSITION: g.accessor(pos, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER, minmax: true }),
+        NORMAL: g.accessor(nor, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }),
+        ...(pal ? { TEXCOORD_0: g.accessor(pal.uvOf(col, pos, bk.items.map((e) => e.chunk.positions.length / 3)), GL.FLOAT, 'VEC2', { target: GL.ARRAY_BUFFER }) }
+          : { COLOR_0: g.accessor(col, GL.FLOAT, 'VEC3', { target: GL.ARRAY_BUFFER }) }),
+        ...skinAttrs(o.kind, jis),
+      };
+      const small = nv < 65536;
+      const indices = g.accessor(small ? Uint16Array.from(idx) : idx, small ? GL.USHORT : GL.UINT, 'SCALAR', { target: GL.ELEMENT_ARRAY_BUFFER });
+      primitives.push({ attributes, indices, material });
+    }
+    const meshIndex = g.add('meshes', { name: o.name, primitives });
+    const node = { name: o.name, mesh: meshIndex };
+    if (o.kind === 'skin') node.skin = 0;
     J.scenes[0].nodes.push(g.add('nodes', node));
   }
 

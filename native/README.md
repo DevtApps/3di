@@ -34,7 +34,7 @@ Port em andamento do 3DI para um executável nativo. O plano completo está em
 - **Fase 9, pronta:** exportação GLB (`core/mesh`, `core/nativemesh`, `core/export`): malha direta e dual
   contouring, simplificação, texturas assadas, esqueleto e animação, com as peças malhadas em paralelo.
   Sai de 5 a 6 vezes mais rápido que o JS. O glTF tem a mesma estrutura, e os triângulos batem dentro de 2%.
-  Comando: `3di-cli export cena.3di [saida.glb] [--res 128]`.
+  Comando: `3di-cli export cena.3di [saida.glb] [--res 128] [--palette] [--merge]`.
 
 ## Compilar
 

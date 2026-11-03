@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Exporta um script .3di para .glb (glTF binário), com malhas, texturas PNG, esqueleto e animação.
-// Uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette]
+// Uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette] [--merge]
 // --palette: cores numa textura de paleta compartilhada (estilo KayKit), em vez de cores por vértice
+// --merge: cada forma mostrada vira uma malha só (um nó por personagem)
 // --res: células na maior dimensão de cada peça (mais = mais detalhe e arquivo maior)
 // THREEDI_SERIAL=1 malha num núcleo só (para comparar ou depurar)
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -15,9 +16,10 @@ const resIdx = args.indexOf('--res');
 const res = resIdx >= 0 ? Number(args[resIdx + 1]) : 128;
 const files = args.filter((a, i) => !a.startsWith('--') && (resIdx < 0 || i !== resIdx + 1));
 const palette = args.includes('--palette');
+const merge = args.includes('--merge');
 const [input, output = input?.replace(/\.3di$/, '') + '.glb'] = files;
 if (!input) {
-  console.error('uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette]');
+  console.error('uso: node scripts/export.mjs cena.3di [saida.glb] [--res 128] [--palette] [--merge]');
   process.exit(2);
 }
 
@@ -31,6 +33,7 @@ if (!run.ok) {
 const { glb, stats } = await exportGLB(run.scene, {
   res,
   palette,
+  merge,
   // as peças são malhadas em paralelo, uma por núcleo
   runParts: process.env.THREEDI_SERIAL ? null : nodePartRunner({ code, res, workerUrl: PARTS_WORKER }),
   onProgress: (i, n) => process.stderr.write(`\rmalha ${i + 1}/${n}`),

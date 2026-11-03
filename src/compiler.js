@@ -239,6 +239,15 @@ export function isHeavy(sh) {
   return (sh._heavy ??= HEAVY.has(sh.kind) || sh.children.some(isHeavy));
 }
 
+// Raio (mm) da normal no preview para formas com smooth=: proporcional ao tamanho e ao ângulo, até 4 cm
+export function smoothEps(s) {
+  const sm = s.props.smooth ?? 0;
+  if (!(sm > 0)) return 0;
+  const b = s.bbox;
+  const ext = Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]);
+  return Math.max(1, Math.round(1000 * Math.min(0.04, ext * 0.08) * Math.min(1, sm / 45)));
+}
+
 // Gera o corpo de mapAll: cada nó vira variáveis do tipo M (distância + material).
 class Gen {
   // tag: distingue os nomes de funções de geradores diferentes (instâncias de código)
@@ -259,12 +268,13 @@ class Gen {
   tmp(prefix) { return `${prefix}${this.n++}`; }
   vec(expr) { const q = this.tmp('q'); this.line(`vec3 ${q} = ${expr};`); return q; }
 
-  leaf(expr, mat) {
+  // nEps: raio da normal no preview em mm (formas com smooth=), somado ao código de facetas
+  leaf(expr, mat, nEps = 0) {
     const m = this.tmp('m');
     const full = { ...DEFAULT_MAT, ...Object.fromEntries(Object.entries(mat).filter(([, v]) => v !== null && v !== undefined)) };
     const tp = texParams(full.tex, full.color);
     const texP = full.tex ? mat.texP : 'vec3(0.0)';
-    this.line(`M ${m} = M(${expr}, ${v3(full.color)}, ${v3([full.rough, full.metal, full.glow])}, ${v3(tp.c2)}, ${v4(tp.tx)}, ${texP}, ${f(facetCode(full.facet, full.coat))});`);
+    this.line(`M ${m} = M(${expr}, ${v3(full.color)}, ${v3([full.rough, full.metal, full.glow])}, ${v3(tp.c2)}, ${v4(tp.tx)}, ${texP}, ${f(facetCode(full.facet, full.coat) + 16384 * nEps)});`);
     return m;
   }
 
@@ -311,13 +321,13 @@ class Gen {
         // união dos trechos convexos entre anéis (cada um: maior afastamento entre os seus planos)
         const body = P.segs.map((pl) => `  d = ${pl.map((q) => `dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])}`).reduce((acc, t) => `max(${acc}, ${t})`)};\n  r = min(r, d);`);
         const name = this.fn('sdLoft', (n) => `float ${n}(vec3 p) {\n  float r = 1e10, d;\n${body.join('\n')}\n  return r;\n}`);
-        return this.leaf(`${name}(${p})`, mat);
+        return this.leaf(`${name}(${p})`, mat, smoothEps(s));
       }
       case 'hull': {
         // distância = maior afastamento entre os planos das faces
         const rows = P.planes.map((q, i) => (i ? `  d = max(d, dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])});` : `  float d = dot(p, ${v3(q.slice(0, 3))}) - ${f(q[3])};`));
         const name = this.fn('sdHull', (n) => `float ${n}(vec3 p) {\n${rows.join('\n')}\n  return d;\n}`);
-        return this.leaf(`${name}(${p})`, mat);
+        return this.leaf(`${name}(${p})`, mat, smoothEps(s));
       }
       case 'affine': {
         const mi = P.minv;

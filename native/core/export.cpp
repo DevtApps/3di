@@ -265,6 +265,7 @@ struct ExpPart {
   V3 outerT{0, 0, 0};
   bool hasName = false;
   std::string name;
+  int root = 0;
 };
 }  // namespace
 
@@ -277,9 +278,11 @@ static Props mergeMatP(const Props &mat, const Props &P) {
 
 static std::vector<ExpPart> splitParts(const std::vector<ShapeP> &shapes) {
   std::vector<ExpPart> parts;
+  int curRoot = 0;
   std::function<void(const ShapeP &, const M3 &, const V3 &, double, const Props &, const std::string *)> visit =
       [&](const ShapeP &s, const M3 &m, const V3 &t, double ds, const Props &mat, const std::string *name) {
         auto push = [&](ExpPart p) {
+          p.root = curRoot;
           if (name) { p.hasName = true; p.name = *name; }
           parts.push_back(std::move(p));
         };
@@ -291,6 +294,7 @@ static std::vector<ExpPart> splitParts(const std::vector<ShapeP> &shapes) {
         const std::string &k = s->kind;
         if (k == "bound") {
           ExpPart p{"skin", wrap(resolveRig({c0})[0], m, t, ds, mat), s->props["bone"].as<Bone>(), m, t};
+          p.root = curRoot;
           p.hasName = true;
           p.name = name ? *name + "/" + p.bone->name : p.bone->name;
           parts.push_back(p);
@@ -319,7 +323,10 @@ static std::vector<ExpPart> splitParts(const std::vector<ShapeP> &shapes) {
         }
         push({"static", wrap(resolveRig({s})[0], m, t, ds, mat)});
       };
-  for (auto &s : shapes) visit(s, IDENT, {0, 0, 0}, 1, Props{}, nullptr);
+  for (size_t i = 0; i < shapes.size(); i++) {
+    curRoot = (int)i;
+    visit(shapes[i], IDENT, {0, 0, 0}, 1, Props{}, nullptr);
+  }
   return parts;
 }
 
@@ -678,17 +685,23 @@ struct Palette {
   std::vector<uint8_t> png;
   int width = 0, height = 0, grid = 0, colors = 0;
   std::map<int, int> index;
-  std::vector<float> uvOf(const std::vector<float> &colors, const std::vector<float> &positions) const {
-    double lo = INFINITY, hi = -INFINITY;
-    for (size_t v = 1; v < positions.size(); v += 3) { lo = std::min(lo, (double)positions[v]); hi = std::max(hi, (double)positions[v]); }
-    double span = std::max(hi - lo, 1e-9);
+  std::vector<float> uvOf(const std::vector<float> &colors, const std::vector<float> &positions, std::vector<size_t> pieces = {}) const {
+    if (pieces.empty()) pieces.push_back(positions.size() / 3);
     std::vector<float> uv(colors.size() / 3 * 2);
-    for (size_t v = 0, k = 0; v < colors.size(); v += 3, k += 2) {
+    size_t start = 0;
+    for (size_t count : pieces) {
+    double lo = INFINITY, hi = -INFINITY;
+    for (size_t q = start; q < start + count; q++) { lo = std::min(lo, (double)positions[q * 3 + 1]); hi = std::max(hi, (double)positions[q * 3 + 1]); }
+    double span = std::max(hi - lo, 1e-9);
+    for (size_t q = start; q < start + count; q++) {
+      size_t v = q * 3, k = q * 2;
       int key = linearToSrgb(colors[v]) << 16 | linearToSrgb(colors[v + 1]) << 8 | linearToSrgb(colors[v + 2]);
       int i = index.at(key);
       int shade = jround((1 - (positions[v + 1] - lo) / span) * (PALETTE_SHADES - 1));
       uv[k] = (float)(((i % grid) * PALETTE_CELL + PALETTE_CELL / 2.0) / width);
       uv[k + 1] = (float)(((i / grid) * PALETTE_CELL * PALETTE_SHADES + shade * PALETTE_CELL + PALETTE_CELL / 2.0) / height);
+    }
+    start += count;
     }
     return uv;
   }
@@ -815,10 +828,14 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
     if (p.kind == "skin") skinParts.push_back(&p);
   int vertices = 0, triangles = 0;
 
+  // nós de saída: uma peça cada, ou (merge) uma forma mostrada cada
+  struct Entry { const Chunk *chunk; int ji; Json materialProps; std::string matName; };
+  struct Out { std::string name, kind; std::vector<Entry> entries; };
+  std::vector<Out> outs;
+  std::map<std::string, size_t> outOf;
   for (size_t pi = 0; pi < parts.size(); pi++) {
     const ExpPart &p = parts[pi];
     Geom &geom = geoms[pi];
-    std::string pname = p.hasName ? p.name : "parte" + std::to_string(pi);
     if (geom.empty) {
       warnings.push_back("parte " + (p.hasName ? p.name : std::to_string(pi)) + " não tem superfície");
       PartReport r;
@@ -835,32 +852,48 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
     res.stats.partReports.push_back(r);
     triangles += geom.triangles;
     vertices += geom.vertices;
-    auto skinAttrs = [&](Json &attrs, size_t n) {
-      if (p.kind != "skin") return;
-      int ji = jointIndex[p.bone.get()];
-      bool big = bones.size() > 255;
-      std::vector<float> weights(n * 4, 0.f);
-      for (size_t v = 0; v < n; v++) weights[v * 4] = 1;
-      if (big) {
-        std::vector<uint16_t> j(n * 4, 0);
-        for (size_t v = 0; v < n; v++) j[v * 4] = (uint16_t)ji;
-        attrs.set("JOINTS_0", g.accessor(j, USHORT, "VEC4", ARRAY_BUFFER));
-      } else {
-        std::vector<uint8_t> j(n * 4, 0);
-        for (size_t v = 0; v < n; v++) j[v * 4] = (uint8_t)ji;
-        attrs.set("JOINTS_0", g.accessor(j, UBYTE, "VEC4", ARRAY_BUFFER));
-      }
-      attrs.set("WEIGHTS_0", g.accessor(weights, FLOAT, "VEC4", ARRAY_BUFFER));
-    };
+    std::string key = opts.merge ? std::to_string(p.root) + "|" + p.kind : "p" + std::to_string(pi);
+    auto it = outOf.find(key);
+    if (it == outOf.end()) {
+      std::string nm = p.hasName ? p.name : "";
+      if (nm.empty() && opts.merge)
+        for (const Shape *q = p.shape.get(); q; q = q->children.size() == 1 ? q->children[0].get() : nullptr)
+          if (q->kind == "label") { nm = q->props["name"].s(); break; }
+      if (nm.empty()) nm = "parte" + std::to_string(pi);
+      it = outOf.emplace(key, outs.size()).first;
+      outs.push_back({nm, p.kind, {}});
+    }
+    int ji = p.kind == "skin" ? jointIndex[p.bone.get()] : 0;
+    for (auto &ch : geom.chunks) outs[it->second].entries.push_back({&ch, ji, geom.materialProps, p.hasName ? p.name : "material" + std::to_string(pi)});
+  }
+  bool big = bones.size() > 255;
+  auto skinAttrs = [&](Json &attrs, const std::string &kind, const std::vector<int> &jis) {
+    if (kind != "skin") return;
+    size_t n = jis.size();
+    std::vector<float> weights(n * 4, 0.f);
+    for (size_t v = 0; v < n; v++) weights[v * 4] = 1;
+    if (big) {
+      std::vector<uint16_t> j(n * 4, 0);
+      for (size_t v = 0; v < n; v++) j[v * 4] = (uint16_t)jis[v];
+      attrs.set("JOINTS_0", g.accessor(j, USHORT, "VEC4", ARRAY_BUFFER));
+    } else {
+      std::vector<uint8_t> j(n * 4, 0);
+      for (size_t v = 0; v < n; v++) j[v * 4] = (uint8_t)jis[v];
+      attrs.set("JOINTS_0", g.accessor(j, UBYTE, "VEC4", ARRAY_BUFFER));
+    }
+    attrs.set("WEIGHTS_0", g.accessor(weights, FLOAT, "VEC4", ARRAY_BUFFER));
+  };
+  for (auto &o : outs) {
     Json primitives = Json::array();
-    std::string matName = p.hasName ? p.name : "material" + std::to_string(pi);
-    for (auto &ch : geom.chunks) {
-      Json prim = Json::object();
-      Json attrs = Json::object();
+    struct Bucket { Json materialProps; std::vector<const Entry *> items; };
+    std::vector<Bucket> buckets;
+    std::map<std::string, size_t> bucketOf;
+    for (auto &e : o.entries) {
+      const Chunk &ch = *e.chunk;
       if (!ch.uv.empty()) {
         size_t vc = ch.positions.size() / 3;
         Json img = Json::object();
-        img.set("name", matName + "-" + std::to_string(primitives.a.size()) + ".png");
+        img.set("name", e.matName + "-" + std::to_string(primitives.a.size()) + ".png");
         img.set("bufferView", g.bufferView(ch.png.data(), ch.png.size()));
         img.set("mimeType", "image/png");
         int image = g.add("images", img);
@@ -874,10 +907,10 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
         tx.set("sampler", sampler);
         tx.set("source", image);
         int texture = g.add("textures", tx);
-        Json mat = geom.materialProps;
+        Json mat = e.materialProps;
         if (!ch.normalPng.empty()) {
           Json nimg = Json::object();
-          nimg.set("name", matName + "-" + std::to_string(primitives.a.size()) + "-normal.png");
+          nimg.set("name", e.matName + "-" + std::to_string(primitives.a.size()) + "-normal.png");
           nimg.set("bufferView", g.bufferView(ch.normalPng.data(), ch.normalPng.size()));
           nimg.set("mimeType", "image/png");
           int ni = g.add("images", nimg);
@@ -895,11 +928,12 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
         bct.set("texCoord", 0);
         pbr.set("baseColorTexture", bct);
         mat.set("pbrMetallicRoughness", pbr);
-        int material = g.add("materials", mat);
+        Json attrs = Json::object(), prim = Json::object();
+        prim.set("material", g.add("materials", mat));
         attrs.set("POSITION", g.accessor(ch.positions, FLOAT, "VEC3", ARRAY_BUFFER, true));
         attrs.set("NORMAL", g.accessor(ch.normals, FLOAT, "VEC3", ARRAY_BUFFER));
         attrs.set("TEXCOORD_0", g.accessor(ch.uv, FLOAT, "VEC2", ARRAY_BUFFER));
-        skinAttrs(attrs, vc);
+        skinAttrs(attrs, o.kind, std::vector<int>(vc, e.ji));
         int indices;
         if (vc < 65536) {
           std::vector<uint16_t> ix(vc);
@@ -912,43 +946,70 @@ ExportResult exportGLB(const Scene &scene, const ExportOpts &opts) {
         }
         prim.set("attributes", attrs);
         prim.set("indices", indices);
-        prim.set("material", material);
-      } else {
-        size_t nv = ch.positions.size() / 3;
-        Json mat = geom.materialProps;
-        if (pal) {
-          Json pbr = mat["pbrMetallicRoughness"];
-          Json bct = Json::object();
-          bct.set("index", palTexture);
-          bct.set("texCoord", 0);
-          pbr.set("baseColorTexture", bct);
-          mat.set("pbrMetallicRoughness", pbr);
-        }
-        int material = g.add("materials", mat);
-        attrs.set("POSITION", g.accessor(ch.positions, FLOAT, "VEC3", ARRAY_BUFFER, true));
-        attrs.set("NORMAL", g.accessor(ch.normals, FLOAT, "VEC3", ARRAY_BUFFER));
-        if (pal) attrs.set("TEXCOORD_0", g.accessor(pal->uvOf(ch.colors, ch.positions), FLOAT, "VEC2", ARRAY_BUFFER));
-        else attrs.set("COLOR_0", g.accessor(ch.colors, FLOAT, "VEC3", ARRAY_BUFFER));
-        skinAttrs(attrs, nv);
-        int indices;
-        if (nv < 65536) {
-          std::vector<uint16_t> ix(ch.indices.begin(), ch.indices.end());
-          indices = g.accessor(ix, USHORT, "SCALAR", ELEMENT_ARRAY_BUFFER);
-        } else indices = g.accessor(ch.indices, UINT, "SCALAR", ELEMENT_ARRAY_BUFFER);
-        prim.set("attributes", attrs);
-        prim.set("indices", indices);
-        prim.set("material", material);
+        primitives.push(prim);
+        continue;
       }
+      std::string mk;
+      if (opts.merge) {
+        Json rest = e.materialProps;
+        rest.o.erase(std::remove_if(rest.o.begin(), rest.o.end(), [](auto &kv) { return kv.first == "name"; }), rest.o.end());
+        mk = rest.dump();
+      } else mk = std::to_string(buckets.size());
+      auto bi = bucketOf.find(mk);
+      if (bi == bucketOf.end()) { bi = bucketOf.emplace(mk, buckets.size()).first; buckets.push_back({e.materialProps, {}}); }
+      buckets[bi->second].items.push_back(&e);
+    }
+    for (auto &bk : buckets) {
+      std::vector<float> pos, nor, col;
+      std::vector<uint32_t> idx;
+      std::vector<int> jis;
+      std::vector<size_t> pieces;
+      for (auto *e : bk.items) {
+        const Chunk &c = *e->chunk;
+        uint32_t vo = (uint32_t)(pos.size() / 3);
+        pos.insert(pos.end(), c.positions.begin(), c.positions.end());
+        nor.insert(nor.end(), c.normals.begin(), c.normals.end());
+        col.insert(col.end(), c.colors.begin(), c.colors.end());
+        for (uint32_t i : c.indices) idx.push_back(i + vo);
+        size_t n = c.positions.size() / 3;
+        jis.insert(jis.end(), n, e->ji);
+        pieces.push_back(n);
+      }
+      size_t nv = pos.size() / 3;
+      Json mat = bk.materialProps;
+      if (opts.merge) mat.set("name", o.name);
+      if (pal) {
+        Json pbr = mat["pbrMetallicRoughness"];
+        Json bct = Json::object();
+        bct.set("index", palTexture);
+        bct.set("texCoord", 0);
+        pbr.set("baseColorTexture", bct);
+        mat.set("pbrMetallicRoughness", pbr);
+      }
+      Json attrs = Json::object(), prim = Json::object();
+      prim.set("material", g.add("materials", mat));
+      attrs.set("POSITION", g.accessor(pos, FLOAT, "VEC3", ARRAY_BUFFER, true));
+      attrs.set("NORMAL", g.accessor(nor, FLOAT, "VEC3", ARRAY_BUFFER));
+      if (pal) attrs.set("TEXCOORD_0", g.accessor(pal->uvOf(col, pos, pieces), FLOAT, "VEC2", ARRAY_BUFFER));
+      else attrs.set("COLOR_0", g.accessor(col, FLOAT, "VEC3", ARRAY_BUFFER));
+      skinAttrs(attrs, o.kind, jis);
+      int indices;
+      if (nv < 65536) {
+        std::vector<uint16_t> ix(idx.begin(), idx.end());
+        indices = g.accessor(ix, USHORT, "SCALAR", ELEMENT_ARRAY_BUFFER);
+      } else indices = g.accessor(idx, UINT, "SCALAR", ELEMENT_ARRAY_BUFFER);
+      prim.set("attributes", attrs);
+      prim.set("indices", indices);
       primitives.push(prim);
     }
     Json mesh = Json::object();
-    mesh.set("name", pname);
+    mesh.set("name", o.name);
     mesh.set("primitives", primitives);
     int meshIndex = g.add("meshes", mesh);
     Json node = Json::object();
-    node.set("name", pname);
+    node.set("name", o.name);
     node.set("mesh", meshIndex);
-    if (p.kind == "skin") node.set("skin", 0);
+    if (o.kind == "skin") node.set("skin", 0);
     int ni = g.add("nodes", node);
     for (auto &[k, v] : g.json.o)
       if (k == "scenes") v.a[0].o[0].second.push(ni);

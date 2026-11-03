@@ -570,10 +570,13 @@ Não há `import`, classes nem arquivos.
 Para personagens e objetos low poly de faces planas, use `box(bevel=)`, `hull(pontos)` e `sides=` em
 `sphere`, `cylinder` e `cone`. Essas formas saem no GLB como polígonos exatos, pela malha direta, com
 poucos triângulos e quinas vivas. Evite `smooth`, `subtract` e `round` nelas, porque esses nós forçam
-a amostragem. Exporte com `node scripts/export.mjs cena.3di --palette`, ou `3di-cli export cena.3di
+a amostragem. Exporte com `node scripts/export.mjs cena.3di --palette --merge`, ou `3di-cli export cena.3di
 --palette`, para juntar as cores numa textura de paleta pequena e compartilhada, como nos pacotes
 KayKit. A paleta tem um degradê de claro (em cima) a escuro em cada cor, como a luz suave dos modelos
-KayKit. No preview as faces aparecem sempre chapadas: a suavização (`smooth=`) vale para o GLB. Veja
+KayKit. O preview mostra a suavização de forma aproximada, misturando as normais num raio proporcional ao
+tamanho da forma. No GLB, ela é exata e respeita o ângulo de `smooth=`. Com `--merge`, cada forma
+mostrada (um personagem inteiro, por exemplo) vira uma malha só, e as peças de mesmo material viram
+um primitivo só. Veja
 `examples/aventureiro.3di`.
 
 Heróis prontos: `hero(kind="knight")` monta um corpo chibi low poly. Os tipos são `knight`, `barbarian`,

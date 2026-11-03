@@ -32,6 +32,7 @@ struct ExportOpts {
   std::string method = "auto";  // "auto" ou "sample"
   int threads = 0;               // 0: um por núcleo
   bool palette = false;          // cores numa textura de paleta compartilhada (estilo KayKit)
+  bool merge = false;            // uma malha por forma mostrada
   std::function<void(int, int)> onProgress;
 };
 
