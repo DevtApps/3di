@@ -1,0 +1,22 @@
+# Aventureiros low poly (estilo KayKit): hero() monta o corpo chibi com a roupa de cada classe e
+# declara âncoras (mao_dir, mao_esq, braco_esq, costas, cabeca, cintura); gear() faz o equipamento,
+# encaixado com attach na âncora "punho". Exporte com: node scripts/export.mjs examples/aventureiros.3di --palette
+def armado(kind, x, itens, variant=0):
+    h = hero(kind, variant=variant)
+    pecas = [h]
+    for item, lugar in itens:
+        # nas costas a peça fica em pé (turn=False): sem girar para encarar a âncora
+        pecas.append(gear(item).attach(h, lugar, to="punho", turn=lugar != "costas"))
+    return group(pecas).rotate(y=-x * 12).at(x, 0, 0)
+
+herois = [
+    armado("knight", -2.2, [("sword", "mao_dir"), ("shield", "braco_esq")]),
+    armado("barbarian", -1.1, [("axe", "mao_dir"), ("round_shield", "braco_esq")], variant=1),
+    armado("rogue", 0, [("dagger", "mao_dir"), ("dagger", "mao_esq")], variant=2),
+    armado("mage", 1.1, [("staff", "mao_dir"), ("book", "mao_esq")]),
+    armado("ranger", 2.2, [("bow", "mao_esq"), ("quiver", "costas")], variant=3),
+]
+base = cylinder(3.2, 0.08, sides=12).scale((1, 1, 0.4)).place(0, -0.08, 0).color("#6f8a4a")
+show(herois, base)
+sky("#b9d3e8")
+camera(pos=(0.6, 1.3, 3.3), look=(0, 0.55, 0))

@@ -573,6 +573,14 @@ a amostragem. Exporte com `node scripts/export.mjs cena.3di --palette`, ou `3di-
 --palette`, para juntar as cores numa textura de paleta pequena e compartilhada, como nos pacotes
 KayKit. Veja `examples/aventureiro.3di`.
 
+Heróis prontos: `hero(kind="knight")` monta um corpo chibi low poly. Os tipos são `knight`, `barbarian`,
+`rogue`, `mage` e `ranger`, e os parâmetros `color=`, `skin=`, `hair=`, `helmet=` e `variant=` mudam a
+aparência. O herói declara as âncoras `mao_dir`, `mao_esq`, `braco_esq`, `costas`, `cabeca` e `cintura`.
+`gear(kind)` faz o equipamento: `sword`, `dagger`, `axe`, `hammer`, `staff`, `wand`, `bow`, `shield`,
+`round_shield`, `book`, `mug` e `quiver`. Cada peça tem a âncora `punho` e se encaixa com
+`gear("sword").attach(h, "mao_dir", to="punho")`. Nas costas, use `turn=False`. Veja
+`examples/aventureiros.3di`.
+
 ## Dicas para IA
 
 - Prefira o layout semântico (`on`, `beside`, `place`, `mirror`) e os escopos (`split`, `tile`, `fill`) a fazer contas de coordenadas. Em componentes reutilizáveis,

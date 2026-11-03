@@ -12,6 +12,8 @@ const DOCS = {
   sphere: 'Esfera de raio `r`; `sides=8` faz uma esfera low poly de faces planas.',
   cylinder: 'Cilindro em pé (eixo y), raio `r` e altura `h`; `sides=6` faz um prisma de faces planas.',
   cone: 'Cone em pé, raio da base `r`, altura `h`; `top > 0` faz um tronco de cone; `sides=` deixa as faces planas.',
+  hero: 'Herói chibi low poly: knight, barbarian, rogue, mage, ranger; âncoras mao_dir, mao_esq, braco_esq, costas, cabeca, cintura.',
+  gear: 'Equipamento low poly (sword, axe, shield, bow, staff...) com a âncora "punho" para attach.',
   hull: 'Poliedro convexo de faces planas em volta de 4 a 64 pontos (x, y, z): low poly exato no GLB.',
   torus: 'Rosca deitada no plano xz.',
   capsule: 'Cápsula em pé; `h` é a altura total.',

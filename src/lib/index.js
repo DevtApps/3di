@@ -6,7 +6,8 @@ import { builtins as plants } from './plants.js';
 import { builtins as trees } from './trees.js';
 import { builtins as people } from './people.js';
 import { builtins as vehicles } from './vehicles.js';
+import { builtins as heroes } from './heroes.js';
 
 export function libBuiltins(ctx) {
-  return { ...grass(ctx), ...plants(ctx), ...trees(ctx), ...people(ctx), ...vehicles(ctx) };
+  return { ...grass(ctx), ...plants(ctx), ...trees(ctx), ...people(ctx), ...vehicles(ctx), ...heroes(ctx) };
 }

@@ -10,6 +10,7 @@ Builtins plantBuiltins(Interp &);
 Builtins treeBuiltins(Interp &);
 Builtins peopleBuiltins(Interp &);
 Builtins vehicleBuiltins(Interp &);
+Builtins heroBuiltins(Interp &);
 }  // namespace kit
 
 void registerExtraMethods() {
@@ -22,7 +23,7 @@ void registerExtraMethods() {
 
 Builtins libBuiltins(Interp &it) {
   Builtins b;
-  for (auto f : {kit::grassBuiltins, kit::plantBuiltins, kit::treeBuiltins, kit::peopleBuiltins, kit::vehicleBuiltins})
+  for (auto f : {kit::grassBuiltins, kit::plantBuiltins, kit::treeBuiltins, kit::peopleBuiltins, kit::vehicleBuiltins, kit::heroBuiltins})
     for (auto &x : f(it)) b.push_back(x);
   return b;
 }

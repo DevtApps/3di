@@ -8,6 +8,7 @@
 
 #include "../color.h"
 #include "../expr.h"
+#include "../hull.h"
 #include "../interp.h"
 
 namespace tdi::kit {
@@ -102,6 +103,25 @@ inline ShapeP taper(const V3 &from, const V3 &to, double r0, double r1) {
   double az = std::atan2(-n[0], n[1]) * 180 / M_PI;
   auto rotated = rot(body, ax, 0.0, az, O);
   return at(rotated, from[0] + d[0] / 2, from[1] + d[1] / 2, from[2] + d[2] / 2);
+}
+
+// ---------- low poly (heroes.js) ----------
+inline ShapeP place(const ShapeP &s, double x, double y, double z) { return M("place", s, args({{"x", x}, {"y", y}, {"z", z}})); }
+inline ShapeP cbox(double w, double h, double d, double c) { return mkShape("cbox", {{"size", nums({w, h, d})}, {"c", std::min(c, std::min({w, h, d}) / 2)}, {"r", 0}}); }
+inline ShapeP lpPrism(double r, double h, int n) {
+  auto p = ringPoints(r, -h / 2, n);
+  for (auto &q : ringPoints(r, h / 2, n)) p.push_back(q);
+  return hullShape(p);
+}
+inline ShapeP lpCone(double r, double h, double top, int n) {
+  auto p = ringPoints(r, -h / 2, n);
+  if (top > 1e-9) for (auto &q : ringPoints(top, h / 2, n)) p.push_back(q);
+  else p.push_back({0, h / 2, 0});
+  return hullShape(p);
+}
+inline ShapeP ball(double r, int n) { return hullShape(lowSphere(r, n)); }
+inline ShapeP anchorAt(const ShapeP &s, const std::string &name, const V3 &p, const V3 &n) {
+  return mkShape("translate", {{"v", nums({0, 0, 0})}, {"anchors", list({rec({{"name", name}, {"p", nums3(p)}, {"n", nums3(n)}})})}}, {s});
 }
 
 // ---------- util.js ----------
