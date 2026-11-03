@@ -17,6 +17,11 @@ Port em andamento do 3DI para um executável nativo. O plano completo está em
   dão a mesma árvore de formas e os mesmos prints do JS, com o mesmo aleatório. 37 erros de
   execução dão a mesma mensagem, linha e dica.
 
+- **Fases 5 e 6, prontas:** SDF na CPU (`core/sdf`) e compilador GLSL (`core/compiler`), com BVH e
+  instâncias de código. O GLSL dos 30 exemplos sai byte a byte igual ao do JS. Os dados da BVH batem
+  até 1e-5 (o `sin`/`cos` da libm difere do V8 na última casa). `3di-cli check arquivo.3di` dá a mesma
+  saída do `scripts/check.mjs`.
+
 ## Compilar
 
 As dependências (SDL 3.4 e Dear ImGui) são baixadas pelo CMake. Se houver um SDL3 instalado no

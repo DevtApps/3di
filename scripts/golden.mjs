@@ -24,7 +24,8 @@ function plain(v, seen = new Set()) {
   if (typeof v === 'number') return round(v);
   if (typeof v === 'string' || typeof v === 'boolean') return v;
   if (typeof v === 'function') return '<fn>';
-  if (ArrayBuffer.isView(v)) return { f32: v.length, sha: sha(v) };
+  // q: hash dos valores arredondados a 1e-5 (o port em C++ difere em ~1e-17 perto de zero: sin/cos da libm)
+  if (ArrayBuffer.isView(v)) return { f32: v.length, sha: sha(v), q: sha(Int32Array.from(v, (x) => Math.floor(x * 1e5 + 0.5))) };
   if (typeof v !== 'object') return String(v);
   if (seen.has(v)) return '<ciclo>';
   seen.add(v);

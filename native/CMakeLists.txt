@@ -36,7 +36,8 @@ target_link_libraries(imgui PUBLIC SDL3::SDL3)
 add_library(tdi_core STATIC core/json.cpp core/lexer.cpp core/parser.cpp core/ast.cpp core/value.cpp core/expr.cpp
   core/shape.cpp core/profile.cpp core/color.cpp core/interp.cpp core/scope.cpp core/anchor.cpp
   core/curve.cpp core/pattern.cpp core/rig.cpp core/modules.cpp core/lib/style.cpp core/lib/grass.cpp core/lib/plants.cpp
-  core/lib/trees.cpp core/lib/people.cpp core/lib/vehicles.cpp)
+  core/lib/trees.cpp core/lib/people.cpp core/lib/vehicles.cpp
+  core/compiler.cpp core/sdf.cpp core/sha256.cpp)
 target_include_directories(tdi_core PUBLIC core)
 if(MSVC)
   target_compile_options(tdi_core PRIVATE /W4 /utf-8)
@@ -47,10 +48,13 @@ endif()
 FetchContent_Declare(doctest GIT_REPOSITORY https://github.com/doctest/doctest.git GIT_TAG v2.5.3 GIT_SHALLOW ON)
 FetchContent_MakeAvailable(doctest)
 enable_testing()
-add_executable(tdi_tests tests/main.cpp tests/parser_test.cpp tests/interp_test.cpp)
+add_executable(tdi_tests tests/main.cpp tests/parser_test.cpp tests/interp_test.cpp tests/compiler_test.cpp)
 target_link_libraries(tdi_tests PRIVATE tdi_core doctest::doctest)
 target_compile_definitions(tdi_tests PRIVATE TDI_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
 add_test(NAME tdi_tests COMMAND tdi_tests)
+
+add_executable(3di-cli cli/main.cpp)
+target_link_libraries(3di-cli PRIVATE tdi_core)
 
 add_executable(3di app/main.cpp app/gl.cpp app/camera.cpp)
 target_link_libraries(3di PRIVATE tdi_core SDL3::SDL3 imgui)

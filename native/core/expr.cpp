@@ -48,10 +48,21 @@ static ExprP mkE(std::string op, std::vector<Value> args) {
 const ExprP TIME = mkE("time", {});
 const ExprP POS_X = mkE("var", {"x"}), POS_Y = mkE("var", {"y"}), POS_Z = mkE("var", {"z"});
 
-std::string glslNum(double x) {
+// x.toFixed(6) do JS: nos empates exatos (múltiplos ímpares de 1/128) arredonda para longe do zero,
+// enquanto o printf arredonda para o par
+static double toFixed6(double x) {
+  double q = x * 128;
+  if (std::isfinite(q) && std::fabs(q) < 9e15 && std::floor(q) == q && std::fmod(std::fabs(q), 2) == 1) {
+    double n = std::floor(std::fabs(x) * 1e6 + 0.5);
+    return (x < 0 ? -n : n) / 1e6;
+  }
   char buf[64];
   std::snprintf(buf, sizeof buf, "%.6f", x);
-  std::string s = jsNum(std::strtod(buf, nullptr));
+  return std::strtod(buf, nullptr);
+}
+
+std::string glslNum(double x) {
+  std::string s = jsNum(toFixed6(x));
   if (s == "-0") s = "0";
   return s.find_first_of(".e") == std::string::npos ? s + ".0" : s;
 }
