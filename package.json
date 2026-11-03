@@ -19,7 +19,8 @@
     "desktop:smoke": "npm run desktop:build && node scripts/run-desktop.mjs --smoke",
     "predev": "npm run desktop:build",
     "vendor:three": "node scripts/vendor-three.mjs",
-    "clean": "node scripts/clean.mjs"
+    "clean": "node scripts/clean.mjs",
+    "golden": "node scripts/golden.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

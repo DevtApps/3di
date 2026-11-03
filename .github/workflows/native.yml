@@ -1,0 +1,19 @@
+# Fase 1 do port em C++ (docs/plano-cpp-sdl3.md): compila native/ em Linux e Windows
+name: native
+on:
+  push:
+    paths: ['native/**', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['native/**', '.github/workflows/native.yml']
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl1-mesa-dev
+      - run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build native/build --config Release --parallel
