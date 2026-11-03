@@ -24,9 +24,9 @@ montanhas = [montanha(x, -62 - uniform(0, 12), uniform(14, 22), uniform(18, 30))
 montanhas += [montanha(s * uniform(46, 52), z, uniform(11, 15), uniform(14, 20)) for s in [-1, 1] for z in [-28, 8]]
 
 # ---- casa longa: base de pedra, paredes de tábuas, telhado de telhas (ou de grama), chifres na cumeeira
-def casa_longa(L, D, H=2.1, telhado="madeira"):
+def casa_longa(L, D, H=2.1, telhado="madeira", cor=MADEIRA[0]):
     base = space(L, 0.45, D).fill("stone").masonry(0.5, 0.22).color("#8d8a82")
-    parede = box(L - 0.16, H, D - 0.16).on(base).color(choice(MADEIRA)).planks(0.28, length=1.7)
+    parede = box(L - 0.16, H, D - 0.16).on(base).color(cor).planks(0.28, length=1.7)
     # cópias explícitas em vez de mirror: peças simples vão para a BVH (mirror vira código no shader)
     postes = [cylinder(0.12, H + 0.1).place(sx * (L / 2 - 0.1), base.top, sz * (D / 2 - 0.1)).color("#3d2a1a") for sx in [-1, 1] for sz in [-1, 1]]
     alto = H * 0.9 + D * 0.12
@@ -69,9 +69,11 @@ fogueira = group(
 chao_praca = cylinder(5.5, 0.04).place(PRACA[0], G, PRACA[1]).color("#7d6e57").texture("noise", color2="#6a5c47", size=0.5)
 
 casas = []
+# dois modelos de casa: casas iguais viram instâncias de código (o shader compila cada modelo uma vez)
+MODELOS = [casa_longa(8.5, 4.6, telhado="madeira", cor=MADEIRA[0]), casa_longa(8, 4.4, telhado="grama", cor=MADEIRA[1])]
 for i, ang in enumerate([-112, -76, -40, 40, 76, 112]):
-    L, D = uniform(7.5, 9), uniform(4.2, 5.0)
-    c = casa_longa(L, D, telhado=choice(["madeira", "madeira", "grama"]))
+    c = MODELOS[i % 2]
+    D = 4.6
     r = 13 + D / 2
     x, z = PRACA[0] + r * sin(radians(ang + 180)), PRACA[1] + r * cos(radians(ang + 180))
     casas += montar(c.rotate(y=ang).place(x, G, z))

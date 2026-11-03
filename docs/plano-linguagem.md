@@ -126,7 +126,8 @@ Curv), servindo também de exemplo para a IA copiar o estilo.
 
 ## Fase 3 — renderizador que aguente
 
-1. **Instâncias de código.** Duas chamadas à mesma função com as mesmas formas (só mudando a
+1. **Instâncias de código.** ✅ Feito: subárvores complexas iguais viram uma função `ci{n}` e um laço com as
+   transformações numa textura de dados (`uCode`). Ideia original: duas chamadas à mesma função com as mesmas formas (só mudando a
    transformação/cor) devem compilar **um** trecho GLSL e virar instâncias na BVH. Hoje só as folhas
    simples vão para a BVH; com isso, 30 casas custam 1 casa de compilação. Maior ganho de escala.
 2. **Poda por região** (ideia do Fidget/libfive): estender o "pula nós pesados por caixa" a uma BVH
@@ -156,7 +157,7 @@ Curv), servindo também de exemplo para a IA copiar o estilo.
 | 2 | âncoras + `attach` (1.4) | pequeno | componentes reutilizáveis sem contas |
 | 3 | `spline`/`bezier` + `sweep` + `along` (1.5) | médio | curvas: barcos, cordas, galhos, corrimões |
 | 4 | `planks`/`shingles`/`masonry` (2.1) | médio | o salto visual de "bloquinho" para "feito à mão" |
-| 5 | instâncias de código (3.1) | grande | condição para vilas e cidades inteiras |
+| 5 | ✅ instâncias de código (3.1) | grande | condição para vilas e cidades inteiras |
 | 6 | `faces` (1.3), junções hg_sdf (2.2), `vary` (2.3) | pequeno cada | acabamento |
 | 7 | `loft` (1.5), kits temáticos (2.4) | médio | cascos, asas; bibliotecas prontas |
 | 8 | poda por região e `.bake` (3.2, 3.3) | grande | escala de cenas muito densas |

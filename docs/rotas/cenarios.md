@@ -36,6 +36,10 @@ Lições da `vila.3di` (fiorde com 7 casas, paliçada, floresta, píer e navio):
 - **`sweep` afinando** (`(r0, r1)`) vira cones arredondados em código; em cenas grandes use raio constante.
 - **Padrões (`planks`, `shingles`, `masonry`)**: cada uso copia a função no shader. Reserve para paredes,
   telhados e bases; peças pequenas (portas, barris) ficam bem com `texture("wood")`.
+- **Casas iguais compilam uma vez** (instâncias de código): monte poucos modelos (`MODELOS = [casa(...), casa(...)]`)
+  e espalhe-os com `.rotate()`/`.place()`. O `check.mjs` mostra "N cópias de G peça(s) repetida(s)". Numa cena de 30
+  casas, compilar caiu de ~9 s para ~2,7 s e o quadro de ~105 ms para ~37 ms. Variar cor ou tamanho por cópia cria
+  outro modelo.
 - **Fundo distante** (montanhas a 60 m+) e `fog` dão escala, mas as quatro vistas do `render.mjs` enquadram
   a cena toda e ficam lavadas: confira a vila com a câmera da cena no editor.
 

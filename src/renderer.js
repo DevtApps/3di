@@ -280,9 +280,7 @@ export class Renderer {
     if (!data) return;
     const gl = this.gl;
     const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    const instances = packDataTexture(data.inst, data.instW, max);
-    const nodes = packDataTexture(data.bvh, data.bvhW, max);
-    this.tex ??= [gl.createTexture(), gl.createTexture()];
+    this.tex ??= [gl.createTexture(), gl.createTexture(), gl.createTexture()];
     const put = (unit, tex, w, h, arr, name) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -294,8 +292,17 @@ export class Renderer {
       gl.uniform1i(gl.getUniformLocation(this.program, name), unit);
     };
     gl.useProgram(this.program);
-    put(0, this.tex[0], instances.width, instances.height, instances.pixels, 'uInst');
-    put(1, this.tex[1], nodes.width, nodes.height, nodes.pixels, 'uBvh');
+    // BVH (primitivas como dados) e instâncias de código são opcionais e independentes
+    if (data.inst) {
+      const instances = packDataTexture(data.inst, data.instW, max);
+      const nodes = packDataTexture(data.bvh, data.bvhW, max);
+      put(0, this.tex[0], instances.width, instances.height, instances.pixels, 'uInst');
+      put(1, this.tex[1], nodes.width, nodes.height, nodes.pixels, 'uBvh');
+    }
+    if (data.code) {
+      const code = packDataTexture(data.code, data.codeW, max);
+      put(2, this.tex[2], code.width, code.height, code.pixels, 'uCode');
+    }
   }
 
   // devolve false quando ainda não há shader (nada foi desenhado)

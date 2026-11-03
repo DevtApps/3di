@@ -573,6 +573,10 @@ Não há `import`, classes nem arquivos.
 - Subtrações, `smooth`, `mirror`, `repeat`, `twist`, `round` e `shell` viram código no shader, sem teto fixo de primitivas;
   o shader demora mais para compilar quanto mais código houver
   (a vila, com 75, leva alguns segundos). A compilação roda em segundo plano, sem travar o editor.
+- Peças complexas repetidas viram **instâncias de código**: se a mesma subárvore (mesmas formas e materiais,
+  só mudando a posição, o giro ou a escala) aparece várias vezes, o shader compila uma função só e a desenha
+  num laço. Crie o componente uma vez (`modelo = casa()`) e reaproveite com `.rotate()`/`.place()`, em vez de
+  gerar cada cópia com parâmetros levemente diferentes. Peças animadas ficam fora.
 - Dê `.name()` às peças principais e rode `node scripts/check.mjs` para conferir tamanhos e posições.
 - Depois, rode `node scripts/render.mjs cena.3di cena.png` e olhe a imagem: as vistas de frente, lado e
   topo mostram peças flutuando, atravessadas ou fora do lugar que os números não deixam ver.

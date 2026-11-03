@@ -786,3 +786,34 @@ test('padrões de superfície: planks, shingles e masonry afundam juntas reais s
     assert.match(`${r.error.toString()} ${r.error.hint ?? ''}`, re, src);
   }
 });
+
+test('instâncias de código: subárvores complexas repetidas compilam uma vez e são desenhadas num laço', () => {
+  const casa = `def casa():
+    base = box(4, 0.4, 3).ground().color("stone").masonry()
+    parede = box(3.8, 2, 2.8).on(base).color("#6b4a2e").planks(0.25)
+    return group(base, parede, prism(3.6, 1.4, 4.4).rotate(y=90).on(parede).shingles())
+`;
+  const compile = (src) => {
+    const r = runScript(src);
+    assert.equal(r.ok, true, r.error?.toString());
+    return compileScene(r.scene);
+  };
+  // 12 casas iguais, giradas e movidas: um grupo, uma função, transformações na textura de dados
+  const out = compile(`${casa}show(plane(), [casa().rotate(y=i * 30).at(i * 6, 0, 0) for i in range(12)])`);
+  assert.deepEqual(out.codeGroups, [12]);
+  assert.equal((out.glsl.match(/M ci0\(vec3 p\)/g) ?? []).length, 1);
+  assert.equal((out.glsl.match(/patG\(p/g) ?? []).length, 3, 'cada padrão aparece uma vez, não 12');
+  assert.equal(out.data.codeCount, 12);
+  assert.equal(out.data.code.length, 12 * 5 * 4);
+  assert.equal(out.leaves, 12 * 3 + 1, 'o total conta todas as cópias');
+  // a primeira casa (sem giro, em x = 0): centro da caixa no mundo e linhas da inversa
+  const c = out.data.code;
+  assert.ok(Math.abs(c[12] - 0) < 1e-9 && Math.abs(c[0] - 1) < 1e-9, 'identidade para a casa na origem');
+
+  // materiais herdados diferentes não se misturam; peças diferentes não se agrupam; peça pequena fica inline
+  assert.deepEqual(compile(`${casa}show([casa().color("red").at(i * 6, 0, 0) for i in range(3)], [casa().color("blue").at(i * 6, 0, 9) for i in range(3)])`).codeGroups, [3, 3]);
+  assert.deepEqual(compile(`${casa}show([group(casa(), sphere(i * 0.01 + 0.1)).at(i * 6, 0, 0) for i in range(4)])`).codeGroups.length, 1);
+  assert.deepEqual(compile('show([group(sphere(0.5), sphere(0.3).at(0.4, 0, 0), smooth=0.1).at(i, 0, 0) for i in range(3)])').codeGroups, []);
+  // animadas ficam fora (o tempo muda a forma por cópia)
+  assert.deepEqual(compile(`${casa}show([casa().at(i * 6, 0, 0).rotate(y=time * 10) for i in range(3)])`).codeGroups, []);
+});

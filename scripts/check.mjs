@@ -29,7 +29,8 @@ try {
 }
 const v = (a) => `(${a.map(fmtNum).join(', ')})`;
 const b = out.bbox;
-console.log(`ok: ${out.leaves} primitivas${out.instances ? ` (${out.instances} como dados na BVH, ${out.codeLeaves} como código)` : ''}, ${res.scene.shapes.length} formas mostradas${out.hasPlane ? ' + chão' : ''}`);
+const copias = out.codeGroups.length ? `; ${out.codeGroups.reduce((a, b) => a + b, 0)} cópias de ${out.codeGroups.length} peça(s) repetida(s) compilam uma vez cada` : '';
+console.log(`ok: ${out.leaves} primitivas${out.instances || copias ? ` (${out.instances} como dados na BVH, ${out.codeLeaves} como código${copias})` : ''}, ${res.scene.shapes.length} formas mostradas${out.hasPlane ? ' + chão' : ''}`);
 console.log(`cena: de ${v(b.min)} até ${v(b.max)}`);
 for (const p of out.parts) {
   const sz = p.bbox.max.map((x, i) => x - p.bbox.min[i]);

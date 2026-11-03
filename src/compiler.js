@@ -9,7 +9,8 @@ import { polygonGlsl } from './profile.js';
 import { PATTERN_GLSL, patternLip } from './pattern.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
-export const INSTANCE_THRESHOLD = 40;  // abaixo disso, tudo vira código (mais rápido por pixel)
+export const INSTANCE_THRESHOLD = 40;
+const CODE_W = 5; // texels por instância de código: 3 linhas da inversa, centro da caixa + escala, meia caixa  // abaixo disso, tudo vira código (mais rápido por pixel)
 
 export const GLSL_LIB = /* glsl */ `
 // d: distância, c: cor, m: (rough, metal, glow), c2: 2ª cor da textura,
@@ -240,15 +241,17 @@ export function isHeavy(sh) {
 
 // Gera o corpo de mapAll: cada nó vira variáveis do tipo M (distância + material).
 class Gen {
-  constructor() {
+  // tag: distingue os nomes de funções de geradores diferentes (instâncias de código)
+  constructor(tag = '') {
     this.lines = [];
     this.funcs = []; // funções GLSL geradas por forma (polígonos de extrude/lathe)
     this.n = 0;
     this.indent = 1;
+    this.tag = tag;
   }
   // registra uma função GLSL com nome único e devolve o nome
   fn(prefix, make) {
-    const name = `${prefix}${this.n++}`;
+    const name = `${prefix}${this.tag}${this.n++}`;
     this.funcs.push(make(name));
     return name;
   }
@@ -534,9 +537,11 @@ const mergeMat = (mat, P) => {
 };
 
 // Separa a cena em primitivas simples (viram dados) e subárvores complexas (viram código).
-export function splitScene(shapes) {
-  const instances = [], residual = [];
+// Percorre a cena acumulando transformação, escala da distância e material, achatando uniões
+// simples. stop(s, m, t, ds, mat) devolve true para não descer (o nó foi tratado por quem chama).
+function walkScene(shapes, stop) {
   const visit = (s, m, t, ds, mat) => {
+    if (stop(s, m, t, ds, mat)) return;
     const c0 = s.children[0];
     switch (s.selfAnimated ? 'animated' : s.kind) {
       case 'translate': {
@@ -566,17 +571,104 @@ export function splitScene(shapes) {
         if (!s.props.k) { s.children.forEach((c) => visit(c, m, t, ds, mat)); return; }
         break;
     }
-    if (PRIM_IDS[s.kind]) { instances.push({ s, m, t, ds, mat }); return; }
-    // subárvore complexa: reaplica transformação e material acumulados como nós
-    let node = s;
-    const { texFrame, ...matProps } = mat;
-    if (Object.keys(matProps).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, facet: null, coat: null, ...matProps }, [node]);
-    const isIdent = m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => v === 0);
-    if (!isIdent) node = new Shape('affine', { m, t, minv: inv3(m), ds }, [node]);
-    residual.push(node);
+    stop.leaf(s, m, t, ds, mat);
   };
   shapes.forEach((s) => visit(s, IDENT, [0, 0, 0], 1, {}));
-  return { instances, residual };
+}
+
+// subárvore complexa: reaplica material e transformação acumulados como nós
+function wrapNode(s, m, t, ds, mat) {
+  let node = s;
+  const { texFrame, ...matProps } = mat;
+  if (Object.keys(matProps).length) node = new Shape('material', { color: null, rough: null, metal: null, glow: null, tex: null, facet: null, coat: null, ...matProps }, [node]);
+  const isIdent = m.every((v, i) => Math.abs(v - IDENT[i]) < 1e-12) && t.every((v) => v === 0);
+  if (!isIdent) node = new Shape('affine', { m, t, minv: inv3(m), ds }, [node]);
+  return node;
+}
+
+// ---------- instâncias de código ----------
+// Subárvores complexas iguais (mesma estrutura e material, só a posição muda) viram UMA função GLSL
+// chamada num laço sobre as transformações: 30 casas iguais compilam como uma.
+
+const FLAT = new Set(['translate', 'rotate', 'scale', 'material', 'label']);
+// a subárvore gera código (não é só primitivas que iriam para a BVH)?
+function needsCode(s) {
+  if (s._code !== undefined) return s._code;
+  let r;
+  if (s.selfAnimated) r = true;
+  else if (PRIM_IDS[s.kind]) r = false;
+  else if (FLAT.has(s.kind) || (s.kind === 'union' && !s.props.k)) r = s.children.some(needsCode);
+  else r = true;
+  return (s._code = r);
+}
+
+// chave estrutural: tipo + propriedades + chaves dos filhos (internadas como números)
+const KEY_IDS = new Map();
+function structKey(s) {
+  if (s._skey !== undefined) return s._skey;
+  let key = null;
+  if (s.kind !== 'bound') {
+    const kids = s.children.map(structKey);
+    if (!kids.includes(null)) {
+      try {
+        const str = `${s.kind}|${JSON.stringify(s.props)}|${kids.join(',')}`;
+        if (!KEY_IDS.has(str)) KEY_IDS.set(str, KEY_IDS.size);
+        key = KEY_IDS.get(str);
+      } catch { key = null; }
+    }
+  }
+  return (s._skey = key);
+}
+
+function instanceKey(s, mat) {
+  // transformações e materiais nunca são o nó da instância: elas vão para a transformação dela
+  // peças minúsculas (1 ou 2 primitivas simples) ficam inline: o laço custaria mais que o código
+  if (FLAT.has(s.kind) || s.animated || !needsCode(s) || !(s.leaves >= 3 || isHeavy(s))) return null;
+  const k = structKey(s);
+  if (k === null) return null;
+  const { texFrame, ...matProps } = mat;
+  return `${k}|${JSON.stringify(matProps)}`;
+}
+
+// Separa a cena em primitivas simples (viram dados) e subárvores complexas (viram código).
+// Com { instancing: true }, subárvores complexas repetidas vão para `groups` (chave -> ocorrências).
+export function splitScene(shapes, { instancing = false } = {}) {
+  const instances = [], residual = [], groups = new Map();
+  let counts = null;
+  if (instancing) {
+    counts = new Map();
+    const count = (s, m, t, ds, mat) => {
+      const k = instanceKey(s, mat);
+      if (k !== null) counts.set(k, (counts.get(k) ?? 0) + 1);
+      return false;
+    };
+    count.leaf = () => {};
+    walkScene(shapes, count);
+  }
+  const stop = (s, m, t, ds, mat) => {
+    if (!counts) return false;
+    const k = instanceKey(s, mat);
+    if (k === null) return false;
+    // vale a pena quando poupa bastante código: muitas cópias ou uma peça pesada (padrões, ruído...)
+    const n = counts.get(k);
+    if (n < 2 || (n * s.leaves < 12 && !isHeavy(s))) return false;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push({ s, m, t, ds, mat });
+    return true;
+  };
+  stop.leaf = (s, m, t, ds, mat) => {
+    if (PRIM_IDS[s.kind]) instances.push({ s, m, t, ds, mat });
+    else residual.push(wrapNode(s, m, t, ds, mat));
+  };
+  walkScene(shapes, stop);
+  // um grupo que acabou com uma ocorrência só (as outras ficaram dentro de outro grupo) volta a ser código comum
+  for (const [k, occ] of groups) {
+    if (occ.length < 2) {
+      groups.delete(k);
+      for (const o of occ) residual.push(wrapNode(o.s, o.m, o.t, o.ds, o.mat));
+    }
+  }
+  return { instances, residual, groups: [...groups.values()] };
 }
 
 const INST_W = 11; // texels por instância
@@ -721,24 +813,86 @@ export function compileScene(scene) {
   if (!shapes.length) {
     throw new ScriptError('nada para mostrar', null, 'termine o script com show(forma1, forma2, ...)');
   }
-  const { instances, residual } = splitScene(shapes);
+  const { instances, residual, groups } = splitScene(shapes, { instancing: true });
   const useBVH = instances.length >= INSTANCE_THRESHOLD;
-  const codeRoot = useBVH ? (residual.length ? union(residual) : null) : union(shapes);
-  const codeLeaves = codeRoot ? codeRoot.leaves : 0;
+  // sem grupos repetidos, o código sai como sempre (a árvore original mantém os cortes por caixa dos grupos)
+  const codeRoot = useBVH
+    ? (residual.length ? union(residual) : null)
+    : groups.length ? union([...instances.map((o) => wrapNode(o.s, o.m, o.t, o.ds, o.mat)), ...residual].filter(Boolean)) : union(shapes);
+  const emptyRoot = !useBVH && groups.length && !instances.length && !residual.length;
+  // codeLeaves: primitivas que viram código (cada grupo conta uma vez); groupLeaves: todas as cópias
+  const codeLeaves = (codeRoot && !emptyRoot ? codeRoot.leaves : 0) + groups.reduce((n, g) => n + g[0].s.leaves, 0);
+  const groupLeaves = groups.reduce((n, g) => n + g.length * g[0].s.leaves, 0);
 
   let mBody = `  return ${M_FAR};`;
   let funcs = '';
-  if (codeRoot) {
+  let codeData = null;
+  if (codeRoot || groups.length) {
     const Mg = new Gen();
-    const mOut = Mg.emit(codeRoot, 'p', {});
+    let mOut;
+    if (codeRoot && !emptyRoot) mOut = Mg.emit(codeRoot, 'p', {});
+    else { mOut = Mg.tmp('m'); Mg.line(`M ${mOut} = ${M_FAR};`); }
+    const extra = [];
+    const codeRows = [];
+    if (groups.length) {
+      // índice dinâmico em array constante é lento no driver (copia o array por pixel): textura de dados
+      extra.push(`uniform highp sampler2D uCode;
+vec4 codeFetch(int col, int row) {
+  int index = row * ${CODE_W} + col;
+  int width = textureSize(uCode, 0).x;
+  return texelFetch(uCode, ivec2(index % width, index / width), 0);
+}`);
+    }
+    groups.forEach((occ, gi) => {
+      const base = codeRows.length / CODE_W;
+      // uma função por grupo, com o material herdado embutido
+      const G = new Gen(`_i${gi}_`);
+      const r = G.emit(wrapNode(occ[0].s, IDENT, [0, 0, 0], 1, occ[0].mat), 'p', {});
+      extra.push(...G.funcs, `M ci${gi}(vec3 p) {\n${G.lines.join('\n')}\n  return ${r};\n}`);
+      // por instância: 3 linhas da inversa (com -minv*t em w), centro da caixa + escala da distância, meia caixa
+      const rows = occ.flatMap(({ s: sh, m, t, ds }) => {
+        const mi = inv3(m);
+        const off = mulMV(mi, t).map((v) => -v);
+        const wb = fromPoints(corners(sh.bbox).map((c) => mulMV(m, c).map((v, i) => v + t[i])));
+        const half = size(wb).map((x) => x / 2 + 0.01);
+        return [[mi[0], mi[1], mi[2], off[0]], [mi[3], mi[4], mi[5], off[1]], [mi[6], mi[7], mi[8], off[2]], [...center(wb), ds], [...half, 0]];
+      });
+      codeRows.push(...rows);
+      // 1) corte por caixa com constantes no código (barato de compilar): marca as candidatas em
+      //    máscaras de 32 bits (variáveis soltas: arrays com índice dinâmico vão para memória lenta)
+      const nm = Math.ceil(occ.length / 32);
+      const mk = [...Array(nm)].map(() => Mg.tmp('mk'));
+      Mg.line(`int ${mk.map((m) => `${m} = 0`).join(', ')};`);
+      occ.forEach((_, i) => {
+        const r3 = rows[i * CODE_W + 3], r4 = rows[i * CODE_W + 4];
+        Mg.line(`if (sdBox(p - ${v3(r3.slice(0, 3))}, ${v3(r4.slice(0, 3))}) < ${mOut}.d) ${mk[i >> 5]} |= ${1 << (i & 31)};`);
+      });
+      // 2) um ponto de chamada por palavra: percorre as candidatas lendo a transformação da textura
+      mk.forEach((m, w) => {
+        Mg.line(`for (int b = uZero, bits = ${m}; bits != 0; b++, bits = int(uint(bits) >> 1u)) {`);
+        Mg.indent++;
+        Mg.line('if ((bits & 1) == 0) continue;');
+        Mg.line(`int i = ${base + w * 32} + b;`);
+        Mg.line('vec4 bc = codeFetch(3, i);');
+        Mg.line(`if (sdBox(p - bc.xyz, codeFetch(4, i).xyz) >= ${mOut}.d) continue;`);
+        Mg.line('vec4 r0 = codeFetch(0, i), r1 = codeFetch(1, i), r2 = codeFetch(2, i);');
+        Mg.line(`M ri = ci${gi}(vec3(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w));`);
+        Mg.line('ri.d *= bc.w;');
+        Mg.line(`${mOut} = mU(${mOut}, ri);`);
+        Mg.indent--;
+        Mg.line('}');
+      });
+    });
     mBody = `${Mg.lines.join('\n')}\n  return ${mOut};`;
-    funcs = Mg.funcs.length ? `\n${Mg.funcs.join('\n')}\n` : '';
+    const all = [...Mg.funcs, ...extra];
+    funcs = all.length ? `\n${all.join('\n')}\n` : '';
+    if (codeRows.length) codeData = { code: Float32Array.from(codeRows.flat()), codeCount: codeRows.length / CODE_W, codeW: CODE_W };
   }
 
   let glsl, data = null;
   if (useBVH) {
     const { bvh, nodeCount, order } = buildBVH(instances);
-    data = { inst: packInstances(order.map((i) => instances[i])), instCount: instances.length, bvh, nodeCount, instW: INST_W, bvhW: BVH_W };
+    data = { inst: packInstances(order.map((i) => instances[i])), instCount: instances.length, bvh, nodeCount, instW: INST_W, bvhW: BVH_W, ...codeData };
     glsl = `${GLSL_LIB}${GLSL_BVH}${funcs}
 M codeM(vec3 p) {
 ${mBody}
@@ -760,6 +914,7 @@ M mapAll(vec3 p, bool wantMat) {
 }
 `;
   } else {
+    data = codeData;
     glsl = `${GLSL_LIB}${funcs}
 M mapAll(vec3 p, bool wantMat) {
 ${mBody}
@@ -775,9 +930,11 @@ ${mBody}
     bbox,
     hasPlane: shapes.some((s) => !isFiniteBB(s.bbox)),
     animated: glsl.includes('uTime'),
-    leaves: codeLeaves + (useBVH ? instances.length : 0),
+    leaves: (codeRoot && !emptyRoot ? codeRoot.leaves : 0) + groupLeaves + (useBVH ? instances.length : 0),
     codeLeaves,
     instances: useBVH ? instances.length : 0,
+    // instâncias de código: grupos de subárvores repetidas e quantas cópias usam cada função
+    codeGroups: groups.map((g) => g.length),
     parts: collectParts(shapes),
   };
 }
