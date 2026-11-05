@@ -44,7 +44,7 @@ test('Official MCP SDK HTTP supports two clients, documentation and engine tools
   await first.connect(new StreamableHTTPClientTransport(new URL(server.endpoint)));
   await second.connect(new StreamableHTTPClientTransport(new URL(server.endpoint)));
   assert.ok((await first.listTools()).tools.some((tool) => tool.name === 'set_script'));
-  assert.equal((await second.listResources()).resources.length, 17);
+  assert.equal((await second.listResources()).resources.length, 18);
   const docs = await first.readResource({ uri: 'threedi://docs/inicio' });
   assert.ok(docs.contents[0].text.includes('check_script'));
   const merge = await first.callTool({ name: 'get_documentation', arguments: { topic: 'combinar' } });

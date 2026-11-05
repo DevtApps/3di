@@ -888,7 +888,12 @@ export function shapeBuiltins(scene) {
       return null;
     }),
     camera: N('camera', ['pos', 'look=None', 'fov=45'], (a) => {
-      scene.camera = { pos: vec3(a.pos, 'pos'), look: a.look === null ? null : vec3(a.look, 'look'), fov: num(a.fov, 'fov') };
+      // pos, look e fov aceitam expressões de time (keys(...)): câmera animada
+      const v3T = (v, what) => {
+        if (!Array.isArray(v) || v.length !== 3) throw new ScriptError(`${what} deve ser uma tupla (x, y, z)`, null);
+        return v.map((x, i) => numT(x, `${what}[${i}]`));
+      };
+      scene.camera = { pos: v3T(a.pos, 'pos'), look: a.look === null ? null : v3T(a.look, 'look'), fov: numT(a.fov, 'fov') };
       return null;
     }),
     sun: N('sun', ['x=0.6', 'y=1', 'z=0.4', 'color=None'], (a) => {

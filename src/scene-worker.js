@@ -2,6 +2,7 @@ import { runScript } from './interp.js';
 import { compileScene } from './compiler.js';
 import { exportGLB } from './export.js';
 import { withTime } from './expr.js';
+import { sceneMeta } from './scene-task.js';
 
 // geoms (opcional): geometrias das peças já malhadas em paralelo pela página; aqui só monta o GLB
 self.onmessage = async ({ data: { code, task, time = 0, res = 128, geoms = null } }) => {
@@ -14,9 +15,8 @@ self.onmessage = async ({ data: { code, task, time = 0, res = 128, geoms = null 
         return exportGLB(run.scene, { res, runParts });
       }
       const out = compileScene(run.scene);
-      // Only plain metadata crosses the worker boundary; shapes and symbolic expressions stay here.
-      const { camera, fog, sun, sky } = run.scene;
-      return { out, logs: run.logs, scene: { camera, fog, sun, sky } };
+      // só dados simples atravessam o worker; formas e expressões ficam aqui
+      return { out, logs: run.logs, scene: sceneMeta(run.scene) };
     });
     self.postMessage({ result: await result });
   } catch (e) {

@@ -858,3 +858,42 @@ test('low poly: loft côncavo, bevel e smooth na malha direta', async () => {
   assert.ok(ns.size > gema.children[0].props.faces.length, 'smooth mistura as normais entre faces próximas');
   assert.equal(runScript('show(loft([(0,0,0)]))').ok, false);
 });
+
+test('keys(), timeline() and the script (say/caption/voice) become time expressions and scene data', async () => {
+  const { executeSceneTask } = await import('../src/scene-task.js');
+  const code = `timeline(6, fps=24)
+voice("n", speaker="Serena", instruct="calma")
+y = keys((0, 0), (2, 1), (4, 1), ease="linear")
+p = keys((0, (0, 0, 0)), (2, (2, 0, 0)))
+show(box(0.2).at(p).at(0, y, 0))
+say("Primeira fala do roteiro.", voice="n")
+fim = say("Segunda fala.")
+caption("só legenda", at=5, dur=0.5)
+camera(pos=keys((0, (0, 1, 4)), (6, (4, 1, 0))), look=(0, 0, 0))`;
+  const run = runScript(code);
+  assert.equal(run.ok, true, run.error?.toString());
+  const r = executeSceneTask({ code });
+  const sc = r.scene;
+  assert.equal(sc.duration, 6);
+  assert.equal(sc.fps, 24);
+  assert.deepEqual(sc.keyTimes, [0, 2, 4, 6]);
+  // falas em sequência, sem sobreposição; caption sem áudio
+  const [a, b, c] = sc.script;
+  assert.ok(a.speak && b.speak && !c.speak);
+  assert.ok(b.start >= a.end, 'a segunda fala entra depois da primeira');
+  assert.equal(a.voice, 'n');
+  assert.deepEqual(sc.voices.n, { speaker: 'Serena', language: 'Portuguese', instruct: 'calma' });
+  // câmera animada vira trilha amostrada; a câmera em si leva t = 0
+  assert.deepEqual(sc.camera.pos, [0, 1, 4]);
+  const mid = sc.camTrack.pos[Math.round(3 * sc.camTrack.fps)];
+  assert.ok(Math.abs(mid[0] - 2) < 1e-6 && Math.abs(mid[2] - 2) < 1e-6, `meio do caminho: ${mid}`);
+  assert.equal(r.out.animated, true);
+  // valores das chaves (linear e suave) avaliados no tempo
+  const { val0, withTime } = await import('../src/expr.js');
+  const yv = (t) => withTime(t, () => val0(runScript('y = keys((0, 0), (2, 1), ease="linear")\nshow(box().at(0, y, 0))').scene.shapes[0].props.v[1]));
+  assert.equal(yv(1), 0.5);
+  assert.equal(yv(5), 1);
+  for (const bad of ['keys((0, 0))', 'keys((1, 0), (0, 1))', 'keys((0, 0), (1, (1, 2)))', 'keys((0, 0), (1, 1), ease="bounce")', 'say("x", voice="nada")', 'timeline(0)']) {
+    assert.equal(runScript(`v = ${bad}\nshow(box())`).ok, false, bad);
+  }
+});

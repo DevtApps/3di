@@ -21,6 +21,7 @@ Leia só as rotas do que for fazer (`get_documentation(topic=...)` ou `threedi:/
 | `hard-surface` | peças duras: `bevel`, `merge` com sulco/chanfro, faixas e vincos com `paint(relief=)` |
 | `cenarios` | arquitetura e dioramas: funções reutilizáveis, `repeat`, orçamento de primitivas |
 | `animacao` | `time`, `osc`, esqueleto, `bind` |
+| `video` | chaves (`keys`), `timeline`, câmera animada, roteiro com falas e legendas, render de vídeo com áudio |
 | `exportar` | GLB: peças, resolução, facetas, atlas de pintura, `check_glb` |
 | `referencia-visual` | copiar uma imagem: `set_reference`, `compare_reference`, `screenshot` |
 | `revisao` | conferir apoios, alinhamentos e encaixes antes de entregar |

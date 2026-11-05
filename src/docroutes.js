@@ -12,6 +12,7 @@ export const DOC_ROUTES = [
   { topic: 'hard-surface', name: 'Peças duras', description: 'Brinquedos, robôs e máquinas: bevel, merge com sulco/chanfro, faixas e vincos com paint(relief), verniz.', file: 'docs/rotas/hard-surface.md' },
   { topic: 'cenarios', name: 'Cenários e dioramas', description: 'Arquitetura e cenas grandes: funções reutilizáveis, repeat, recortes, telhados, orçamento.', file: 'docs/rotas/cenarios.md' },
   { topic: 'animacao', name: 'Animação e rig', description: 'time, osc, esqueleto e bind (exporta animado no GLB).', file: 'docs/rotas/animacao.md' },
+  { topic: 'video', name: 'Chaves, roteiro e vídeo', description: 'keys(), timeline(), câmera animada, say/caption/voice (legendas e falas por TTS) e o render de vídeo MP4.', file: 'docs/rotas/video.md' },
   { topic: 'exportar', name: 'Exportar GLB', description: 'Como a conversão funciona (peças, resolução, atlas, facetas) e como conferir com check_glb.', file: 'docs/rotas/exportar.md' },
   { topic: 'referencia-visual', name: 'Copiar uma imagem', description: 'set_reference, compare_reference e o fluxo para modelar fiel a uma imagem.', file: 'docs/rotas/referencia-visual.md' },
   { topic: 'revisao', name: 'Revisão geométrica', description: 'Conferir apoios, alinhamentos, encaixes e vistas antes de entregar.', file: 'docs/rotas/revisao.md' },

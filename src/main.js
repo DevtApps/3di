@@ -9,8 +9,9 @@ import { createFiles } from './ide/files.js';
 import { connectBridge } from './ide/bridge.js';
 import { setupWorkspace } from './ide/workspace.js';
 import { createReference } from './ide/reference.js';
+import { createTimeline } from './ide/timeline.js';
 
-const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
+const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'video', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
 const STORAGE_KEY = '3di.code';
 const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
 chao = plane().color("lightgray")
@@ -142,6 +143,9 @@ function animLoop(now) {
   anim.last = now;
   if (anim.playing) {
     anim.time += Math.min(dt, 0.1);
+    // com timeline/roteiro, o tempo volta ao início ao chegar no fim
+    const dur = sceneInfo.scene?.duration;
+    if (dur > 0 && anim.time > dur) anim.time %= dur;
     // durante a interação usa o degrau da interação, sem disputar a mesma média
     if (interacting) draw(interactRes.frame(now));
     else { interactRes.reset(); draw(anim.res.frame(now)); }
@@ -174,15 +178,34 @@ function requestRender() {
   });
 }
 
+// Câmera animada do roteiro (trilha amostrada pelo worker): posição, alvo e fov no instante t
+let follow = true, lastView = null;
+function trackView(tr, t) {
+  const n = tr.pos.length, f = Math.max(0, Math.min(n - 1, t * tr.fps));
+  const i = Math.min(n - 2, Math.floor(f)), u = f - i;
+  const lerp = (a, b) => a.map((x, k) => x + (b[k] - x) * u);
+  const b = sceneInfo.bbox;
+  const center = [0, 1, 2].map((k) => (b.min[k] + b.max[k]) / 2);
+  return { eye: lerp(tr.pos[i], tr.pos[i + 1]), target: tr.look[i] ? lerp(tr.look[i], tr.look[i + 1]) : center, fov: tr.fov[i] + (tr.fov[i + 1] - tr.fov[i]) * u };
+}
+const timeline = createTimeline({
+  host: $('right'),
+  onSeek(t) { anim.time = t; anim.last = 0; draw(1); },
+  onToggle() { $('btnPlay').click(); },
+  onFollow(on) { follow = on; timeline.setFollow(on); requestRender(); draw(1); },
+});
+
 // opts.size = [w, h] desenha numa resolução fixa; opts.time sobrepõe o relógio da animação
 function draw(scale, opts = {}) {
   const sc = sceneInfo.scene;
   const r = radiusOf(sceneInfo.bbox);
   // opts.view = { eye, target, fov } desenha de outro ângulo sem mexer na câmera do editor
-  const v = opts.view;
+  const v = opts.view ?? (follow && sc?.camTrack ? trackView(sc.camTrack, opts.time ?? anim.time) : null);
+  timeline.update(opts.time ?? anim.time, anim.on && anim.playing);
   const dist = v ? Math.hypot(v.eye[0] - v.target[0], v.eye[1] - v.target[1], v.eye[2] - v.target[2]) : cam.dist;
   // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
   const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(dist, r, 1) * 14) : 0);
+  if (v && !opts.view) lastView = v;
   renderer.render({
     eye: v ? v.eye : eye(),
     target: v ? v.target : cam.target,
@@ -273,6 +296,12 @@ async function renderViews({ size = 512, time = anim.time, bbox = null } = {}) {
 
 function interact() {
   interacting = true;
+  // girar a vista solta a câmera do roteiro (o botão 🎥 da timeline volta a segui-la)
+  if (follow && sceneInfo.scene?.camTrack) {
+    follow = false;
+    timeline.setFollow(false);
+    if (lastView) applyScriptCamera({ pos: lastView.eye, look: lastView.target, fov: lastView.fov });
+  }
   clearTimeout(settleTimer);
   settleTimer = setTimeout(() => { interacting = false; requestRender(); }, 140);
   requestRender();
@@ -365,11 +394,17 @@ async function compile() {
 
   sceneInfo = { bbox: out.bbox, hasPlane: out.hasPlane, scene, src, parts: out.parts, animated: out.animated, leaves: out.leaves };
   const camKey = JSON.stringify(scene.camera);
-  if (scene.camera && camKey !== lastCameraKey) applyScriptCamera(scene.camera);
+  // câmera nova no script: volta a seguir a trilha animada, se houver
+  const camChanged = camKey !== lastCameraKey;
+  if (scene.camera && camChanged) applyScriptCamera(scene.camera);
   else if (lastCameraKey === null) frame();
   lastCameraKey = camKey;
 
-  setAnimated(out.animated);
+  // cenas com câmera animada ou roteiro também tocam, mesmo sem nada animado no shader
+  const timed = out.animated || !!scene.camTrack || (scene.script?.length ?? 0) > 0 || scene.duration > 0;
+  timeline.setScene(scene);
+  if (scene.camTrack && camChanged) { follow = true; timeline.setFollow(true); }
+  setAnimated(timed);
   markLine(null);
   status.className = 'ok';
   status.textContent = `✓ ${summary}${tShader ? ` · shader ${tShader.toFixed(0)} ms` : ''}${out.animated ? ' · animado' : ''}`;
@@ -542,6 +577,20 @@ window.tdi = {
   view(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist: dist ?? cam.dist }); draw(1); },
   // pausa a animação num instante (s) e desenha
   at(t) { anim.playing = false; anim.time = t; draw(1); },
+  // quadro de vídeo: desenha o instante t em width x height (câmera do roteiro, se houver) e
+  // devolve o PNG em base64. info() dá duração, fps e roteiro para o render de vídeo.
+  frame({ t = 0, width = 1280, height = 720 } = {}) {
+    anim.playing = false;
+    anim.time = t;
+    const sc = sceneInfo.scene;
+    const view = sc?.camTrack ? trackView(sc.camTrack, t) : { eye: eye(), target: cam.target, fov: cam.fov };
+    draw(1, { time: t, size: [width, height], view });
+    return canvas.toDataURL('image/png').split(',')[1];
+  },
+  info() {
+    const sc = sceneInfo.scene ?? {};
+    return { duration: sc.duration ?? 0, fps: sc.fps ?? 30, script: sc.script ?? [], voices: sc.voices ?? {}, animated: !!sceneInfo.animated };
+  },
   status: () => status.textContent,
   // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
   interactScale: () => interactRes.value,

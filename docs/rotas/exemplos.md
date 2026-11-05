@@ -18,6 +18,7 @@ Os arquivos estão em `examples/` no projeto e também no seletor Exemplos da ID
 | vila.3di | Vila nórdica: casas longas, paliçada, píer e drakkar |
 | arvore.3di | Recursão e BVH |
 | animacao.3di | Transformações com time |
+| video.3di | Chaves (keys), câmera animada, roteiro com falas e legendas; vira MP4 com scripts/video.mjs |
 | boneco.3di | Esqueleto, bind e exportação animada |
 | grama.3di | Cinco tipos de grama (gramado, capim, espigas, trevo com flores, touceiras): lâminas curvas em `segment` com degradê |
 | gramas.3di | Gerador `grass()`: os sete tipos de grama |

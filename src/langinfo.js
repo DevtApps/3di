@@ -59,6 +59,11 @@ const DOCS = {
   animation: 'Duração e quadros por segundo da animação exportada para glTF. Escolha `duration` para o ciclo fechar.',
   time: 'Tempo em segundos (animação na GPU). Use em at/move, rotate, scale, glow e em rotate/move de ossos.',
   osc: 'Vai de `a` até `b` e volta, suavemente, a cada `period` segundos.',
+  keys: 'Valor animado por chaves (tempo, valor): número ou tupla. `ease` linear/smooth/in/out/step, `loop` repete. Vale onde vale time (at, rotate, scale, glow, camera).',
+  timeline: 'Duração (s) e quadros por segundo do vídeo e da animação.',
+  voice: 'Define uma voz do Qwen3-TTS para as falas: speaker (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee), language, instruct (estilo).',
+  say: 'Fala do roteiro: legenda + áudio por TTS. Sem `at`, entra depois da anterior; `voice`, `style`. Devolve o fim (s).',
+  caption: 'Legenda sem áudio no instante `at` por `dur` segundos.',
   // matemática e Python
   print: 'Mostra valores no painel de status.',
   range: 'Sequência de números: range(n), range(a, b), range(a, b, passo).',
@@ -134,7 +139,7 @@ const CATEGORY = {
   capsule: 'primitiva', ellipsoid: 'primitiva', pyramid: 'primitiva', prism: 'primitiva', plane: 'primitiva', segment: 'primitiva', chain: 'primitiva',
   group: 'combinar', union: 'combinar', merge: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
-  skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação',
+  skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação', keys: 'animação', timeline: 'animação', voice: 'roteiro', say: 'roteiro', caption: 'roteiro',
   polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', loft: 'primitiva', implicit: 'primitiva',
   space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
@@ -233,6 +238,7 @@ export function languageSummary() {
     `Cena:\n${fn('cena')}`,
     `Rig:\n${fn('rig')}\n${c.rig.skeleton.map((m) => `  esq.${m.signature}  # ${m.doc}`).join('\n')}\n${c.rig.bone.map((m) => `  osso.${m.signature}  # ${m.doc}`).join('\n')}`,
     `Animação:\n${fn('animação')}\n  time  # ${DOCS.time}`,
+    `Roteiro (legendas e falas; vídeo com scripts/video.mjs):\n${fn('roteiro')}`,
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
     `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,
