@@ -232,7 +232,7 @@ abre o aplicativo Electron instalado.
 ## Vídeo (chaves, roteiro, falas e legendas)
 
 Com `timeline()`, `keys()` e `say()`/`caption()`, o botão **Vídeo** grava um MP4 com as falas (Qwen3-TTS) e
-legendas em `out/` da pasta do projeto. O ffmpeg vem no pacote; as vozes são instaladas pelo próprio app em
+legendas na pasta de downloads. O ffmpeg vem no pacote; as vozes são instaladas pelo próprio app em
 `~/.local/share/3di/tts` (botão Instalar vozes; precisa do `python3-venv`). Detalhes em
 [docs/rotas/video.md](docs/rotas/video.md).
 

@@ -41,8 +41,8 @@ e `screenshot(time=...)` conferem um instante.
 ## Render de vídeo
 
 **No app:** botão **Vídeo** (Exportar). Escolha nome, tamanho, quadros por segundo, legendas (faixa embutida,
-gravadas na imagem ou sem) e se as falas têm voz. Os quadros são desenhados pela própria vista; o vídeo, o `.srt`
-e as falas vão para `out/` da pasta do projeto (workspace, pasta da cena aberta ou `~/3DI`).
+gravadas na imagem ou sem) e se as falas têm voz. Os quadros são desenhados pela própria vista; o vídeo e o `.srt` vão para a pasta de
+downloads do usuário (a do `xdg-user-dir DOWNLOAD`, padrão `~/Downloads`), sem sobrescrever arquivos.
 
 **Pela linha de comando** (no repositório):
 

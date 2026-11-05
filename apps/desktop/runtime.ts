@@ -12,6 +12,14 @@ export async function startRuntime(root: string, workerFile: string, options: { 
   const log = options.log ?? console.log;
   const engine = new Engine(workerFile);
   let mcp: Awaited<ReturnType<typeof startMcp>> | undefined;
+  // pasta de downloads do sistema (xdg-user-dir respeita o nome localizado, ex.: ~/Transferências)
+  const downloadsDir = async () => {
+    try {
+      const dir = (await promisify(execFile)('xdg-user-dir', ['DOWNLOAD'])).stdout.trim();
+      if (dir && dir !== homedir()) return dir;
+    } catch {}
+    return join(homedir(), 'Downloads');
+  };
   // pasta do projeto: o workspace ativo, senão a pasta da cena aberta, senão ~/3DI (criada para o 3DI)
   const projectDir = async () => {
     const ws = workspace.info().workspace;
@@ -25,8 +33,8 @@ export async function startRuntime(root: string, workerFile: string, options: { 
     integration: () => ({ endpoint: mcp?.endpoint ?? null }),
     // painel Agente: o agente usa o MCP deste 3DI e trabalha na pasta do projeto
     agents: { mcpEndpoint: () => mcp?.endpoint ?? null, cwd: () => projectDir() },
-    // vídeos ficam em out/ da pasta do projeto
-    video: { dir: async () => join(await projectDir(), 'out') },
+    // vídeos vão para a pasta de downloads do usuário
+    video: { dir: async () => downloadsDir() },
   });
   const workspace = new SceneWorkspace({
     state: () => ide.relay || ide.clientCount() ? ide.call('fileState') : Promise.resolve({ path: null, dirty: false }),
