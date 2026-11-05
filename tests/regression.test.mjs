@@ -882,7 +882,7 @@ camera(pos=keys((0, (0, 1, 4)), (6, (4, 1, 0))), look=(0, 0, 0))`;
   assert.ok(a.speak && b.speak && !c.speak);
   assert.ok(b.start >= a.end, 'a segunda fala entra depois da primeira');
   assert.equal(a.voice, 'n');
-  assert.deepEqual(sc.voices.n, { speaker: 'Serena', language: 'Portuguese', instruct: 'calma' });
+  assert.deepEqual(sc.voices.n, { speaker: 'Serena', language: 'Portuguese', instruct: 'calma', provider: null, template: null });
   // câmera animada vira trilha amostrada; a câmera em si leva t = 0
   assert.deepEqual(sc.camera.pos, [0, 1, 4]);
   const mid = sc.camTrack.pos[Math.round(3 * sc.camTrack.fps)];

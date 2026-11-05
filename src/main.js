@@ -194,7 +194,7 @@ function trackView(tr, t) {
 // falas tocando no preview; o roteiro volta reagendado pela duração real do áudio
 const previewAudio = createPreviewAudio({
   onScript(script) { if (sceneInfo.scene) { sceneInfo.scene.script = script; timeline.setScene(sceneInfo.scene); } },
-  onStatus(text) { timeline.setAudio({ has: (sceneInfo.scene?.script ?? []).some((l) => l.speak), status: text }); },
+  onStatus(text, extra = {}) { timeline.setAudio({ has: (sceneInfo.scene?.script ?? []).some((l) => l.speak), status: text, ...extra }); },
 });
 const timeline = createTimeline({
   host: $('right'),

@@ -50,7 +50,17 @@
   #timeline .lanes b { position: absolute; bottom: 2px; height: 8px; border-radius: 3px; background: #4f8cff; opacity: .8; }
   #timeline .lanes b.cap { background: #9aa3b5; }
   #timeline .head { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #ff5d5d; }
-  #timeline .audio-state { font-size: 11px; opacity: .75; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #timeline .audio-state { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; opacity: .8; max-width: 260px; white-space: nowrap; }
+  #timeline .audio-state .txt { overflow: hidden; text-overflow: ellipsis; }
+  #timeline .audio-state .spin { display: none; width: 10px; height: 10px; border: 2px solid rgba(255,255,255,.25); border-top-color: #4f8cff; border-radius: 50%; animation: tlspin .8s linear infinite; }
+  #timeline .audio-state.busy .spin { display: inline-block; }
+  #timeline .audio-state .bar { width: 60px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.15); overflow: hidden; }
+  #timeline .audio-state .bar span { display: block; height: 100%; width: 0; background: #4f8cff; transition: width .3s; }
+  #timeline .audio-state .bar span.indet { width: 35%; animation: tlindet 1.2s ease-in-out infinite; }
+  #timeline .lanes.pending b.say { animation: tlpulse 1s ease-in-out infinite alternate; }
+  @keyframes tlspin { to { transform: rotate(360deg); } }
+  @keyframes tlindet { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+  @keyframes tlpulse { from { opacity: .35; } to { opacity: .9; } }
   #timeline .time { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
   #settingsDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); }
   #settingsDialog[hidden] { display: none; }
@@ -67,6 +77,17 @@
   #settingsDialog .chip button { padding: 0 5px; font-size: 11px; }
   #settingsDialog .log { margin: 0; max-height: 120px; overflow: auto; font-size: 11px; white-space: pre-wrap; opacity: .8; }
   #settingsDialog .actions { display: flex; justify-content: flex-end; }
+  #settingsDialog .hint { margin: 0; font-size: 12px; opacity: .75; }
+  #settingsDialog .voices { display: flex; flex-direction: column; gap: 4px; }
+  #settingsDialog .voice { display: flex; gap: 6px; align-items: center; }
+  #settingsDialog .voice span { flex: 1; font-size: 11px; opacity: .7; }
+  #settingsDialog textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  #settingsDialog audio { width: 100%; }
+  #settingsDialog .row label { flex: 1; min-width: 0; }
+  #settingsDialog .row select { flex: 1; min-width: 0; }
+  #settingsDialog .tpl-list .voice span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #settingsDialog details { display: flex; flex-direction: column; gap: 6px; }
+  #settingsDialog details[open] > *:not(summary) { margin-top: 6px; }
   #videoDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); }
   #videoDialog[hidden] { display: none; }
   #videoDialog .card { width: min(460px, 92vw); background: #1d2028; color: #e8eaf0; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }

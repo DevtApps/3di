@@ -9,7 +9,7 @@ export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () =
     <div class="track"><div class="lanes"></div><div class="head"></div></div>
     <span class="time">0.0 / 0.0 s</span>
     <button data-a="mute" title="Liga/desliga o som das falas no preview">🔊</button>
-    <span class="audio-state"></span>
+    <span class="audio-state"><i class="spin"></i><span class="txt"></span><span class="bar"><span></span></span></span>
     <button data-a="follow" class="on" title="Usar a câmera animada do roteiro (girar a vista solta a câmera)">🎥</button>`;
   const caption = document.createElement('div');
   caption.id = 'captionLine';
@@ -78,9 +78,17 @@ export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () =
       }
     },
     setFollow(on) { follow.classList.toggle('on', on); },
-    setAudio({ has, status }) {
-      bar.querySelector('[data-a=mute]').hidden = !has;
-      bar.querySelector('.audio-state').textContent = status ?? '';
+    // estado das falas: busy = gerando (blocos das falas piscam), progress = 0..1 ou null (indeterminado)
+    setAudio({ has, status, busy = false, progress = null }) {
+      if (has !== undefined) bar.querySelector('[data-a=mute]').hidden = !has;
+      const st = bar.querySelector('.audio-state');
+      st.classList.toggle('busy', busy);
+      st.querySelector('.txt').textContent = status ?? '';
+      st.querySelector('.bar').hidden = !busy;
+      const fill = st.querySelector('.bar span');
+      fill.classList.toggle('indet', busy && progress === null);
+      fill.style.width = progress === null ? '' : `${Math.round(progress * 100)}%`;
+      lanes.classList.toggle('pending', busy);
     },
   };
 }

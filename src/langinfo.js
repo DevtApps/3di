@@ -61,8 +61,8 @@ const DOCS = {
   osc: 'Vai de `a` até `b` e volta, suavemente, a cada `period` segundos.',
   keys: 'Valor animado por chaves (tempo, valor): número ou tupla. `ease` linear/smooth/in/out/step, `loop` repete. Vale onde vale time (at, rotate, scale, glow, camera).',
   timeline: 'Duração (s) e quadros por segundo do vídeo e da animação.',
-  voice: 'Define uma voz do Qwen3-TTS para as falas: speaker (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee), language, instruct (estilo).',
-  say: 'Fala do roteiro: legenda + áudio por TTS. Sem `at`, entra depois da anterior; `voice`, `style`. Devolve o fim (s).',
+  voice: 'Define uma voz para as falas: provider ("qwen" local ou "elevenlabs"), speaker (voz pronta do Qwen, voz clonada ou voz do ElevenLabs pelo nome), language, template (template de áudio) e instruct (estilo livre). Sem speaker/provider valem os padrões das configurações.',
+  say: 'Fala do roteiro: legenda + áudio. Sem `at`, entra depois da anterior; `voice`; `style` = nome de um template de áudio (narrador, animado, calmo, sussurro...) ou estilo livre. Devolve o fim (s).',
   caption: 'Legenda sem áudio no instante `at` por `dur` segundos.',
   // matemática e Python
   print: 'Mostra valores no painel de status.',

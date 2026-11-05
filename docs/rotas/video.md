@@ -23,18 +23,40 @@ O layout (`on`, `beside`, `place`) e as caixas usam o valor em t = 0. Anime a pe
 
 | | |
 |---|---|
-| `voice(name, speaker="Ryan", language="Portuguese", instruct=None)` | define uma voz do Qwen3-TTS. `speaker`: Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee; `instruct`: estilo ("tom animado", "sussurrando") |
-| `say(text, at=None, dur=None, voice=None, style=None)` | fala: legenda + áudio. Sem `at`, entra depois da fala anterior; `style` soma ao estilo da voz. Devolve o instante em que termina |
+| `voice(name, speaker=None, language="Portuguese", instruct=None, provider=None, template=None)` | define uma voz. `provider`: `"qwen"` (Qwen3-TTS local) ou `"elevenlabs"`; `speaker`: voz pronta do Qwen (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee; nenhuma nativa de português), uma **voz clonada** ou uma voz da sua conta do ElevenLabs (nome ou id); `template`: template de áudio; `instruct`: estilo livre (Qwen). Sem `speaker`/`provider`, valem os padrões das configurações |
+| `say(text, at=None, dur=None, voice=None, style=None)` | fala: legenda + áudio. Sem `at`, entra depois da fala anterior; `style` é o nome de um template de áudio ou um estilo livre. Devolve o instante em que termina |
 | `caption(text, at=None, dur=None)` | só legenda, sem áudio |
 
 `dur` é estimada pelo tamanho do texto (~12 caracteres/s). No vídeo vale a duração real do áudio:
 falas sem `at` são reagendadas em sequência; com `at` ficam no lugar (o render avisa se sobrepuserem).
 Sem `timeline()`, a duração é o fim do roteiro ou a última chave.
 
+## Templates de áudio
+
+Estilos com nome e o prompt que será usado (⚙ → Templates de áudio): `narrador`, `animado`, `calmo`, `sussurro`,
+`comercial`, `noticiario` e `crianca` vêm prontos; edite ou crie outros. Cada template tem o **prompt** (instrução de
+estilo para o Qwen3-TTS) e, para o ElevenLabs, **marcações de áudio** do modelo v3 (ex.: `[excited]`, `[whispers]`)
+e os ajustes de estabilidade, estilo e velocidade. Use em `say("...", style="narrador")` ou `voice("n", template="calmo")`.
+
+## ElevenLabs
+
+Em ⚙ → ElevenLabs: cole a chave de API (fica em `~/.local/share/3di/secrets.json`, só legível por você; ou use a
+variável `ELEVENLABS_API_KEY`), escolha o modelo e carregue as vozes da sua conta para escolher a padrão. Use como
+provedor padrão ou por voz: `voice("narrador", provider="elevenlabs", speaker="Rachel")`. As falas ficam no mesmo
+cache (cada fala é paga uma vez só). A conta e o consumo são os do ElevenLabs.
+
+## Vozes clonadas
+
+Nas configurações (⚙) → **Vozes clonadas**: dê um nome, envie um áudio (ou grave pelo microfone) com 5 a 20 s de
+fala limpa e, se puder, o texto falado nele. A voz entra no catálogo e é usada pelo nome:
+`voice("narrador", speaker="minha-voz")`. O áudio de referência fica em `~/.local/share/3di/voices/`; a geração usa
+o modelo Base do Qwen3-TTS (1.7B ou 0.6B, baixado na primeira vez). Clone só vozes que você tem permissão de usar.
+
 ## Preview
 
 A barra de timeline embaixo da vista toca/pausa, arrasta o tempo, mostra as chaves (amarelo) e as falas
-(azul) e legendas (cinza). A legenda ativa aparece por cima da vista. Com câmera animada, o botão 🎥
+(azul) e legendas (cinza). A legenda ativa aparece por cima da vista e as falas tocam junto (🔊 liga/desliga); enquanto são geradas,
+a barra mostra o progresso (fala x de n) e os blocos das falas piscam. Com câmera animada, o botão 🎥
 segue a câmera do roteiro; girar a vista solta a câmera. Pelo MCP: `set_time(time=..., playing=False)`
 e `screenshot(time=...)` conferem um instante.
 

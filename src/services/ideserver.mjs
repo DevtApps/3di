@@ -1,6 +1,8 @@
+import { spawn } from 'node:child_process';
 import { AgentSession, agentStatus } from './agents.mjs';
 import { ffmpegPath, ttsStatus, installTts, removeTts, speech, synthesize, clipFile, toSrt, scriptRange, frameEncoder, muxVideo } from './video.mjs';
-import { loadSettings, saveSettings, TTS_MODELS, SPEAKERS } from './settings.mjs';
+import { loadSettings, saveSettings, ttsConfig, voicesDir, VOICE_NAME, TTS_MODELS, CLONE_MODELS, SPEAKERS, PROVIDERS, ELEVEN_MODELS, elevenKey, setElevenKey, elevenKeyInfo } from './settings.mjs';
+import { elevenVoices } from './elevenlabs.mjs';
 import { createReadStream } from 'node:fs';
 import { mkdir as mkdirP, writeFile as writeFileP, rm as rmP, access } from 'node:fs/promises';
 // Servidor HTTP da IDE + ponte com o editor aberto (usado pelo MCP e pelo app desktop).
@@ -148,18 +150,60 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ token }));
       return;
     }
-    if (/^\/(bridge|agent|video|settings)(\/|$)/.test(url.pathname)) {
+    if (/^\/(bridge|agent|video|settings|voices)(\/|$)/.test(url.pathname)) {
       // EventSource e <audio> não mandam cabeçalhos: o token vai na URL
       const supplied = url.pathname.endsWith('/events') || url.pathname === '/video/clip' ? url.searchParams.get('token') : req.headers['x-3di-token'];
       if (supplied !== token) { res.writeHead(403).end(); return; }
     }
     if (url.pathname === '/settings') {
       const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
-      if (req.method === 'GET') { json({ settings: loadSettings(), ttsModels: TTS_MODELS, speakers: SPEAKERS }); return; }
+      if (req.method === 'GET') { json({ settings: loadSettings(), ttsModels: TTS_MODELS, cloneModels: CLONE_MODELS, speakers: SPEAKERS, providers: PROVIDERS, elevenModels: ELEVEN_MODELS, elevenKey: elevenKeyInfo() }); return; }
       if (req.method !== 'POST') { res.writeHead(405).end(); return; }
       let body = '';
       for await (const chunk of req) { body += chunk; if (body.length > 1e5) { res.writeHead(413).end(); return; } }
-      try { json({ settings: saveSettings(JSON.parse(body || '{}')) }); } catch (e) { json({ error: e.message }, 400); }
+      try {
+        const patch = JSON.parse(body || '{}');
+        // a chave vai para secrets.json, nunca para settings.json
+        if ('elevenKey' in patch) { setElevenKey(patch.elevenKey); delete patch.elevenKey; }
+        json({ settings: saveSettings(patch), elevenKey: elevenKeyInfo() });
+      } catch (e) { json({ error: e.message }, 400); }
+      return;
+    }
+    // vozes clonadas: o áudio de referência vira um WAV na pasta do 3DI e a voz entra no catálogo
+    if (url.pathname === '/voices/clone' || url.pathname === '/voices/delete') {
+      const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
+      if (req.method !== 'POST') { res.writeHead(405).end(); return; }
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 40e6) { res.writeHead(413).end(); return; } }
+      let args;
+      try { args = JSON.parse(body || '{}'); } catch { json({ error: 'JSON inválido' }, 400); return; }
+      const name = String(args.name ?? '').trim();
+      if (!VOICE_NAME.test(name)) { json({ error: 'nome da voz: 2 a 40 letras, números, - ou _ (sem espaços)' }, 400); return; }
+      if (SPEAKERS.some((v) => v.id.toLowerCase() === name.toLowerCase())) { json({ error: `'${name}' é o nome de uma voz pronta; escolha outro` }, 400); return; }
+      const settings = loadSettings();
+      const file = join(voicesDir(), `${name}.wav`);
+      if (url.pathname === '/voices/delete') {
+        await rmP(file, { force: true });
+        json({ settings: saveSettings({ voices: settings.voices.filter((v) => v.id !== name), tts: settings.tts.speaker === name ? { speaker: 'Serena' } : {} }) });
+        return;
+      }
+      if (!args.audio) { json({ error: 'envie o áudio de referência' }, 400); return; }
+      await mkdirP(voicesDir(), { recursive: true });
+      const tmp = join(voicesDir(), `.envio-${process.pid}-${Date.now()}`);
+      await writeFileP(tmp, Buffer.from(String(args.audio), 'base64'));
+      try {
+        // qualquer formato que o ffmpeg leia (wav, mp3, ogg, webm do microfone...) -> WAV mono 24 kHz, até 20 s
+        await new Promise((ok, fail) => {
+          const p = spawn(ffmpegPath(root), ['-y', '-v', 'error', '-i', tmp, '-t', '20', '-ac', '1', '-ar', '24000', file]);
+          let err = '';
+          p.stderr.on('data', (d) => { err += d; });
+          p.on('error', fail);
+          p.on('exit', (c) => (c === 0 ? ok() : fail(new Error(`não consegui ler o áudio: ${err.trim().split('\n').pop()}`))));
+        });
+      } catch (e) { json({ error: e.message }, 400); return; }
+      finally { await rmP(tmp, { force: true }); }
+      const entry = { id: name, file, refText: String(args.refText ?? '').trim(), language: String(args.language || 'Portuguese') };
+      json({ settings: saveSettings({ voices: [...settings.voices.filter((v) => v.id !== name), entry] }) });
       return;
     }
     if (url.pathname.startsWith('/video/')) {
@@ -172,7 +216,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
         createReadStream(f).pipe(res);
         return;
       }
-      if (url.pathname === '/video/status' && req.method === 'GET') { json({ tts: ttsStatus(root), installing: !!ttsInstall, ffmpeg: ffmpegPath(root) }); return; }
+      if (url.pathname === '/video/status' && req.method === 'GET') { json({ tts: ttsStatus(root), installing: !!ttsInstall, ffmpeg: ffmpegPath(root), provider: ttsConfig().provider, elevenKey: elevenKeyInfo().set }); return; }
       if (url.pathname === '/video/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
         res.write(': ok\n\n');
@@ -198,18 +242,25 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       if (url.pathname === '/video/speech') {
         try {
           const script = (args.script ?? []).map((l) => ({ ...l }));
-          const clips = await speech(script, args.voices ?? {}, { root, tts: loadSettings().tts, log: (text) => videoEmit({ kind: 'log', text }) });
+          const clips = await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), log: (text) => videoEmit({ kind: 'log', text }), progress: (p) => videoEmit({ kind: 'speech-progress', ...p }) });
           json({ clips: clips.map(({ key, start, seconds }) => ({ key, start, seconds })), script });
         } catch (e) { json({ error: e.message }, 500); }
         return;
       }
-      // ouvir uma voz nas configurações
+      // ouvir uma voz nas configurações (provider/speaker/template opcionais: padrão das configurações)
       if (url.pathname === '/video/sample') {
         try {
-          const tts = loadSettings().tts;
-          const [clip] = await synthesize([{ text: String(args.text || 'Olá! Esta é a minha voz no três D I.').slice(0, 300), speaker: String(args.speaker || tts.speaker), language: String(args.language || tts.language), instruct: args.instruct ?? tts.instruct }], { root, tts, log: (text) => videoEmit({ kind: 'log', text }) });
+          const tts = ttsConfig();
+          const [clip] = await synthesize([{ text: String(args.text || 'Olá! Esta é a minha voz no três D I.').slice(0, 300), provider: args.provider || tts.provider,
+            speaker: String(args.speaker || tts.speaker), language: String(args.language || tts.language), template: args.template ?? tts.template ?? null,
+            instruct: args.instruct ?? tts.instruct }], { root, tts, elevenKey: elevenKey(), log: (text) => videoEmit({ kind: 'log', text }) });
           json({ key: clip.key, seconds: clip.seconds });
         } catch (e) { json({ error: e.message }, 500); }
+        return;
+      }
+      // ElevenLabs: vozes da conta
+      if (url.pathname === '/video/eleven-voices') {
+        try { json({ voices: await elevenVoices(elevenKey()) }); } catch (e) { json({ error: e.message }, 400); }
         return;
       }
       if (url.pathname === '/video/remove-tts') {
@@ -251,7 +302,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
           const from = Number(args.from) || 0, to = Number(args.to);
           const script = args.subs === false && args.audio === false ? [] : scriptRange(args.script ?? [], from, to);
           const log = (text) => videoEmit({ kind: 'log', text });
-          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: loadSettings().tts, log });
+          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), log });
           const srt = args.subs !== false && script.length ? job.output.replace(/\.mp4$/, '.srt') : null;
           if (srt) await writeFileP(srt, toSrt(script));
           log('juntando vídeo, falas e legendas');

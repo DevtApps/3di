@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openEditor } from './headless.mjs';
 import { ffmpegPath, speech, toSrt, scriptRange, frameEncoder, muxVideo } from '../src/services/video.mjs';
-import { loadSettings } from '../src/services/settings.mjs';
+import { ttsConfig, elevenKey } from '../src/services/settings.mjs';
 
 const USAGE = 'uso: node scripts/video.mjs cena.3di saida.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--burn] [--no-audio] [--no-subs] [--cpu]';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -50,7 +50,7 @@ async function main() {
     const end = opt.to ?? info.duration;
     if (!(end > opt.from)) throw new Error('a cena não tem duração: use timeline(segundos), keys(...) ou say(...), ou passe --to');
     const script = scriptRange(info.script, opt.from, end);
-    const clips = opt.audio ? await speech(script, info.voices, { root, tts: loadSettings().tts, log }) : [];
+    const clips = opt.audio ? await speech(script, info.voices, { root, tts: ttsConfig(), elevenKey: elevenKey(), log }) : [];
     mkdirSync(dirname(output), { recursive: true });
     const base = output.replace(/\.[^./]+$/, '');
     const srt = opt.subs && script.length ? `${base}.srt` : null;

@@ -7,7 +7,7 @@
 //   tts/cache  falas já geradas (só fala nova ou alterada é gerada de novo)
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, openSync, readSync, closeSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readSync, closeSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -99,23 +99,77 @@ export function scriptRange(script, from, to) {
 // ---------- falas (Qwen3-TTS) ----------
 // Gera (ou pega do cache) o áudio de cada say(). Reagenda pela duração real: a legenda dura pelo
 // menos a fala e falas sem `at` andam para depois da anterior; com `at`, só avisa.
-// tts = { model, device, speaker, language, instruct }: configurações (a voz padrão vale para say() sem voice)
-export async function synthesize(jobs, { root, tts = {}, log = () => {} }) {
-  const py = ttsPython(root);
-  if (!py) throw new Error('vozes não instaladas: use Instalar vozes nas configurações do 3DI');
+// Pedido de fala: { text, provider ('qwen' | 'elevenlabs'), speaker, language, template, instruct }.
+// tts = configurações (ttsConfig): provedor e voz padrão, modelos, templates, vozes clonadas e o ElevenLabs.
+// Cada fala gerada fica em cache pelo conteúdo do pedido: só fala nova ou alterada é gerada de novo.
+export async function synthesize(jobs, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null }) {
   mkdirSync(cacheDir(), { recursive: true });
-  const items = jobs.map((j) => {
-    const job = { text: j.text, speaker: j.speaker, language: j.language, instruct: j.instruct || null, model: tts.model || null };
+  const cloned = new Map((tts.voices ?? []).map((v) => [v.id.toLowerCase(), v]));
+  const templates = new Map((tts.templates ?? []).map((x) => [x.id.toLowerCase(), x]));
+  const eleven = tts.elevenlabs ?? {};
+  let elevenVoiceList = null;
+  const items = [];
+  for (const j of jobs) {
+    const provider = j.provider || tts.provider || 'qwen';
+    const tpl = j.template ? templates.get(String(j.template).toLowerCase()) : null;
+    if (j.template && !tpl) throw new Error(`template de áudio '${j.template}' não existe (veja ⚙ → Templates de áudio)`);
+    let job;
+    if (provider === 'elevenlabs') {
+      // voz: o speaker do script (nome ou id) ou a voz padrão do ElevenLabs nas configurações
+      let voiceId = eleven.voice;
+      if (j.speaker && j.speaker !== tts.speaker) {
+        elevenVoiceList ??= await (await import('./elevenlabs.mjs')).elevenVoices(elevenKey);
+        const v = (await import('./elevenlabs.mjs')).findElevenVoice(elevenVoiceList, j.speaker);
+        if (!v) throw new Error(`voz '${j.speaker}' não existe na sua conta do ElevenLabs`);
+        voiceId = v.id;
+      }
+      if (!voiceId) throw new Error('escolha uma voz do ElevenLabs nas configurações (⚙ → Vozes)');
+      job = { provider, text: j.text, voiceId, model: eleven.model, language: j.language, tags: tpl?.tags || '',
+        stability: tpl?.stability ?? null, style: tpl?.style ?? null, speed: tpl?.speed ?? null };
+    } else {
+      const c = cloned.get(String(j.speaker).toLowerCase());
+      const instruct = [tpl?.prompt, j.instruct].filter(Boolean).join('; ') || null;
+      job = c
+        ? { text: j.text, language: j.language || c.language, ref_audio: c.file, ref_text: c.refText || null, model: tts.cloneModel || null,
+          ref: existsSync(c.file) ? `${statSync(c.file).size}-${statSync(c.file).mtimeMs}` : null }
+        : { text: j.text, speaker: j.speaker, language: j.language, instruct, model: tts.model || null };
+      if (c && !job.ref) throw new Error(`o áudio da voz clonada '${c.id}' sumiu: clone de novo nas configurações`);
+    }
     const key = createHash('sha1').update(JSON.stringify(job)).digest('hex').slice(0, 16);
-    return { ...job, key, out: join(cacheDir(), `${key}.wav`) };
-  });
+    items.push({ ...job, key, out: join(cacheDir(), `${key}.wav`) });
+  }
   const missing = items.filter((it) => !existsSync(it.out));
-  if (missing.length) {
-    log(`gerando ${missing.length} fala(s) com o Qwen3-TTS (a primeira vez baixa o modelo)`);
+  const total = missing.length;
+  let done = 0;
+  if (total) progress({ stage: 'model', done, total });
+  // ElevenLabs: uma chamada por fala
+  const remote = missing.filter((it) => it.provider === 'elevenlabs');
+  if (remote.length) {
+    const { elevenSpeak } = await import('./elevenlabs.mjs');
+    log(`gerando ${remote.length} fala(s) pelo ElevenLabs`);
+    for (const it of remote) {
+      const secs = await elevenSpeak(elevenKey, it);
+      done++;
+      progress({ stage: 'speech', done, total });
+      log(`fala pronta: ${secs.toFixed(1)} s`);
+    }
+  }
+  // Qwen3-TTS: todas de uma vez, num processo Python
+  const local = missing.filter((it) => it.provider !== 'elevenlabs');
+  if (local.length) {
+    const py = ttsPython(root);
+    if (!py) throw new Error('vozes do Qwen3-TTS não instaladas: use Instalar vozes nas configurações do 3DI (ou escolha o ElevenLabs)');
+    log(`gerando ${local.length} fala(s) com o Qwen3-TTS (a primeira vez baixa o modelo)`);
     const req = join(cacheDir(), `pedido-${process.pid}-${Date.now()}.json`);
-    writeFileSync(req, JSON.stringify(missing));
-    const env = { ...(tts.model ? { THREEDI_TTS_MODEL: tts.model } : {}), ...(tts.device && tts.device !== 'auto' ? { THREEDI_TTS_DEVICE: tts.device } : {}) };
-    try { await run(py, [unpacked(join(root, 'scripts', 'tts.py')), req], { env, onLine: (l) => { if (l.startsWith('{')) log(`fala pronta: ${JSON.parse(l).seconds.toFixed(1)} s`); } }); }
+    writeFileSync(req, JSON.stringify(local));
+    const env = { ...(tts.model ? { THREEDI_TTS_MODEL: tts.model } : {}), ...(tts.cloneModel ? { THREEDI_TTS_CLONE_MODEL: tts.cloneModel } : {}), ...(tts.device && tts.device !== 'auto' ? { THREEDI_TTS_DEVICE: tts.device } : {}) };
+    try { await run(py, [unpacked(join(root, 'scripts', 'tts.py')), req], { env, onLine: (l) => {
+      if (!l.startsWith('{')) return;
+      if (l.includes('"loaded"')) { progress({ stage: 'speech', done, total }); return; }
+      done++;
+      progress({ stage: 'speech', done, total });
+      log(`fala pronta: ${JSON.parse(l).seconds.toFixed(1)} s`);
+    } }); }
     finally { rmSync(req, { force: true }); }
   }
   return items.map((it) => ({ key: it.key, file: it.out, seconds: wavSeconds(it.out) }));
@@ -126,15 +180,29 @@ export function clipFile(key) {
   return /^[0-9a-f]{16}$/.test(key) ? join(cacheDir(), `${key}.wav`) : null;
 }
 
-export async function speech(script, voices, { root, tts = {}, log = () => {} }) {
+// Gera as falas do roteiro. A voz de cada say() vem da voice() dele (provider, speaker, language,
+// instruct, template) ou das configurações; style é o nome de um template ou um estilo livre.
+export async function speech(script, voices, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null }) {
   const lines = script.filter((l) => l.speak);
   if (!lines.length) return [];
-  if (!ttsPython(root)) { log('aviso: vozes não instaladas, sem as falas (instale nas configurações do 3DI)'); return []; }
-  const fallback = { speaker: tts.speaker || 'Serena', language: tts.language || 'Portuguese', instruct: tts.instruct || null };
+  const provider = tts.provider || 'qwen';
+  if (provider === 'qwen' && !ttsPython(root) && !Object.values(voices ?? {}).some((v) => v.provider === 'elevenlabs')) {
+    log('aviso: vozes não instaladas, sem as falas (instale nas configurações do 3DI ou use o ElevenLabs)');
+    return [];
+  }
+  const templates = new Set((tts.templates ?? []).map((x) => x.id.toLowerCase()));
   const made = await synthesize(lines.map((l) => {
-    const v = (l.voice && voices[l.voice]) || fallback;
-    return { text: l.text, speaker: v.speaker, language: v.language, instruct: [v.instruct, l.style].filter(Boolean).join('; ') || null };
-  }), { root, tts, log });
+    const v = (l.voice && voices[l.voice]) || {};
+    const isTemplate = l.style && templates.has(String(l.style).toLowerCase());
+    return {
+      text: l.text,
+      provider: v.provider || provider,
+      speaker: v.speaker || tts.speaker,
+      language: v.language || tts.language || 'Portuguese',
+      template: isTemplate ? l.style : (v.template || tts.template || null),
+      instruct: [v.instruct ?? (l.voice ? null : tts.instruct), isTemplate ? null : l.style].filter(Boolean).join('; ') || null,
+    };
+  }), { root, tts, log, progress, elevenKey });
   const items = lines.map((line, i) => ({ line, job: { out: made[i].file, key: made[i].key } }));
   const clips = [];
   let prevEnd = 0;

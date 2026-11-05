@@ -85,14 +85,20 @@ export function timelineBuiltins(scene) {
       scene.anim = { duration, fps };
       return null;
     }),
-    // voz para as falas: speaker = voz do Qwen3-TTS (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan,
-    // Aiden, Ono_Anna, Sohee); instruct = estilo ("fala animada", "sussurrando"...)
-    voice: N('voice', ['name', 'speaker="Ryan"', 'language="Portuguese"', 'instruct=None'], (a) => {
+    // voz para as falas. provider: "qwen" (Qwen3-TTS local) ou "elevenlabs"; speaker: voz pronta do Qwen
+    // (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee), voz clonada ou voz do ElevenLabs
+    // (nome ou id); template: template de áudio (estilo com o prompt); instruct: estilo livre (Qwen).
+    // Sem speaker/provider, valem os padrões das configurações (⚙).
+    voice: N('voice', ['name', 'speaker=None', 'language="Portuguese"', 'instruct=None', 'provider=None', 'template=None'], (a) => {
       const name = String(a.name);
-      scene.voices[name] = { speaker: String(a.speaker), language: String(a.language), instruct: a.instruct === null ? null : String(a.instruct) };
+      const provider = a.provider === null ? null : String(a.provider).toLowerCase();
+      if (provider && !['qwen', 'elevenlabs'].includes(provider)) throw new ScriptError(`voice(): provider deve ser "qwen" ou "elevenlabs"`, null);
+      scene.voices[name] = { speaker: a.speaker === null ? null : String(a.speaker), language: String(a.language), instruct: a.instruct === null ? null : String(a.instruct),
+        provider, template: a.template === null ? null : String(a.template) };
       return name;
     }),
-    // fala: legenda + áudio gerado por TTS. Sem `at`, entra depois da fala anterior.
+    // fala: legenda + áudio gerado por TTS. Sem `at`, entra depois da fala anterior. style: nome de um
+    // template de áudio ou um estilo livre.
     // dur estima pelo tamanho do texto; no vídeo, vale a duração real do áudio. Devolve o fim (s).
     say: N('say', ['text', 'at=None', 'dur=None', 'voice=None', 'style=None'], (a) => line(a, true)),
     // só legenda, sem áudio

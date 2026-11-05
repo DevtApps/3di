@@ -12,6 +12,19 @@ export function createPreviewAudio({ onScript, onStatus }) {
     return token;
   };
   const stopAll = () => { for (const a of players.values()) { a.pause(); } };
+  // progresso da geração (eventos do servidor): carregando o modelo, depois fala x de n
+  let es = null, generating = false;
+  const listen = () => {
+    if (es) return;
+    es = new EventSource(`/video/events?token=${encodeURIComponent(token)}`);
+    es.onmessage = (ev) => {
+      const e = JSON.parse(ev.data);
+      if (e.kind !== 'speech-progress' || !generating) return;
+      onStatus(e.stage === 'model' ? 'carregando o modelo de voz…' : `gerando fala ${Math.min(e.done + 1, e.total)} de ${e.total}…`,
+        { busy: true, progress: e.stage === 'model' ? null : e.done / e.total });
+    };
+    es.onerror = () => { es.close(); es = null; };
+  };
 
   return {
     // chamado a cada compilação: gera (ou reaproveita) as falas do roteiro
@@ -26,10 +39,17 @@ export function createPreviewAudio({ onScript, onStatus }) {
       if (!lines.length) { onStatus(''); return; }
       try {
         const status = await (await fetch('/video/status', { headers: { 'X-3DI-Token': await session() } })).json();
-        if (!status.tts?.installed) { onStatus('falas sem voz: instale as vozes nas configurações (⚙)'); return; }
-        onStatus('gerando as falas…');
+        // cada fala usa o provedor da sua voice() ou o padrão das configurações
+        const usesEleven = status.provider === 'elevenlabs' || Object.values(scene.voices ?? {}).some((v) => v.provider === 'elevenlabs');
+        const usesQwen = status.provider !== 'elevenlabs' || Object.values(scene.voices ?? {}).some((v) => v.provider === 'qwen');
+        if (usesQwen && !status.tts?.installed && !usesEleven) { onStatus('falas sem voz: instale as vozes ou configure o ElevenLabs (⚙)'); return; }
+        if (usesEleven && !status.elevenKey) { onStatus('falas sem voz: falta a chave do ElevenLabs (⚙)'); return; }
+        listen();
+        generating = true;
+        onStatus('preparando as falas…', { busy: true, progress: null });
         const r = await fetch('/video/speech', { method: 'POST', headers: { 'X-3DI-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ script: scene.script, voices: scene.voices }) });
         const j = await r.json();
+        generating = false;
         if (key !== wanted) return; // a cena mudou enquanto gerava
         if (!r.ok) throw new Error(j.error);
         clips = j.clips;
@@ -40,7 +60,7 @@ export function createPreviewAudio({ onScript, onStatus }) {
         }
         onScript(j.script);
         onStatus('');
-      } catch (e) { onStatus(`falas: ${e.message}`); }
+      } catch (e) { generating = false; onStatus(`falas: ${e.message}`); }
     },
     // chamado a cada quadro do preview com o tempo e se está tocando
     update(t, playing) {
