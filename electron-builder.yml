@@ -7,12 +7,17 @@ asar: true
 asarUnpack:
   - desktop/engine-worker.cjs
   - desktop/parts-worker-node.cjs
+  # executados fora do Node: ffmpeg do vídeo e gerador de falas (python)
+  - bin/ffmpeg
+  - scripts/tts.py
 linux:
   target:
     - deb
   category: Graphics
   icon: assets/icon.png
   executableName: 3di
+  # liga a janela do app ao ícone do menu (app_id / WM_CLASS)
+  syncDesktopName: true
   desktop:
     entry:
       StartupWMClass: 3DI
@@ -22,3 +27,6 @@ fileAssociations:
     mimeType: text/x-3di
 deb:
   maintainer: 3DI <3di@localhost>
+  # as vozes do vídeo (Qwen3-TTS) são instaladas pelo app num ambiente Python próprio
+  recommends:
+    - python3-venv

@@ -10,7 +10,7 @@ import { exportGLB } from '../src/export.js';
 import { buildSceneFns, surfaceColor } from '../src/sdf.js';
 
 test('examples compile and representative scenes export', async () => {
-  for (const name of await readdir(new URL('../examples/', import.meta.url))) {
+  for (const name of (await readdir(new URL('../examples/', import.meta.url))).filter((n) => n.endsWith('.3di'))) {
     const run = runScript(await readFile(new URL(`../examples/${name}`, import.meta.url), 'utf8'));
     assert.equal(run.ok, true, name);
     assert.ok(compileScene(run.scene).glsl.length);

@@ -40,12 +40,21 @@ e `screenshot(time=...)` conferem um instante.
 
 ## Render de vídeo
 
+**No app:** botão **Vídeo** (Exportar). Escolha nome, tamanho, quadros por segundo, legendas (faixa embutida,
+gravadas na imagem ou sem) e se as falas têm voz. Os quadros são desenhados pela própria vista; o vídeo, o `.srt`
+e as falas vão para `out/` da pasta do projeto (workspace, pasta da cena aberta ou `~/3DI`).
+
+**Pela linha de comando** (no repositório):
+
 ```bash
 node scripts/video.mjs cena.3di out/video.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--burn] [--no-audio] [--no-subs] [--cpu]
 ```
 
-- Quadros pelo próprio editor num Chrome headless (GPU), em H.264.
-- Falas pelo Qwen3-TTS (modelo 1.7B CustomVoice, GPU com ~6 GB ou CPU lenta), em cache em `out/.tts-cache`:
-  só fala nova ou alterada é gerada de novo. Instalação: `python3 -m venv .venv-tts && .venv-tts/bin/pip install qwen-tts soundfile`.
-  A primeira execução baixa os pesos do Hugging Face. `THREEDI_TTS_MODEL` troca o modelo (0.6B gasta menos memória, sem `instruct`).
-- Legendas: `.srt` ao lado do vídeo e faixa de legenda embutida no MP4; `--burn` grava na imagem.
+O que o vídeo usa e onde fica:
+- **ffmpeg:** vem no pacote do 3DI (no desenvolvimento, o `ffmpeg-static` do npm).
+- **Vozes (Qwen3-TTS):** grandes demais para o pacote (PyTorch: alguns GB). O botão **Instalar vozes** cria um
+  ambiente Python próprio em `~/.local/share/3di/tts/venv` (precisa do `python3-venv`, recomendado pelo `.deb`).
+  Os pesos do modelo (1.7B CustomVoice) são baixados na primeira fala; GPU com ~6 GB ou CPU (lenta).
+  `THREEDI_TTS_MODEL` troca o modelo (0.6B gasta menos memória, sem `instruct`).
+- **Cache das falas:** `~/.local/share/3di/tts/cache`; só fala nova ou alterada é gerada de novo.
+- Legendas: `.srt` ao lado do vídeo e faixa embutida no MP4, ou gravadas na imagem.

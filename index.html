@@ -50,7 +50,34 @@
   #timeline .lanes b { position: absolute; bottom: 2px; height: 8px; border-radius: 3px; background: #4f8cff; opacity: .8; }
   #timeline .lanes b.cap { background: #9aa3b5; }
   #timeline .head { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: #ff5d5d; }
+  #timeline .audio-state { font-size: 11px; opacity: .75; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #timeline .time { min-width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+  #settingsDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); }
+  #settingsDialog[hidden] { display: none; }
+  #settingsDialog .card { width: min(560px, 94vw); max-height: 90vh; overflow: auto; background: #1d2028; color: #e8eaf0; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+  #settingsDialog h3, #settingsDialog h4 { margin: 0; }
+  #settingsDialog section { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,.04); }
+  #settingsDialog label { display: flex; flex-direction: column; gap: 3px; }
+  #settingsDialog .row { display: flex; gap: 6px; }
+  #settingsDialog .row input { flex: 1; min-width: 0; }
+  #settingsDialog .agent { display: flex; flex-direction: column; gap: 5px; padding-top: 6px; }
+  #settingsDialog .ver, #settingsDialog .tts-state { font-size: 11px; opacity: .7; overflow-wrap: anywhere; margin: 0; }
+  #settingsDialog .models { display: flex; flex-wrap: wrap; gap: 4px; }
+  #settingsDialog .chip { display: inline-flex; gap: 4px; align-items: center; padding: 2px 4px 2px 8px; border-radius: 10px; background: rgba(79,140,255,.2); font-size: 12px; }
+  #settingsDialog .chip button { padding: 0 5px; font-size: 11px; }
+  #settingsDialog .log { margin: 0; max-height: 120px; overflow: auto; font-size: 11px; white-space: pre-wrap; opacity: .8; }
+  #settingsDialog .actions { display: flex; justify-content: flex-end; }
+  #videoDialog { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); }
+  #videoDialog[hidden] { display: none; }
+  #videoDialog .card { width: min(460px, 92vw); background: #1d2028; color: #e8eaf0; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  #videoDialog h3 { margin: 0 0 4px; }
+  #videoDialog label { display: flex; flex-direction: column; gap: 3px; }
+  #videoDialog label.row { flex-direction: row; align-items: center; gap: 6px; }
+  #videoDialog .tts { margin: 0; opacity: .75; font-size: 12px; overflow-wrap: anywhere; }
+  #videoDialog .progress { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+  #videoDialog .progress div { height: 100%; width: 0; background: #4f8cff; }
+  #videoDialog .log { margin: 0; max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; opacity: .8; }
+  #videoDialog .actions { display: flex; gap: 6px; justify-content: flex-end; }
   #captionLine { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); max-width: 80%; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.72); color: #fff; font-size: 18px; text-align: center; white-space: pre-line; pointer-events: none; z-index: 4; }
   #hud { position: absolute; left: 10px; bottom: 10px; color: rgba(255,255,255,.6); font-size: 11px; pointer-events: none; text-shadow: 0 1px 2px #000; }
   #parts { position: absolute; right: 10px; top: 10px; max-width: 280px; max-height: 50%; overflow: auto; background: rgba(20,22,28,.82); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: 11px/1.5 var(--mono); display: none; }
@@ -174,7 +201,7 @@
   <div class="header-group"><label class="sr-only" for="examples">Exemplos</label><select id="examples" title="Exemplos"></select></div>
   <div class="spacer"></div>
   <div class="connection" title="Estado da ponte com o editor"><span id="mcpState"></span><span id="bridgeLabel">Ponte offline</span></div>
-  <button id="btnIntegrations" aria-controls="integrations">Integrações</button>
+  <button id="btnSettings" title="Configurações: vozes e modelos dos agentes">⚙</button><button id="btnIntegrations" aria-controls="integrations">Integrações</button>
   <button id="btnToggleCode" aria-controls="left" aria-expanded="true">Ocultar código</button>
 </header>
 <div id="sceneToolbar" role="toolbar" aria-label="Cena e exportação">
@@ -182,7 +209,7 @@
     <button id="btnPlay" title="Pausar/continuar a animação" hidden>⏸</button>
     <button id="btnParts">Peças</button><button id="btnViews">Vistas</button><button id="btnFrame">Enquadrar</button><button id="btnRef" title="Imagem de referência por cima da vista (ou arraste uma imagem para a vista)">Referência</button>
   </div>
-  <div class="header-group"><span class="toolbar-label">EXPORTAR</span><button id="btnPng">PNG</button><button id="btnGlb">GLB</button><button id="btnGlbCheck" title="Exporta e mostra o resultado num motor padrão, ao lado do shader, com um relatório de qualidade">Conferir GLB</button></div>
+  <div class="header-group"><span class="toolbar-label">EXPORTAR</span><button id="btnPng">PNG</button><button id="btnGlb">GLB</button><button id="btnVideo" title="Renderiza a cena (timeline, chaves e roteiro) num MP4 com falas e legendas">Vídeo</button><button id="btnGlbCheck" title="Exporta e mostra o resultado num motor padrão, ao lado do shader, com um relatório de qualidade">Conferir GLB</button></div>
 </div>
 <div id="app">
   <div id="left">

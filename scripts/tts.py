@@ -27,7 +27,8 @@ def main():
         jobs = json.load(f)
     if not jobs:
         return
-    cuda = torch.cuda.is_available()
+    device = os.environ.get("THREEDI_TTS_DEVICE", "auto")
+    cuda = torch.cuda.is_available() and device != "cpu"
     model = Qwen3TTSModel.from_pretrained(
         MODEL,
         device_map="cuda:0" if cuda else "cpu",

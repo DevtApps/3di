@@ -10,6 +10,9 @@ import { connectBridge } from './ide/bridge.js';
 import { setupWorkspace } from './ide/workspace.js';
 import { createReference } from './ide/reference.js';
 import { createTimeline } from './ide/timeline.js';
+import { createVideoDialog } from './ide/video.js';
+import { createPreviewAudio } from './ide/audio.js';
+import { createSettingsDialog } from './ide/settings.js';
 
 const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'video', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
 const STORAGE_KEY = '3di.code';
@@ -188,8 +191,14 @@ function trackView(tr, t) {
   const center = [0, 1, 2].map((k) => (b.min[k] + b.max[k]) / 2);
   return { eye: lerp(tr.pos[i], tr.pos[i + 1]), target: tr.look[i] ? lerp(tr.look[i], tr.look[i + 1]) : center, fov: tr.fov[i] + (tr.fov[i + 1] - tr.fov[i]) * u };
 }
+// falas tocando no preview; o roteiro volta reagendado pela duração real do áudio
+const previewAudio = createPreviewAudio({
+  onScript(script) { if (sceneInfo.scene) { sceneInfo.scene.script = script; timeline.setScene(sceneInfo.scene); } },
+  onStatus(text) { timeline.setAudio({ has: (sceneInfo.scene?.script ?? []).some((l) => l.speak), status: text }); },
+});
 const timeline = createTimeline({
   host: $('right'),
+  onMute(off) { previewAudio.setMuted(off); },
   onSeek(t) { anim.time = t; anim.last = 0; draw(1); },
   onToggle() { $('btnPlay').click(); },
   onFollow(on) { follow = on; timeline.setFollow(on); requestRender(); draw(1); },
@@ -202,6 +211,7 @@ function draw(scale, opts = {}) {
   // opts.view = { eye, target, fov } desenha de outro ângulo sem mexer na câmera do editor
   const v = opts.view ?? (follow && sc?.camTrack ? trackView(sc.camTrack, opts.time ?? anim.time) : null);
   timeline.update(opts.time ?? anim.time, anim.on && anim.playing);
+  if (!opts.size) previewAudio.update(opts.time ?? anim.time, anim.on && anim.playing);
   const dist = v ? Math.hypot(v.eye[0] - v.target[0], v.eye[1] - v.target[1], v.eye[2] - v.target[2]) : cam.dist;
   // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
   const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(dist, r, 1) * 14) : 0);
@@ -403,6 +413,8 @@ async function compile() {
   // cenas com câmera animada ou roteiro também tocam, mesmo sem nada animado no shader
   const timed = out.animated || !!scene.camTrack || (scene.script?.length ?? 0) > 0 || scene.duration > 0;
   timeline.setScene(scene);
+  timeline.setAudio({ has: (scene.script ?? []).some((l) => l.speak) });
+  previewAudio.setScene(scene);
   if (scene.camTrack && camChanged) { follow = true; timeline.setFollow(true); }
   setAnimated(timed);
   markLine(null);
@@ -691,6 +703,9 @@ connectBridge({
   $('bridgeLabel').textContent = on ? 'Ponte ativa' : 'Ponte offline';
   $('mcpState').title = on ? 'ponte do editor conectada; confira o estado do agente externo no próprio cliente' : 'sem servidor MCP (rode npm run dev ou o app 3DI)';
 });
+
+const settingsDialog = createSettingsDialog({ button: $('btnSettings'), onChange: () => window.dispatchEvent(new Event('3di-settings')) });
+createVideoDialog({ button: $('btnVideo'), tdi: window.tdi, openSettings: () => settingsDialog.open() });
 
 // ---------- início: arquivo da linha de comando, rascunho salvo ou exemplo ----------
 

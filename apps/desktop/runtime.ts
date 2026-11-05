@@ -12,20 +12,21 @@ export async function startRuntime(root: string, workerFile: string, options: { 
   const log = options.log ?? console.log;
   const engine = new Engine(workerFile);
   let mcp: Awaited<ReturnType<typeof startMcp>> | undefined;
+  // pasta do projeto: o workspace ativo, senão a pasta da cena aberta, senão ~/3DI (criada para o 3DI)
+  const projectDir = async () => {
+    const ws = workspace.info().workspace;
+    if (ws) return ws;
+    try { const st = await ide.call('fileState'); if (st?.path) return dirname(st.path); } catch {}
+    const dir = join(homedir(), '3DI');
+    await mkdir(dir, { recursive: true });
+    return dir;
+  };
   const ide = await (startIdeServer as any)({ root, port: options.port ?? 8317, fallbackPort: true, reuse: options.reuseIde ?? false, log,
     integration: () => ({ endpoint: mcp?.endpoint ?? null }),
-    // painel Agente: o agente usa o MCP deste 3DI e trabalha no workspace, ou na pasta da cena aberta
-    agents: {
-      mcpEndpoint: () => mcp?.endpoint ?? null,
-      cwd: async () => {
-        const ws = workspace.info().workspace;
-        if (ws) return ws;
-        try { const st = await ide.call('fileState'); if (st?.path) return dirname(st.path); } catch {}
-        const dir = join(homedir(), '3DI');
-        await mkdir(dir, { recursive: true });
-        return dir;
-      },
-    },
+    // painel Agente: o agente usa o MCP deste 3DI e trabalha na pasta do projeto
+    agents: { mcpEndpoint: () => mcp?.endpoint ?? null, cwd: () => projectDir() },
+    // vídeos ficam em out/ da pasta do projeto
+    video: { dir: async () => join(await projectDir(), 'out') },
   });
   const workspace = new SceneWorkspace({
     state: () => ide.relay || ide.clientCount() ? ide.call('fileState') : Promise.resolve({ path: null, dirty: false }),

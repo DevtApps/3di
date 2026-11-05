@@ -229,6 +229,13 @@ Esse atalho aparece como **3DI (dev)** e usa as portas de desenvolvimento. Ele d
 cópia local do repositório; se mover a pasta, reinstale o atalho. O atalho do pacote `.deb`
 abre o aplicativo Electron instalado.
 
+## Vídeo (chaves, roteiro, falas e legendas)
+
+Com `timeline()`, `keys()` e `say()`/`caption()`, o botão **Vídeo** grava um MP4 com as falas (Qwen3-TTS) e
+legendas em `out/` da pasta do projeto. O ffmpeg vem no pacote; as vozes são instaladas pelo próprio app em
+`~/.local/share/3di/tts` (botão Instalar vozes; precisa do `python3-venv`). Detalhes em
+[docs/rotas/video.md](docs/rotas/video.md).
+
 ## Agente dentro do 3DI (Claude Code e Codex)
 
 A aba **Agente**, ao lado de Código, conversa com o Claude Code ou o Codex instalados na máquina, sem sair do 3DI.

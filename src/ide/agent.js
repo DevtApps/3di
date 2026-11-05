@@ -26,13 +26,24 @@ export function createAgentPanel(panel) {
   let token = null, busy = false, status = null, live = null, es = null;
 
   try { const s = JSON.parse(localStorage.getItem(STORE) || '{}'); if (s.provider) provider.value = s.provider; custom.value = s.custom ?? ''; } catch {}
+  let agentSettings = { claude: { model: '', models: [] }, codex: { model: '', models: [] } };
+  // modelos: os de sempre + os cadastrados nas configurações (⚙); o padrão vem de lá
   const fillModels = (keep) => {
-    model.replaceChildren(...MODELS[provider.value].map(([v, label]) => new Option(label, v)));
-    if (keep !== undefined) model.value = keep;
+    const own = agentSettings[provider.value].models.map((m) => [m, m]);
+    model.replaceChildren(...[...MODELS[provider.value], ...own].map(([v, label]) => new Option(label, v)));
+    model.value = keep !== undefined && [...model.options].some((o) => o.value === keep) ? keep : agentSettings[provider.value].model;
   };
+  const loadSettings = async () => {
+    try {
+      const r = await fetch('/settings', { headers: { 'X-3DI-Token': token } });
+      if (r.ok) agentSettings = (await r.json()).settings.agents;
+    } catch {}
+    fillModels(model.value);
+  };
+  window.addEventListener('3di-settings', loadSettings);
   try { fillModels(JSON.parse(localStorage.getItem(STORE) || '{}').model ?? ''); } catch { fillModels(); }
   const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ provider: provider.value, model: model.value, custom: custom.value })); } catch {} };
-  provider.onchange = () => { fillModels(''); save(); showInfo(); };
+  provider.onchange = () => { fillModels(); save(); showInfo(); };
   model.onchange = save;
   custom.onchange = save;
 
@@ -101,6 +112,7 @@ export function createAgentPanel(panel) {
       status = await api('status');
     } catch { status = null; showInfo(); setBusy(false); setTimeout(connect, 8000); return; }
     showInfo();
+    await loadSettings();
     setBusy(!!status.active?.busy);
     es?.close();
     es = new EventSource(`/agent/events?token=${encodeURIComponent(token)}`);

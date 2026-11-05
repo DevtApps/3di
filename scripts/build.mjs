@@ -12,8 +12,13 @@ await mkdir('build/services', { recursive: true });
 await build({ ...node, entryPoints: ['src/services/mcp.ts'], outfile: 'build/services/mcp.cjs' });
 for (const name of ['project', 'workspace']) await build({ bundle: true, platform: 'node', format: 'esm', target: 'node22', entryPoints: [`src/services/${name}.ts`], outfile: `build/services/${name}.mjs` });
 for (const path of ['src', 'assets', 'examples', 'docs', 'skills', 'index.html']) await cp(path, `build/desktop/${path}`, { recursive: true });
+// o que o app usa fora do JavaScript vai no pacote: o gerador de falas e o ffmpeg do vídeo
+await mkdir('build/desktop/scripts', { recursive: true });
+await cp('scripts/tts.py', 'build/desktop/scripts/tts.py');
+await mkdir('build/desktop/bin', { recursive: true });
+await cp((await import('ffmpeg-static')).default, 'build/desktop/bin/ffmpeg');
 await mkdir('build/desktop/node_modules', { recursive: true });
 await cp('node_modules/monaco-editor', 'build/desktop/node_modules/monaco-editor', { recursive: true });
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
-await writeFile('build/desktop/package.json', JSON.stringify({ name: '3di-studio', productName: '3DI', version: pkg.version, description: pkg.description, homepage: 'http://127.0.0.1:8317', dependencies: { 'monaco-editor': pkg.dependencies['monaco-editor'] }, main: 'desktop/main.cjs', author: { name: '3DI', email: '3di@localhost' }, license: pkg.license }, null, 2));
+await writeFile('build/desktop/package.json', JSON.stringify({ name: '3di-studio', productName: '3DI', version: pkg.version, description: pkg.description, homepage: 'http://127.0.0.1:8317', dependencies: { 'monaco-editor': pkg.dependencies['monaco-editor'] }, main: 'desktop/main.cjs', desktopName: '3di.desktop', author: { name: '3DI', email: '3di@localhost' }, license: pkg.license }, null, 2));
 console.log('Desktop pronto em build/desktop/');

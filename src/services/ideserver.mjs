@@ -1,4 +1,8 @@
 import { AgentSession, agentStatus } from './agents.mjs';
+import { ffmpegPath, ttsStatus, installTts, removeTts, speech, synthesize, clipFile, toSrt, scriptRange, frameEncoder, muxVideo } from './video.mjs';
+import { loadSettings, saveSettings, TTS_MODELS, SPEAKERS } from './settings.mjs';
+import { createReadStream } from 'node:fs';
+import { mkdir as mkdirP, writeFile as writeFileP, rm as rmP, access } from 'node:fs/promises';
 // Servidor HTTP da IDE + ponte com o editor aberto (usado pelo MCP e pelo app desktop).
 //  - serve os arquivos do projeto (sem cache);
 //  - /bridge/events (SSE): o editor recebe comandos;  /bridge/reply (POST): responde;
@@ -74,7 +78,8 @@ export async function isIdeServer(port, token = appToken()) {
  * Com reuse=false, mantém uma instância própria e usa uma porta livre se fallbackPort=true.
  */
 // agents (opcional): { mcpEndpoint(): url do MCP do 3DI, cwd(): pasta onde o agente trabalha }
-export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false, reuse = true, token = appToken(), agents = null } = {}) {
+// video (opcional): { dir(): pasta onde os vídeos são gravados }
+export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false, reuse = true, token = appToken(), agents = null, video = null } = {}) {
   root = await realpath(root);
   const clients = new Set();
   const pending = new Map();
@@ -101,6 +106,19 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     // trechos parciais de texto não vão para o histórico: a mensagem final substitui
     if (!(ev.kind === 'text' && ev.delta)) { agentLog.push(ev); if (agentLog.length > 800) agentLog.splice(0, agentLog.length - 800); }
     for (const c of agentClients) c.write(`data: ${JSON.stringify(ev)}\n\n`);
+  };
+
+  // ---- vídeo: a IDE desenha os quadros e os envia; aqui viram MP4 com falas e legendas ----
+  const videoClients = new Set();
+  const videoEmit = (e) => { for (const c of videoClients) c.write(`data: ${JSON.stringify(e)}\n\n`); };
+  const videoJobs = new Map();
+  let ttsInstall = null;
+  let nextVideo = 1;
+  const freeName = async (dir, name) => {
+    for (let i = 0; ; i++) {
+      const file = join(dir, `${name}${i ? `-${i + 1}` : ''}.mp4`);
+      try { await access(file); } catch { return file; }
+    }
   };
 
   const server = http.createServer((req, res) => {
@@ -130,9 +148,121 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ token }));
       return;
     }
-    if (url.pathname.startsWith('/bridge/') || url.pathname.startsWith('/agent/')) {
-      const supplied = url.pathname.endsWith('/events') ? url.searchParams.get('token') : req.headers['x-3di-token'];
+    if (/^\/(bridge|agent|video|settings)(\/|$)/.test(url.pathname)) {
+      // EventSource e <audio> não mandam cabeçalhos: o token vai na URL
+      const supplied = url.pathname.endsWith('/events') || url.pathname === '/video/clip' ? url.searchParams.get('token') : req.headers['x-3di-token'];
       if (supplied !== token) { res.writeHead(403).end(); return; }
+    }
+    if (url.pathname === '/settings') {
+      const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
+      if (req.method === 'GET') { json({ settings: loadSettings(), ttsModels: TTS_MODELS, speakers: SPEAKERS }); return; }
+      if (req.method !== 'POST') { res.writeHead(405).end(); return; }
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 1e5) { res.writeHead(413).end(); return; } }
+      try { json({ settings: saveSettings(JSON.parse(body || '{}')) }); } catch (e) { json({ error: e.message }, 400); }
+      return;
+    }
+    if (url.pathname.startsWith('/video/')) {
+      const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
+      // fala do cache para o preview tocar
+      if (url.pathname === '/video/clip' && req.method === 'GET') {
+        const f = clipFile(String(url.searchParams.get('k') ?? ''));
+        try { await access(f); } catch { res.writeHead(404).end(); return; }
+        res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'max-age=86400' });
+        createReadStream(f).pipe(res);
+        return;
+      }
+      if (url.pathname === '/video/status' && req.method === 'GET') { json({ tts: ttsStatus(root), installing: !!ttsInstall, ffmpeg: ffmpegPath(root) }); return; }
+      if (url.pathname === '/video/events') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+        res.write(': ok\n\n');
+        videoClients.add(res);
+        req.on('close', () => videoClients.delete(res));
+        return;
+      }
+      if (req.method !== 'POST') { res.writeHead(405).end(); return; }
+      const job = videoJobs.get(Number(url.searchParams.get('id')));
+      if (url.pathname === '/video/frame') {
+        if (!job) { json({ error: 'vídeo desconhecido' }, 404); return; }
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        await job.enc.write(Buffer.concat(chunks));
+        json({ ok: true });
+        return;
+      }
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 4e6) { res.writeHead(413).end(); return; } }
+      let args = {};
+      try { args = body ? JSON.parse(body) : {}; } catch { json({ error: 'JSON inválido' }, 400); return; }
+      // falas do roteiro para o preview: gera o que faltar (cache) e devolve os trechos já reagendados
+      if (url.pathname === '/video/speech') {
+        try {
+          const script = (args.script ?? []).map((l) => ({ ...l }));
+          const clips = await speech(script, args.voices ?? {}, { root, tts: loadSettings().tts, log: (text) => videoEmit({ kind: 'log', text }) });
+          json({ clips: clips.map(({ key, start, seconds }) => ({ key, start, seconds })), script });
+        } catch (e) { json({ error: e.message }, 500); }
+        return;
+      }
+      // ouvir uma voz nas configurações
+      if (url.pathname === '/video/sample') {
+        try {
+          const tts = loadSettings().tts;
+          const [clip] = await synthesize([{ text: String(args.text || 'Olá! Esta é a minha voz no três D I.').slice(0, 300), speaker: String(args.speaker || tts.speaker), language: String(args.language || tts.language), instruct: args.instruct ?? tts.instruct }], { root, tts, log: (text) => videoEmit({ kind: 'log', text }) });
+          json({ key: clip.key, seconds: clip.seconds });
+        } catch (e) { json({ error: e.message }, 500); }
+        return;
+      }
+      if (url.pathname === '/video/remove-tts') {
+        if (ttsInstall) { json({ error: 'a instalação ainda está em andamento' }, 409); return; }
+        await removeTts();
+        json({ ok: true });
+        return;
+      }
+      if (url.pathname === '/video/install-tts') {
+        if (!ttsInstall) {
+          ttsInstall = installTts((line) => videoEmit({ kind: 'log', text: line }))
+            .then(() => videoEmit({ kind: 'tts-ready' }), (e) => videoEmit({ kind: 'error', text: e.message }))
+            .finally(() => { ttsInstall = null; });
+        }
+        json({ ok: true });
+        return;
+      }
+      if (url.pathname === '/video/start') {
+        const dir = await (video?.dir?.() ?? join(root, 'out'));
+        await mkdirP(dir, { recursive: true });
+        const name = String(args.name || 'video').replace(/[^\w.-]+/g, '-').replace(/\.mp4$/i, '') || 'video';
+        const output = await freeName(dir, name);
+        const id = nextVideo++;
+        const frames = `${output}.quadros.mp4`;
+        videoJobs.set(id, { id, output, frames, fps: Number(args.fps) || 30, enc: frameEncoder(ffmpegPath(root), frames, Number(args.fps) || 30) });
+        json({ id, output });
+        return;
+      }
+      if (url.pathname === '/video/cancel') {
+        if (job) { job.enc.kill(); videoJobs.delete(job.id); await rmP(job.frames, { force: true }); }
+        json({ ok: true });
+        return;
+      }
+      if (url.pathname === '/video/finish') {
+        if (!job) { json({ error: 'vídeo desconhecido' }, 404); return; }
+        videoJobs.delete(Number(url.searchParams.get('id')));
+        try {
+          await job.enc.close();
+          const from = Number(args.from) || 0, to = Number(args.to);
+          const script = args.subs === false && args.audio === false ? [] : scriptRange(args.script ?? [], from, to);
+          const log = (text) => videoEmit({ kind: 'log', text });
+          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: loadSettings().tts, log });
+          const srt = args.subs !== false && script.length ? job.output.replace(/\.mp4$/, '.srt') : null;
+          if (srt) await writeFileP(srt, toSrt(script));
+          log('juntando vídeo, falas e legendas');
+          await muxVideo(ffmpegPath(root), { frames: job.frames, output: job.output, clips, script: args.subs === false ? [] : script, srt, burn: !!args.burn, duration: to - from });
+          json({ ok: true, output: job.output, srt, falas: clips.length });
+        } catch (e) { json({ error: e.message }, 500); }
+        finally { await rmP(job.frames, { force: true }); }
+        return;
+      }
+      res.writeHead(404).end();
+      return;
     }
     if (url.pathname.startsWith('/agent/')) {
       const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
