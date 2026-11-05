@@ -229,6 +229,22 @@ Esse atalho aparece como **3DI (dev)** e usa as portas de desenvolvimento. Ele d
 cópia local do repositório; se mover a pasta, reinstale o atalho. O atalho do pacote `.deb`
 abre o aplicativo Electron instalado.
 
+## Agente dentro do 3DI (Claude Code e Codex)
+
+A aba **Agente**, ao lado de Código, conversa com o Claude Code ou o Codex instalados na máquina, sem sair do 3DI.
+O 3DI roda o CLI do agente (como o Cooder faz), uma vez por mensagem, retomando a mesma conversa, e conecta nele o
+MCP do próprio 3DI: o agente lê a documentação, altera a cena aberta, confere screenshots e o GLB, e você vê o
+resultado no editor enquanto acompanha o texto e as ferramentas usadas no chat.
+
+- Requisitos: `claude` (Claude Code) e/ou `codex` instalados e com login feito no terminal. O 3DI procura o
+  executável no PATH, em `~/.local/bin` e nas instalações globais do npm do nvm; `THREEDI_CLAUDE` / `THREEDI_CODEX`
+  apontam outro caminho.
+- Pasta de trabalho: o workspace ativo, senão a pasta da cena aberta, senão `~/3DI`.
+- Permissões: o Claude edita arquivos da pasta e usa só o MCP do 3DI sem perguntar (sem shell); o Codex roda com
+  sandbox `workspace-write` e sem pedidos de aprovação.
+- Escolha de modelo no painel (ou digite um nome); trocar de agente ou de modelo começa uma conversa nova.
+- Funciona no app desktop e no modo dev (`npm run dev`); o servidor simples (`scripts/serve.py`) não roda agentes.
+
 ## Integração com agentes via MCP
 
 O 3DI disponibiliza um servidor MCP HTTP local. Mantenha o app ou o ambiente web em execução

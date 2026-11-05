@@ -134,7 +134,7 @@ async function launch(chrome, url, flags, src) {
   await page('Page.enable');
   // o editor abre com o código salvo no localStorage: assim já compila a cena pedida
   // (e não o exemplo inicial), e o tdi.load abaixo reaproveita o shader pronto
-  await page('Page.addScriptToEvaluateOnNewDocument', {
+  if (src !== null) await page('Page.addScriptToEvaluateOnNewDocument', {
     source: `try { localStorage.setItem('3di.code', ${JSON.stringify(src)}); } catch {}`,
   });
   await page('Page.navigate', { url });
@@ -171,4 +171,11 @@ export async function openEditor(src, { cpu = false, log = (m) => console.error(
   b ??= await launch(chrome, url, CPU_FLAGS, src);
   if (!b.webgl) throw new Error('WebGL2 não disponível no Chrome headless');
   return b;
+}
+
+// Abre uma IDE já em execução (ex.: o modo dev em http://localhost:8327) no Chrome headless.
+export async function openUrl(url, { cpu = false } = {}) {
+  const chrome = findChrome();
+  if (!chrome) throw new Error('Chrome/Chromium não encontrado');
+  return launch(chrome, url, cpu ? CPU_FLAGS : GPU_FLAGS, null);
 }

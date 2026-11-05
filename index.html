@@ -120,6 +120,22 @@
   #app.preview-only { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   #app.preview-only #left { display: none; }
   #integrations { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+  #agentPanel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+  #agentPanel[hidden] { display: none; }
+  #agentPanel .agent-bar { display: flex; gap: 6px; }
+  #agentPanel .agent-bar select, #agentPanel .agent-bar input { min-width: 0; flex: 1; }
+  #agentPanel .agent-info { font-size: 11px; opacity: .7; overflow-wrap: anywhere; }
+  #agentPanel .agent-log { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  #agentPanel .msg { padding: 7px 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.45; }
+  #agentPanel .msg.user { align-self: flex-end; max-width: 85%; background: rgba(79,140,255,.22); }
+  #agentPanel .msg.assistant { background: rgba(255,255,255,.05); }
+  #agentPanel .msg.tool { font: 12px ui-monospace, monospace; opacity: .75; padding: 3px 10px; }
+  #agentPanel .msg.tool.fail { color: #ff8a80; }
+  #agentPanel .msg.error { background: rgba(255,80,80,.15); color: #ff9c94; }
+  #agentPanel .msg.note { opacity: .6; font-size: 12px; }
+  #agentPanel textarea { width: 100%; resize: vertical; box-sizing: border-box; font: inherit; }
+  #agentPanel .agent-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 4px; }
+  #agentPanel .agent-state { flex: 1; font-size: 12px; opacity: .7; }
   .panel-intro h2 { font-size: 23px; margin: 8px 0; letter-spacing: -.6px; }
   .panel-intro p, .muted { color: var(--muted); }
   .integration-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 24px 0 20px; }
@@ -172,6 +188,7 @@
   <div id="left">
     <nav class="workspace-tabs" role="tablist" aria-label="Área de trabalho">
       <button id="tabCode" role="tab" aria-selected="true" aria-controls="codePanel">Código</button>
+      <button id="tabAgent" role="tab" aria-selected="false" aria-controls="agentPanel" tabindex="-1">Agente</button>
       <button id="tabIntegrations" role="tab" aria-selected="false" aria-controls="integrations" tabindex="-1">Integrações</button>
     </nav>
     <div id="codePanel" role="tabpanel" aria-labelledby="tabCode">
@@ -181,6 +198,7 @@
     </div>
     <div id="status" role="status"></div>
     </div>
+    <section id="agentPanel" role="tabpanel" aria-labelledby="tabAgent" hidden></section>
     <section id="integrations" role="tabpanel" aria-labelledby="tabIntegrations" hidden>
       <div class="panel-intro"><span class="eyebrow">TOOLBOX</span><h2>Seu agente, sua cena.</h2><p>Conecte o Codex ou Claude Code que você já usa ao 3DI.</p></div>
       <nav class="integration-tabs" aria-label="Guias de integração">

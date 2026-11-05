@@ -1,5 +1,6 @@
 import { DOC_ROUTES } from '../docroutes.js';
 import { integrationConfig } from '../integration-config.js';
+import { createAgentPanel } from './agent.js';
 
 export function setupWorkspace() {
   const $ = (id) => document.getElementById(id);
@@ -12,14 +13,17 @@ export function setupWorkspace() {
     $('btnToggleCode').textContent = previewOnly ? 'Mostrar código' : 'Ocultar código';
     $('btnToggleCode').setAttribute('aria-expanded', String(!previewOnly));
   };
+  const TABS = [['code', 'tabCode', 'codePanel'], ['agent', 'tabAgent', 'agentPanel'], ['integrations', 'tabIntegrations', 'integrations']];
+  let agent = null;
   const selectTab = (tab) => {
-    const integration = tab === 'integrations';
-    $('codePanel').hidden = integration;
-    $('integrations').hidden = !integration;
-    for (const [id, selected] of [['tabCode', !integration], ['tabIntegrations', integration]]) {
-      $(id).setAttribute('aria-selected', String(selected));
-      $(id).tabIndex = selected ? 0 : -1;
+    for (const [name, tabId, panelId] of TABS) {
+      const selected = name === tab;
+      $(panelId).hidden = !selected;
+      $(tabId).setAttribute('aria-selected', String(selected));
+      $(tabId).tabIndex = selected ? 0 : -1;
     }
+    // o painel do agente só conecta quando é aberto pela primeira vez
+    if (tab === 'agent') { agent ??= createAgentPanel($('agentPanel')); agent.focus(); }
   };
   $('btnToggleCode').onclick = () => {
     previewOnly = !previewOnly;
@@ -29,6 +33,7 @@ export function setupWorkspace() {
   };
   $('tabCode').onclick = () => selectTab('code');
   $('tabIntegrations').onclick = () => selectTab('integrations');
+  $('tabAgent').onclick = () => selectTab('agent');
   $('btnIntegrations').onclick = () => {
     previewOnly = false;
     applyPreview();
@@ -39,9 +44,10 @@ export function setupWorkspace() {
   document.querySelector('.workspace-tabs').addEventListener('keydown', (event) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const integration = event.key === 'End' || (event.key !== 'Home' && $('integrations').hidden);
-    selectTab(integration ? 'integrations' : 'code');
-    $(integration ? 'tabIntegrations' : 'tabCode').focus();
+    const i = TABS.findIndex(([, tabId]) => $(tabId).getAttribute('aria-selected') === 'true');
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (i + (event.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
+    selectTab(TABS[next][0]);
+    $(TABS[next][1]).focus();
   });
   applyPreview();
 

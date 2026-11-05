@@ -1,3 +1,4 @@
+import { AgentSession, agentStatus } from './agents.mjs';
 // Servidor HTTP da IDE + ponte com o editor aberto (usado pelo MCP e pelo app desktop).
 //  - serve os arquivos do projeto (sem cache);
 //  - /bridge/events (SSE): o editor recebe comandos;  /bridge/reply (POST): responde;
@@ -72,7 +73,8 @@ export async function isIdeServer(port, token = appToken()) {
  * Sobe o servidor. Pode reutilizar outro editor 3DI na mesma porta quando reuse=true.
  * Com reuse=false, mantém uma instância própria e usa uma porta livre se fallbackPort=true.
  */
-export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false, reuse = true, token = appToken() } = {}) {
+// agents (opcional): { mcpEndpoint(): url do MCP do 3DI, cwd(): pasta onde o agente trabalha }
+export async function startIdeServer({ root, port = 8317, log = () => {}, fallbackPort = false, reuse = true, token = appToken(), agents = null } = {}) {
   root = await realpath(root);
   const clients = new Set();
   const pending = new Map();
@@ -88,6 +90,17 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       const timer = setTimeout(() => { pending.delete(id); rej(new Error(`o editor não respondeu a '${cmd}'`)); }, timeoutMs);
       pending.set(id, { resolve: res, reject: rej, timer });
     });
+  };
+
+  // ---- agentes (Claude Code / Codex) no painel Agente da IDE: uma conversa por vez ----
+  const agentClients = new Set();
+  const agentLog = []; // eventos da conversa atual, reenviados a quem reconecta
+  let agent = null;
+  const agentEmit = (e) => {
+    const ev = { ...e, at: Date.now() };
+    // trechos parciais de texto não vão para o histórico: a mensagem final substitui
+    if (!(ev.kind === 'text' && ev.delta)) { agentLog.push(ev); if (agentLog.length > 800) agentLog.splice(0, agentLog.length - 800); }
+    for (const c of agentClients) c.write(`data: ${JSON.stringify(ev)}\n\n`);
   };
 
   const server = http.createServer((req, res) => {
@@ -117,9 +130,58 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ token }));
       return;
     }
-    if (url.pathname.startsWith('/bridge/')) {
-      const supplied = url.pathname === '/bridge/events' ? url.searchParams.get('token') : req.headers['x-3di-token'];
+    if (url.pathname.startsWith('/bridge/') || url.pathname.startsWith('/agent/')) {
+      const supplied = url.pathname.endsWith('/events') ? url.searchParams.get('token') : req.headers['x-3di-token'];
       if (supplied !== token) { res.writeHead(403).end(); return; }
+    }
+    if (url.pathname.startsWith('/agent/')) {
+      const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
+      if (!agents) { json({ error: 'agentes indisponíveis neste servidor' }, 404); return; }
+      if (url.pathname === '/agent/status' && req.method === 'GET') {
+        json({ agents: agentStatus(), active: agent ? { provider: agent.provider, busy: agent.busy, session: agent.session, model: agent.model } : null, cwd: await agents.cwd(), mcp: agents.mcpEndpoint() });
+        return;
+      }
+      if (url.pathname === '/agent/events') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+        res.write(`data: ${JSON.stringify({ kind: 'history', events: agentLog })}\n\n`);
+        agentClients.add(res);
+        req.on('close', () => agentClients.delete(res));
+        return;
+      }
+      if (req.method !== 'POST') { res.writeHead(405).end(); return; }
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 1e6) { res.writeHead(413).end(); return; } }
+      let args = {};
+      try { args = body ? JSON.parse(body) : {}; } catch { json({ error: 'JSON inválido' }, 400); return; }
+      if (url.pathname === '/agent/send') {
+        const text = String(args.text ?? '').trim();
+        if (!text) { json({ error: 'mensagem vazia' }, 400); return; }
+        if (agent?.busy) { json({ error: 'o agente ainda está respondendo' }, 409); return; }
+        const provider = args.provider === 'codex' ? 'codex' : 'claude';
+        const model = args.model ? String(args.model) : null;
+        // trocar de agente ou de modelo começa outra conversa
+        if (!agent || agent.provider !== provider || agent.model !== model) {
+          agent = new AgentSession({ provider, model, cwd: await agents.cwd(), mcpEndpoint: agents.mcpEndpoint(), emit: agentEmit });
+          agentLog.length = 0;
+          agentEmit({ kind: 'reset', provider, model });
+        }
+        agentEmit({ kind: 'user', text });
+        try { agent.run(text).catch((e) => agentEmit({ kind: 'error', text: e.message })); }
+        catch (e) { agentEmit({ kind: 'error', text: e.message }); agentEmit({ kind: 'done', stopped: false }); }
+        json({ ok: true });
+        return;
+      }
+      if (url.pathname === '/agent/stop') { agent?.stop(); json({ ok: true }); return; }
+      if (url.pathname === '/agent/reset') {
+        agent?.stop();
+        agent = null;
+        agentLog.length = 0;
+        agentEmit({ kind: 'reset' });
+        json({ ok: true });
+        return;
+      }
+      res.writeHead(404).end();
+      return;
     }
     if (url.pathname === '/bridge/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -218,6 +280,8 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     onClients: (fn) => { onClients = fn; },
     clientCount: () => clients.size,
     close: () => {
+      agent?.stop();
+      for (const c of agentClients) c.end();
       for (const client of clients) client.end();
       for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('servidor encerrado')); }
       pending.clear();
