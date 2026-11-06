@@ -30,8 +30,8 @@ export function findElevenVoice(voices, speaker) {
 
 const LANG = { portuguese: 'pt', english: 'en', spanish: 'es', french: 'fr', german: 'de', italian: 'it', russian: 'ru', japanese: 'ja', korean: 'ko', chinese: 'zh' };
 
-// PCM 16 bits mono -> WAV
-function wav(pcm, rate) {
+// PCM 16 bits mono -> WAV (também usado pelo Fish Audio)
+export function wav(pcm, rate) {
   const h = Buffer.alloc(44);
   h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8);
   h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);

@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { AgentSession, agentStatus, agentLogin, rescanAgents } from './agents.mjs';
 import { ffmpegPath, ttsStatus, installTts, removeTts, speech, synthesize, clipFile, toSrt, scriptRange, frameEncoder, muxVideo } from './video.mjs';
-import { loadSettings, saveSettings, ttsConfig, voicesDir, VOICE_NAME, TTS_MODELS, CLONE_MODELS, SPEAKERS, PROVIDERS, ELEVEN_MODELS, elevenKey, setElevenKey, elevenKeyInfo } from './settings.mjs';
+import { loadSettings, saveSettings, ttsConfig, voicesDir, VOICE_NAME, TTS_MODELS, CLONE_MODELS, SPEAKERS, PROVIDERS, ELEVEN_MODELS, FISH_MODELS, apiKey, apiKeys, setApiKey, apiKeyInfo } from './settings.mjs';
 import { elevenVoices } from './elevenlabs.mjs';
+import { fishVoices, fishCredit } from './fishaudio.mjs';
 import { createReadStream } from 'node:fs';
 import { mkdir as mkdirP, writeFile as writeFileP, rm as rmP, access } from 'node:fs/promises';
 // Servidor HTTP da IDE + ponte com o editor aberto (usado pelo MCP e pelo app desktop).
@@ -157,15 +158,16 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
     }
     if (url.pathname === '/settings') {
       const json = (o, code = 200) => res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(o));
-      if (req.method === 'GET') { json({ settings: loadSettings(), ttsModels: TTS_MODELS, cloneModels: CLONE_MODELS, speakers: SPEAKERS, providers: PROVIDERS, elevenModels: ELEVEN_MODELS, elevenKey: elevenKeyInfo() }); return; }
+      if (req.method === 'GET') { json({ settings: loadSettings(), ttsModels: TTS_MODELS, cloneModels: CLONE_MODELS, speakers: SPEAKERS, providers: PROVIDERS, elevenModels: ELEVEN_MODELS, fishModels: FISH_MODELS, keys: apiKeyInfo() }); return; }
       if (req.method !== 'POST') { res.writeHead(405).end(); return; }
       let body = '';
       for await (const chunk of req) { body += chunk; if (body.length > 1e5) { res.writeHead(413).end(); return; } }
       try {
         const patch = JSON.parse(body || '{}');
-        // a chave vai para secrets.json, nunca para settings.json
-        if ('elevenKey' in patch) { setElevenKey(patch.elevenKey); delete patch.elevenKey; }
-        json({ settings: saveSettings(patch), elevenKey: elevenKeyInfo() });
+        // as chaves vão para secrets.json, nunca para settings.json: { keys: { fishaudio: '...' } }
+        for (const [provider, key] of Object.entries(patch.keys ?? {})) setApiKey(provider, key);
+        delete patch.keys;
+        json({ settings: saveSettings(patch), keys: apiKeyInfo() });
       } catch (e) { json({ error: e.message }, 400); }
       return;
     }
@@ -216,7 +218,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
         createReadStream(f).pipe(res);
         return;
       }
-      if (url.pathname === '/video/status' && req.method === 'GET') { json({ tts: ttsStatus(root), installing: !!ttsInstall, ffmpeg: ffmpegPath(root), provider: ttsConfig().provider, elevenKey: elevenKeyInfo().set }); return; }
+      if (url.pathname === '/video/status' && req.method === 'GET') { json({ tts: ttsStatus(root), installing: !!ttsInstall, ffmpeg: ffmpegPath(root), provider: ttsConfig().provider, keys: Object.fromEntries(Object.entries(apiKeyInfo()).map(([p, k]) => [p, k.set])) }); return; }
       if (url.pathname === '/video/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
         res.write(': ok\n\n');
@@ -242,7 +244,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       if (url.pathname === '/video/speech') {
         try {
           const script = (args.script ?? []).map((l) => ({ ...l }));
-          const clips = await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), override: args.override ?? null, log: (text) => videoEmit({ kind: 'log', text }), progress: (p) => videoEmit({ kind: 'speech-progress', ...p }) });
+          const clips = await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), keys: apiKeys(), override: args.override ?? null, log: (text) => videoEmit({ kind: 'log', text }), progress: (p) => videoEmit({ kind: 'speech-progress', ...p }) });
           json({ clips: clips.map(({ key, start, seconds }) => ({ key, start, seconds })), script });
         } catch (e) { json({ error: e.message }, 500); }
         return;
@@ -253,7 +255,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
           const tts = ttsConfig();
           const [clip] = await synthesize([{ text: String(args.text || 'Olá! Esta é a minha voz no três D I.').slice(0, 300), provider: args.provider || tts.provider,
             speaker: String(args.speaker || tts.speaker), language: String(args.language || tts.language), template: args.template ?? tts.template ?? null,
-            instruct: args.instruct ?? tts.instruct }], { root, tts, elevenKey: elevenKey(), log: (text) => videoEmit({ kind: 'log', text }) });
+            instruct: args.instruct ?? tts.instruct }], { root, tts, keys: apiKeys(), log: (text) => videoEmit({ kind: 'log', text }) });
           json({ key: clip.key, seconds: clip.seconds });
         } catch (e) { json({ error: e.message }, 500); }
         return;
@@ -264,18 +266,34 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
         const opts = [];
         for (const v of SPEAKERS) opts.push({ provider: 'qwen', speaker: v.id, label: `${v.id} · Qwen (${v.note})` });
         for (const v of st.voices) opts.push({ provider: 'qwen', speaker: v.id, label: `${v.id} · clonada` });
-        if (elevenKey()) {
+        if (apiKey('elevenlabs')) {
           let list = [];
-          try { list = await elevenVoices(elevenKey()); } catch {}
+          try { list = await elevenVoices(apiKey('elevenlabs')); } catch {}
           for (const v of list) opts.push({ provider: 'elevenlabs', speaker: v.id, label: `${v.name} · ElevenLabs` });
           if (st.elevenlabs.voice && !list.some((v) => v.id === st.elevenlabs.voice)) opts.push({ provider: 'elevenlabs', speaker: st.elevenlabs.voice, label: `${st.elevenlabs.voiceName || st.elevenlabs.voice} · ElevenLabs` });
+        }
+        if (apiKey('fishaudio')) {
+          let list = [];
+          try { list = await fishVoices(apiKey('fishaudio'), { mine: true }); } catch {}
+          for (const v of list) opts.push({ provider: 'fishaudio', speaker: v.id, label: `${v.name} · Fish Audio` });
+          if (st.fishaudio.voice && !list.some((v) => v.id === st.fishaudio.voice)) opts.push({ provider: 'fishaudio', speaker: st.fishaudio.voice, label: `${st.fishaudio.voiceName || st.fishaudio.voice} · Fish Audio` });
         }
         json({ options: opts });
         return;
       }
       // ElevenLabs: vozes da conta
       if (url.pathname === '/video/eleven-voices') {
-        try { json({ voices: await elevenVoices(elevenKey()) }); } catch (e) { json({ error: e.message }, 400); }
+        try { json({ voices: await elevenVoices(apiKey('elevenlabs')) }); } catch (e) { json({ error: e.message }, 400); }
+        return;
+      }
+      // Fish Audio: vozes da conta (mine) ou busca na biblioteca pública, e o crédito da chave
+      if (url.pathname === '/video/fish-voices') {
+        const args = await readJson(req).catch(() => ({}));
+        try { json({ voices: await fishVoices(apiKey('fishaudio'), { mine: args.mine !== false, query: String(args.query ?? '').slice(0, 80), language: String(args.language ?? '').slice(0, 10) }) }); } catch (e) { json({ error: e.message }, 400); }
+        return;
+      }
+      if (url.pathname === '/video/fish-credit') {
+        try { json(await fishCredit(apiKey('fishaudio'))); } catch (e) { json({ error: e.message }, 400); }
         return;
       }
       if (url.pathname === '/video/remove-tts') {
@@ -317,7 +335,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
           const from = Number(args.from) || 0, to = Number(args.to);
           const script = args.subs === false && args.audio === false ? [] : scriptRange(args.script ?? [], from, to);
           const log = (text) => videoEmit({ kind: 'log', text });
-          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), override: args.override ?? null, log });
+          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), keys: apiKeys(), override: args.override ?? null, log });
           const srt = args.subs !== false && script.length ? job.output.replace(/\.mp4$/, '.srt') : null;
           if (srt) await writeFileP(srt, toSrt(script));
           log('juntando vídeo, falas e legendas');

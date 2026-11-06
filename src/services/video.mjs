@@ -99,15 +99,18 @@ export function scriptRange(script, from, to) {
 // ---------- falas (Qwen3-TTS) ----------
 // Gera (ou pega do cache) o áudio de cada say(). Reagenda pela duração real: a legenda dura pelo
 // menos a fala e falas sem `at` andam para depois da anterior; com `at`, só avisa.
-// Pedido de fala: { text, provider ('qwen' | 'elevenlabs'), speaker, language, template, instruct }.
-// tts = configurações (ttsConfig): provedor e voz padrão, modelos, templates, vozes clonadas e o ElevenLabs.
+// Pedido de fala: { text, provider ('qwen' | 'elevenlabs' | 'fishaudio'), speaker, language, template, instruct }.
+// tts = configurações (ttsConfig): provedor e voz padrão, modelos, templates, vozes clonadas e as APIs remotas.
+// keys = chaves das APIs ({ elevenlabs, fishaudio }).
 // Cada fala gerada fica em cache pelo conteúdo do pedido: só fala nova ou alterada é gerada de novo.
-export async function synthesize(jobs, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null }) {
+export const REMOTE = ['elevenlabs', 'fishaudio'];
+export async function synthesize(jobs, { root, tts = {}, log = () => {}, progress = () => {}, keys = {} }) {
+  const elevenKey = keys.elevenlabs ?? null;
   mkdirSync(cacheDir(), { recursive: true });
   const cloned = new Map((tts.voices ?? []).map((v) => [v.id.toLowerCase(), v]));
   const templates = new Map((tts.templates ?? []).map((x) => [x.id.toLowerCase(), x]));
   const eleven = tts.elevenlabs ?? {};
-  let elevenVoiceList = null;
+  let elevenVoiceList = null, fishVoiceList = null;
   const items = [];
   for (const j of jobs) {
     const provider = j.provider || tts.provider || 'qwen';
@@ -133,6 +136,22 @@ export async function synthesize(jobs, { root, tts = {}, log = () => {}, progres
       if (!voiceId) throw new Error('escolha uma voz do ElevenLabs nas configurações (⚙ → Vozes)');
       job = { provider, text: j.text, voiceId, model: eleven.model, language: j.language, tags: tpl?.tags || '',
         stability: tpl?.stability ?? null, style: tpl?.style ?? null, speed: tpl?.speed ?? null };
+    } else if (provider === 'fishaudio') {
+      // voz: o speaker do script é o ID do modelo de voz do Fish (ou o nome de uma voz da sua conta);
+      // sem speaker, a voz padrão das configurações
+      const fish = tts.fishaudio ?? {};
+      let voiceId = fish.voice || null;
+      if (j.speaker && j.speaker !== tts.speaker) {
+        if (/^[a-f0-9]{24,40}$/i.test(String(j.speaker))) voiceId = j.speaker;
+        else {
+          fishVoiceList ??= await (await import('./fishaudio.mjs')).fishVoices(keys.fishaudio, { mine: true, size: 100 });
+          const s2 = String(j.speaker).toLowerCase();
+          const v = fishVoiceList.find((x) => x.name.toLowerCase() === s2) ?? fishVoiceList.find((x) => x.name.toLowerCase().startsWith(s2));
+          if (!v) throw new Error(`voz '${j.speaker}' não existe na sua conta do Fish Audio: use o ID da voz (fish.audio → voz → ID) em speaker=`);
+          voiceId = v.id;
+        }
+      }
+      job = { provider, text: j.text, voiceId, model: fish.model || 's2.1-pro-free', language: j.language, tags: tpl?.tags || '', speed: tpl?.speed ?? null };
     } else {
       const c = cloned.get(String(j.speaker).toLowerCase());
       const instruct = [tpl?.prompt, j.instruct].filter(Boolean).join('; ') || null;
@@ -149,23 +168,26 @@ export async function synthesize(jobs, { root, tts = {}, log = () => {}, progres
   const total = missing.length;
   let done = 0;
   if (total) progress({ stage: 'model', done, total });
-  // ElevenLabs: uma chamada por fala
-  const remote = missing.filter((it) => it.provider === 'elevenlabs');
+  // APIs remotas (ElevenLabs, Fish Audio): uma chamada por fala
+  const remote = missing.filter((it) => REMOTE.includes(it.provider));
   if (remote.length) {
-    const { elevenSpeak } = await import('./elevenlabs.mjs');
-    log(`gerando ${remote.length} fala(s) pelo ElevenLabs`);
+    const speak = {
+      elevenlabs: (await import('./elevenlabs.mjs')).elevenSpeak,
+      fishaudio: (await import('./fishaudio.mjs')).fishSpeak,
+    };
+    log(`gerando ${remote.length} fala(s) pela API (${[...new Set(remote.map((it) => it.provider))].join(', ')})`);
     for (const it of remote) {
-      const secs = await elevenSpeak(elevenKey, it);
+      const secs = await speak[it.provider](keys[it.provider] ?? null, it);
       done++;
       progress({ stage: 'speech', done, total });
       log(`fala pronta: ${secs.toFixed(1)} s`);
     }
   }
   // Qwen3-TTS: todas de uma vez, num processo Python
-  const local = missing.filter((it) => it.provider !== 'elevenlabs');
+  const local = missing.filter((it) => !REMOTE.includes(it.provider));
   if (local.length) {
     const py = ttsPython(root);
-    if (!py) throw new Error('vozes do Qwen3-TTS não instaladas: use Instalar vozes nas configurações do 3DI (ou escolha o ElevenLabs)');
+    if (!py) throw new Error('vozes do Qwen3-TTS não instaladas: use Instalar vozes nas configurações do 3DI (ou escolha o ElevenLabs ou o Fish Audio)');
     log(`gerando ${local.length} fala(s) com o Qwen3-TTS (a primeira vez baixa o modelo)`);
     const req = join(cacheDir(), `pedido-${process.pid}-${Date.now()}.json`);
     writeFileSync(req, JSON.stringify(local));
@@ -241,13 +263,13 @@ export function splitByPauses(texts, total, silences) {
 // para a outra, como numa narração); as legendas de cada frase são achadas pelas pausas do áudio. Uma
 // fala com `at` explícito, outra voz ou outro estilo começa outro bloco. Devolve um trecho por bloco.
 const BLOCK_CHARS = 900;
-export async function speech(script, voices, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null, override = null }) {
+export async function speech(script, voices, { root, tts = {}, log = () => {}, progress = () => {}, keys = {}, override = null }) {
   const lines = script.filter((l) => l.speak).sort((p, q) => p.start - q.start);
   if (!lines.length) return [];
   const provider = override?.provider || tts.provider || 'qwen';
   const usesQwen = provider === 'qwen' || Object.values(voices ?? {}).some((v) => v.provider === 'qwen');
-  if (usesQwen && !ttsPython(root) && provider !== 'elevenlabs' && !Object.values(voices ?? {}).some((v) => v.provider === 'elevenlabs')) {
-    log('aviso: vozes não instaladas, sem as falas (instale nas configurações do 3DI ou use o ElevenLabs)');
+  if (usesQwen && !ttsPython(root) && !REMOTE.includes(provider) && !Object.values(voices ?? {}).some((v) => REMOTE.includes(v.provider))) {
+    log('aviso: vozes não instaladas, sem as falas (instale nas configurações do 3DI ou use o ElevenLabs/Fish Audio)');
     return [];
   }
   const templates = new Set((tts.templates ?? []).map((x) => x.id.toLowerCase()));
@@ -272,7 +294,7 @@ export async function speech(script, voices, { root, tts = {}, log = () => {}, p
     if (last && last.sig === sig && line.auto && chars + line.text.length <= BLOCK_CHARS) last.lines.push(line);
     else blocks.push({ sig, job, lines: [line] });
   }
-  const made = await synthesize(blocks.map((b) => ({ ...b.job, text: b.lines.map((l) => l.text.trim()).join(' ') })), { root, tts, log, progress, elevenKey });
+  const made = await synthesize(blocks.map((b) => ({ ...b.job, text: b.lines.map((l) => l.text.trim()).join(' ') })), { root, tts, log, progress, keys });
   const ffmpeg = ffmpegPath(root);
   const clips = [];
   let prevEnd = 0;

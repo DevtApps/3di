@@ -46,10 +46,12 @@ export function createPreviewAudio({ onScript, onStatus }) {
       try {
         const status = await (await fetch('/video/status', { headers: { 'X-3DI-Token': await session() } })).json();
         // cada fala usa o provedor da sua voice() ou o padrão das configurações
-        const usesEleven = override ? override.provider === 'elevenlabs' : status.provider === 'elevenlabs' || Object.values(scene.voices ?? {}).some((v) => v.provider === 'elevenlabs');
-        const usesQwen = override ? override.provider === 'qwen' : status.provider !== 'elevenlabs' || Object.values(scene.voices ?? {}).some((v) => v.provider === 'qwen');
-        if (usesQwen && !status.tts?.installed && !usesEleven) { onStatus('falas sem voz: instale as vozes ou configure o ElevenLabs (⚙)'); return; }
-        if (usesEleven && !status.elevenKey) { onStatus('falas sem voz: falta a chave do ElevenLabs (⚙)'); return; }
+        const REMOTE = { elevenlabs: 'ElevenLabs', fishaudio: 'Fish Audio' };
+        const used = new Set(override ? [override.provider] : [...Object.values(scene.voices ?? {}).map((v) => v.provider || status.provider), status.provider]);
+        const remoteOnly = [...used].every((p) => p in REMOTE);
+        if (used.has('qwen') && !status.tts?.installed && !remoteOnly) { onStatus('falas sem voz: instale as vozes ou configure o ElevenLabs/Fish Audio (⚙)'); return; }
+        const noKey = [...used].find((p) => p in REMOTE && !status.keys?.[p]);
+        if (noKey) { onStatus(`falas sem voz: falta a chave do ${REMOTE[noKey]} (⚙)`); return; }
         listen();
         generating = true;
         onStatus('preparando as falas…', { busy: true, progress: null });

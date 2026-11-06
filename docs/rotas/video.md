@@ -51,6 +51,21 @@ cole o ID da voz, ou use o ID em `speaker=`). Use como
 provedor padrão ou por voz: `voice("narrador", provider="elevenlabs", speaker="Rachel")`. As falas ficam no mesmo
 cache (cada fala é paga uma vez só). A conta e o consumo são os do ElevenLabs.
 
+## Fish Audio
+
+Em ⚙ → Fish Audio: cole a chave de API (fish.audio → API Keys; fica em `secrets.json`, ou use a variável
+`FISH_API_KEY`). A página mostra o crédito da chave. Modelos: **s2.1-pro-free** (gratuito para desenvolvedores,
+padrão), s2.1-pro e s2-pro (usam crédito), drama-3 (atuação) e s1 (antigo). Busque vozes **suas** ou da
+**biblioteca pública** (por nome e idioma) e escolha a padrão, ou cole o ID da voz.
+
+```python
+voice("narrador", provider="fishaudio", speaker="ID-da-voz")   # ou o nome de uma voz da sua conta
+say("Olá!", voice="narrador", style="animado")                 # o template põe [excited] antes do texto
+```
+
+As marcações dos templates (`[excited]`, `[whispering]`...) valem nos modelos S2 e drama-3; a velocidade do
+template vira `prosody.speed`. O idioma só ajusta a leitura de números e datas. Mesmo cache das outras falas.
+
 ## Vozes clonadas
 
 Nas configurações (⚙) → **Vozes clonadas**: dê um nome, envie um áudio (ou grave pelo microfone) com 5 a 20 s de

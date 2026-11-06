@@ -9,6 +9,7 @@ import { dataDir } from './video.mjs';
 export const PROVIDERS = [
   { id: 'qwen', label: 'Qwen3-TTS (local, na sua GPU)' },
   { id: 'elevenlabs', label: 'ElevenLabs (API, precisa de chave)' },
+  { id: 'fishaudio', label: 'Fish Audio (API, precisa de chave)' },
 ];
 export const TTS_MODELS = [
   { id: 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', label: '1.7B (melhor, segue o estilo; ~6 GB de GPU)' },
@@ -19,6 +20,13 @@ export const ELEVEN_MODELS = [
   { id: 'eleven_v3', label: 'v3 (mais expressivo; entende marcações como [excited])' },
   { id: 'eleven_flash_v2_5', label: 'Flash v2.5 (rápido e barato)' },
   { id: 'eleven_turbo_v2_5', label: 'Turbo v2.5' },
+];
+export const FISH_MODELS = [
+  { id: 's2.1-pro-free', label: 'S2.1 Pro Free (gratuito para desenvolvedores)' },
+  { id: 's2.1-pro', label: 'S2.1 Pro (melhor; usa crédito de API)' },
+  { id: 's2-pro', label: 'S2 Pro' },
+  { id: 'drama-3', label: 'Drama 3 (atuação, direções em [colchetes])' },
+  { id: 's1', label: 'S1 (antigo; sai em 31/12/2026)' },
 ];
 export const SPEAKERS = [
   { id: 'Vivian', note: 'feminina, chinês' }, { id: 'Serena', note: 'feminina, chinês' }, { id: 'Uncle_Fu', note: 'masculina madura, chinês' },
@@ -49,6 +57,7 @@ export const DEFAULT_TEMPLATES = [
 const DEFAULTS = {
   tts: { provider: 'qwen', model: TTS_MODELS[0].id, cloneModel: CLONE_MODELS[0].id, device: 'auto', speaker: 'Serena', language: 'Portuguese', instruct: '', template: '' },
   elevenlabs: { model: ELEVEN_MODELS[0].id, voice: '', voiceName: '' },
+  fishaudio: { model: FISH_MODELS[0].id, voice: '', voiceName: '' },
   templates: DEFAULT_TEMPLATES,
   // vozes clonadas: { id, file (WAV na pasta do 3DI), refText, language }
   voices: [],
@@ -96,6 +105,11 @@ export function saveSettings(patch) {
       voice: str(s.elevenlabs?.voice).replace(/[^\w-]/g, ''),
       voiceName: str(s.elevenlabs?.voiceName),
     },
+    fishaudio: {
+      model: FISH_MODELS.some((m) => m.id === s.fishaudio?.model) ? s.fishaudio.model : DEFAULTS.fishaudio.model,
+      voice: str(s.fishaudio?.voice).replace(/[^\w-]/g, ''),
+      voiceName: str(s.fishaudio?.voiceName),
+    },
     templates,
     voices,
     agents: Object.fromEntries(['claude', 'codex'].map((p) => [p, {
@@ -113,27 +127,40 @@ export function saveSettings(patch) {
 function loadSecrets() {
   try { return JSON.parse(readFileSync(secretsFile(), 'utf8')); } catch { return {}; }
 }
-export function elevenKey() {
-  return process.env.ELEVENLABS_API_KEY || loadSecrets().elevenlabsKey || null;
+// chaves das APIs de voz: variável de ambiente ou secrets.json
+const KEYS = { elevenlabs: { env: 'ELEVENLABS_API_KEY', field: 'elevenlabsKey', name: 'ElevenLabs' }, fishaudio: { env: 'FISH_API_KEY', field: 'fishaudioKey', name: 'Fish Audio' } };
+const keyDef = (provider) => {
+  const d = KEYS[provider];
+  if (!d) throw new Error(`provedor sem chave: ${provider}`);
+  return d;
+};
+export function apiKey(provider) {
+  const d = keyDef(provider);
+  return process.env[d.env] || loadSecrets()[d.field] || null;
 }
+// todas as chaves, para a geração das falas
+export const apiKeys = () => Object.fromEntries(Object.keys(KEYS).map((p) => [p, apiKey(p)]));
 // grava (ou apaga, com '') a chave; o arquivo fica só legível pelo usuário
-export function setElevenKey(key) {
+export function setApiKey(provider, key) {
+  const d = keyDef(provider);
   const k = String(key ?? '').trim();
-  if (k && !/^[\w-]{10,200}$/.test(k)) throw new Error('chave do ElevenLabs inválida');
+  if (k && !/^[\w-]{10,200}$/.test(k)) throw new Error(`chave do ${d.name} inválida`);
   const sec = loadSecrets();
-  if (k) sec.elevenlabsKey = k; else delete sec.elevenlabsKey;
+  if (k) sec[d.field] = k; else delete sec[d.field];
   mkdirSync(dataDir(), { recursive: true });
   writeFileSync(secretsFile(), JSON.stringify(sec), { mode: 0o600 });
   chmodSync(secretsFile(), 0o600);
 }
-// o que a IDE pode ver da chave
-export function elevenKeyInfo() {
-  const k = elevenKey();
-  return { set: !!k, hint: k ? `…${k.slice(-4)}` : '', fromEnv: !!process.env.ELEVENLABS_API_KEY };
+// o que a IDE pode ver das chaves: { elevenlabs: { set, hint, fromEnv }, fishaudio: ... }
+export function apiKeyInfo() {
+  return Object.fromEntries(Object.entries(KEYS).map(([p, d]) => {
+    const k = apiKey(p);
+    return [p, { set: !!k, hint: k ? `…${k.slice(-4)}` : '', fromEnv: !!process.env[d.env] }];
+  }));
 }
 
 // configuração passada à geração das falas
 export function ttsConfig() {
   const s = loadSettings();
-  return { ...s.tts, voices: s.voices, templates: s.templates, elevenlabs: s.elevenlabs };
+  return { ...s.tts, voices: s.voices, templates: s.templates, elevenlabs: s.elevenlabs, fishaudio: s.fishaudio };
 }

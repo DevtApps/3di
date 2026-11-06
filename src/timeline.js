@@ -94,14 +94,14 @@ export function timelineBuiltins(scene) {
       scene.anim = { duration, fps };
       return null;
     }),
-    // voz para as falas. provider: "qwen" (Qwen3-TTS local) ou "elevenlabs"; speaker: voz pronta do Qwen
-    // (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee), voz clonada ou voz do ElevenLabs
+    // voz para as falas. provider: "qwen" (Qwen3-TTS local), "elevenlabs" ou "fishaudio"; speaker: voz pronta do Qwen
+    // (Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee), voz clonada, voz do ElevenLabs ou ID de voz do Fish Audio
     // (nome ou id); template: template de áudio (estilo com o prompt); instruct: estilo livre (Qwen).
     // Sem speaker/provider, valem os padrões das configurações (⚙).
     voice: N('voice', ['name', 'speaker=None', 'language="Portuguese"', 'instruct=None', 'provider=None', 'template=None'], (a) => {
       const name = String(a.name);
       const provider = a.provider === null ? null : String(a.provider).toLowerCase();
-      if (provider && !['qwen', 'elevenlabs'].includes(provider)) throw new ScriptError(`voice(): provider deve ser "qwen" ou "elevenlabs"`, null);
+      if (provider && !['qwen', 'elevenlabs', 'fishaudio'].includes(provider)) throw new ScriptError('voice(): provider deve ser "qwen", "elevenlabs" ou "fishaudio"', null);
       scene.voices[name] = { speaker: a.speaker === null ? null : String(a.speaker), language: String(a.language), instruct: a.instruct === null ? null : String(a.instruct),
         provider, template: a.template === null ? null : String(a.template) };
       return name;

@@ -1,4 +1,4 @@
-// Falas: templates de áudio, ElevenLabs (com um servidor falso que imita a API) e a chave guardada à parte.
+// Falas: templates de áudio, ElevenLabs e Fish Audio (com um servidor falso que imita as APIs) e as chaves guardadas à parte.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -9,11 +9,20 @@ import { join } from 'node:path';
 const data = await mkdtemp(join(tmpdir(), '3di-voices-'));
 process.env.XDG_DATA_HOME = data;
 delete process.env.ELEVENLABS_API_KEY;
+delete process.env.FISH_API_KEY;
 const requests = [];
 const fake = http.createServer(async (req, res) => {
   let body = '';
   for await (const c of req) body += c;
-  requests.push({ url: req.url, key: req.headers['xi-api-key'], body: body ? JSON.parse(body) : null });
+  requests.push({ url: req.url, key: req.headers['xi-api-key'] ?? req.headers.authorization, model: req.headers.model, body: body ? JSON.parse(body) : null });
+  // Fish Audio: Bearer, /model e /v1/tts
+  if (req.headers.authorization) {
+    if (req.headers.authorization !== 'Bearer fish-chave-123') { res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ status: 401, message: 'Invalid token' })); return; }
+    if (req.url.startsWith('/model?')) { res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ total: 2, items: [{ _id: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4', title: 'Narradora BR', languages: ['pt'], state: 'trained', author: { nickname: 'eu' } }, { _id: 'ffffffffffffffffffffffffffffffff', title: 'Treinando', state: 'training' }] })); return; }
+    if (req.url.startsWith('/wallet/self/api-credit')) { res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ credit: '1.50', has_free_credit: true })); return; }
+    if (req.url === '/v1/tts') { res.writeHead(200, { 'Content-Type': 'audio/pcm' }).end(Buffer.alloc(24000)); return; } // 0,5 s
+    res.writeHead(404).end(); return;
+  }
   if (req.headers['xi-api-key'] !== 'chave-de-teste-123') { res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ detail: { message: 'invalid api key' } })); return; }
   if (req.url === '/v1/voices') { res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ voices: [{ voice_id: 'v-rachel', name: 'Rachel', labels: { gender: 'female' } }, { voice_id: 'v-adam', name: 'Adam', labels: {} }] })); return; }
   if (req.url.startsWith('/v1/text-to-speech/')) { res.writeHead(200, { 'Content-Type': 'audio/pcm' }).end(Buffer.alloc(48000)); return; } // 1 s de PCM 24 kHz
@@ -21,19 +30,24 @@ const fake = http.createServer(async (req, res) => {
 });
 await new Promise((r) => fake.listen(0, '127.0.0.1', r));
 process.env.THREEDI_ELEVENLABS_URL = `http://127.0.0.1:${fake.address().port}`;
-const { saveSettings, ttsConfig, setElevenKey, elevenKey, elevenKeyInfo, loadSettings } = await import('../src/services/settings.mjs');
+process.env.THREEDI_FISH_URL = process.env.THREEDI_ELEVENLABS_URL;
+const { saveSettings, ttsConfig, setApiKey, apiKey, apiKeys, apiKeyInfo, loadSettings } = await import('../src/services/settings.mjs');
 const { speech, wavSeconds } = await import('../src/services/video.mjs');
+const { runScript } = await import('../src/interp.js');
+const runScriptOk = (code) => runScript(code).ok;
 
 test.after(async () => { fake.close(); await rm(data, { recursive: true, force: true }); });
 
 test('a chave do ElevenLabs fica em secrets.json (600) e não aparece nas configurações', async () => {
-  assert.throws(() => setElevenKey('curta'), /inválida/);
-  setElevenKey('chave-de-teste-123');
-  assert.equal(elevenKey(), 'chave-de-teste-123');
-  assert.deepEqual(elevenKeyInfo(), { set: true, hint: '…-123', fromEnv: false });
+  assert.throws(() => setApiKey('elevenlabs', 'curta'), /inválida/);
+  assert.throws(() => setApiKey('outro', 'chave-de-teste-123'), /sem chave/);
+  setApiKey('elevenlabs', 'chave-de-teste-123');
+  setApiKey('fishaudio', 'fish-chave-123');
+  assert.equal(apiKey('elevenlabs'), 'chave-de-teste-123');
+  assert.deepEqual(apiKeyInfo(), { elevenlabs: { set: true, hint: '…-123', fromEnv: false }, fishaudio: { set: true, hint: '…-123', fromEnv: false } });
   assert.equal((await stat(join(data, '3di', 'secrets.json'))).mode & 0o777, 0o600);
   saveSettings({ tts: { provider: 'elevenlabs' } });
-  assert.ok(!(await readFile(join(data, '3di', 'settings.json'), 'utf8')).includes('chave-de-teste'));
+  assert.ok(!/chave-de-teste|fish-chave/.test(await readFile(join(data, '3di', 'settings.json'), 'utf8')));
 });
 
 test('templates de áudio vêm prontos, são editáveis e validados', () => {
@@ -53,7 +67,7 @@ test('falas pelo ElevenLabs: voz por nome, template aplicado, WAV no cache e rea
   ];
   const voices = { n: { provider: 'elevenlabs', speaker: 'Rachel', language: 'Portuguese' } };
   requests.length = 0;
-  const clips = await speech(script, voices, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() });
+  const clips = await speech(script, voices, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
   assert.equal(clips.length, 2);
   assert.ok(Math.abs(wavSeconds(clips[0].file) - 1) < 1e-6, 'PCM virou WAV de 1 s');
   const tts = requests.filter((r) => r.url.startsWith('/v1/text-to-speech/'));
@@ -65,14 +79,14 @@ test('falas pelo ElevenLabs: voz por nome, template aplicado, WAV no cache e rea
   assert.ok(script[1].start >= script[0].start + 1, 'a segunda fala entra depois do áudio real da primeira');
   // de novo: tudo do cache, nenhuma chamada nova
   requests.length = 0;
-  await speech(script.map((l) => ({ ...l })), voices, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() });
+  await speech(script.map((l) => ({ ...l })), voices, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
   assert.equal(requests.filter((r) => r.url.startsWith('/v1/text-to-speech/')).length, 0);
 });
 
 test('erros claros: chave errada e voz que não existe', async () => {
   const one = [{ text: 'x', start: 0, end: 1, speak: true, voice: 'n', auto: true }];
-  await assert.rejects(speech(one, { n: { provider: 'elevenlabs', speaker: 'Ninguém' } }, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() }), /não existe na sua conta/);
-  await assert.rejects(speech([{ ...one[0], text: 'y' }], { n: { provider: 'elevenlabs' } }, { root: process.cwd(), tts: ttsConfig(), elevenKey: 'chave-errada-000' }), /recusou \(invalid api key\)/);
+  await assert.rejects(speech(one, { n: { provider: 'elevenlabs', speaker: 'Ninguém' } }, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() }), /não existe na sua conta/);
+  await assert.rejects(speech([{ ...one[0], text: 'y' }], { n: { provider: 'elevenlabs' } }, { root: process.cwd(), tts: ttsConfig(), keys: { elevenlabs: 'chave-errada-000' } }), /recusou \(invalid api key\)/);
 });
 
 test('narração contínua: falas seguidas da mesma voz numa chamada, legendas pelas pausas', async () => {
@@ -85,7 +99,7 @@ test('narração contínua: falas seguidas da mesma voz numa chamada, legendas p
   saveSettings({ tts: { provider: 'elevenlabs' }, elevenlabs: { model: 'eleven_multilingual_v2', voice: 'v-adam', voiceName: 'Adam' } });
   const script = ['Um.', 'Dois.', 'Três.'].map((text, i) => ({ text: `${text} ${Date.now()}`, start: i, end: i + 0.5, speak: true, voice: null, style: null, auto: true }));
   requests.length = 0;
-  const clips = await speech(script, {}, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() });
+  const clips = await speech(script, {}, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
   const calls = requests.filter((r) => r.url.startsWith('/v1/text-to-speech/'));
   assert.equal(calls.length, 1, 'uma chamada para as três falas');
   assert.ok(calls[0].body.text.includes('Um.') && calls[0].body.text.includes('Três.'));
@@ -93,6 +107,32 @@ test('narração contínua: falas seguidas da mesma voz numa chamada, legendas p
   assert.ok(script[1].start > script[0].start && script[2].end <= clips[0].seconds + 0.2, 'legendas dentro do áudio contínuo');
   // override: troca a voz de todas as falas
   requests.length = 0;
-  await speech(script.map((l) => ({ ...l, text: `${l.text}!` })), {}, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey(), override: { provider: 'elevenlabs', speaker: 'Rachel' } });
+  await speech(script.map((l) => ({ ...l, text: `${l.text}!` })), {}, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys(), override: { provider: 'elevenlabs', speaker: 'Rachel' } });
   assert.ok(requests.find((r) => r.url.startsWith('/v1/text-to-speech/')).url.startsWith('/v1/text-to-speech/v-rachel'));
+});
+
+test('falas pelo Fish Audio: voz por nome ou ID, modelo no cabeçalho, marcações e PCM em WAV', async () => {
+  const { fishVoices, fishCredit } = await import('../src/services/fishaudio.mjs');
+  const mine = await fishVoices(apiKey('fishaudio'), { mine: true });
+  assert.deepEqual(mine.map((v) => v.name), ['Narradora BR'], 'vozes ainda em treino ficam de fora');
+  assert.ok(requests.at(-1).url.includes('self=true'));
+  assert.deepEqual(await fishCredit(apiKey('fishaudio')), { credit: '1.50', free: true });
+  saveSettings({ tts: { provider: 'fishaudio' }, fishaudio: { model: 's2.1-pro-free', voice: '', voiceName: '' } });
+  const script = [{ text: `Olá do Fish ${Date.now()}.`, start: 0, end: 0.4, speak: true, voice: 'n', style: 'animado', auto: true }];
+  requests.length = 0;
+  const clips = await speech(script, { n: { provider: 'fishaudio', speaker: 'narradora', language: 'Portuguese' } }, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
+  assert.equal(clips.length, 1);
+  assert.ok(Math.abs(wavSeconds(clips[0].file) - 0.5) < 1e-6);
+  const call = requests.find((r) => r.url === '/v1/tts');
+  assert.equal(call.model, 's2.1-pro-free');
+  assert.equal(call.body.reference_id, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4', 'voz achada pelo nome na conta');
+  assert.equal(call.body.format, 'pcm');
+  assert.equal(call.body.language, 'pt');
+  assert.ok(call.body.text.startsWith('[excited] '), 'marcação do template no S2');
+  // ID direto, sem listar; chave errada vira erro claro
+  requests.length = 0;
+  await speech([{ ...script[0], text: `ID ${Date.now()}` }], { n: { provider: 'fishaudio', speaker: 'ffffffffffffffffffffffffffffffff' } }, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
+  assert.ok(!requests.some((r) => r.url.startsWith('/model')));
+  await assert.rejects(speech([{ ...script[0], text: `x ${Date.now()}` }], { n: { provider: 'fishaudio' } }, { root: process.cwd(), tts: ttsConfig(), keys: { fishaudio: 'fish-errada-0000' } }), /Fish Audio recusou \(Invalid token\)/);
+  assert.equal(runScriptOk('voice("n", provider="fishaudio")\nshow(box())'), true);
 });

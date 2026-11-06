@@ -17,7 +17,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       <button data-a="close" class="ghost icon-btn" title="Fechar (Esc)" aria-label="Fechar"><i data-icon="x"></i></button>
     </div>
     <div class="settings-layout">
-    <nav class="settings-nav" aria-label="Categorias"><button data-page="provider" class="on"><i data-icon="audio-lines"></i>Provedor das falas</button><button data-page="eleven" class=""><i data-icon="key-round"></i>ElevenLabs</button><button data-page="templates" class=""><i data-icon="list"></i>Templates de áudio</button><button data-page="qwen" class=""><i data-icon="cpu"></i>Vozes Qwen</button><button data-page="clone" class=""><i data-icon="mic"></i>Vozes clonadas</button><button data-page="agents" class=""><i data-icon="sparkles"></i>Agentes</button></nav>
+    <nav class="settings-nav" aria-label="Categorias"><button data-page="provider" class="on"><i data-icon="audio-lines"></i>Provedor das falas</button><button data-page="eleven" class=""><i data-icon="key-round"></i>ElevenLabs</button><button data-page="fish" class=""><i data-icon="audio-lines"></i>Fish Audio</button><button data-page="templates" class=""><i data-icon="list"></i>Templates de áudio</button><button data-page="qwen" class=""><i data-icon="cpu"></i>Vozes Qwen</button><button data-page="clone" class=""><i data-icon="mic"></i>Vozes clonadas</button><button data-page="agents" class=""><i data-icon="sparkles"></i>Agentes</button></nav>
     <div class="settings-pages">
     <section class="page" data-page="provider">
       <h4>Provedor das falas</h4>
@@ -34,6 +34,18 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       <p class="hint eleven-error" hidden></p>
       <div class="row"><input data-e="voice-id" placeholder="ou cole o ID da voz (elevenlabs.io → Voices → ⋯ → Copy voice ID)"><button data-a="eleven-voice-id">Usar ID</button></div>
       <p class="hint">No script: <code>voice("narrador", provider="elevenlabs", speaker="Nome da voz")</code>. As marcações de áudio dos templates (ex.: [excited]) só valem no modelo v3.</p>
+    </section>
+    <section class="page fish" data-page="fish" hidden>
+      <h4>Fish Audio</h4>
+      <p class="hint fish-state"></p>
+      <div class="row"><input data-f="key" type="password" autocomplete="off" placeholder="cole aqui a sua chave de API (fish.audio → API Keys)"><button data-a="fish-key">Salvar chave</button><button data-a="fish-forget">Apagar</button></div>
+      <label>Modelo <select data-k="fishaudio.model"></select></label>
+      <div class="row"><div class="segmented fish-scope"><button data-a="fish-scope" data-mine="1" class="on">Minhas vozes</button><button data-a="fish-scope" data-mine="0">Biblioteca pública</button></div></div>
+      <div class="row"><input data-f="query" placeholder="buscar por nome (ex.: narrador, brasileiro)"><select data-f="language" title="Idioma das vozes" style="max-width:140px"><option value="">todos os idiomas</option><option value="pt" selected>português</option><option value="en">inglês</option><option value="es">espanhol</option></select><button data-a="fish-load">Buscar</button></div>
+      <select data-f="voice"><option value="">— busque e escolha a voz padrão —</option></select>
+      <p class="hint fish-error eleven-error" hidden></p>
+      <div class="row"><input data-f="voice-id" placeholder="ou cole o ID da voz (fish.audio → voz → copiar ID)"><button data-a="fish-voice-id">Usar ID</button></div>
+      <p class="hint">No script: <code>voice("narrador", provider="fishaudio", speaker="ID da voz")</code> (ou o nome de uma voz sua). As marcações dos templates (ex.: [excited]) valem nos modelos S2 e Drama 3. O modelo <b>s2.1-pro-free</b> não gasta crédito.</p>
     </section>
     <section class="page templates" data-page="templates" hidden>
       <h4>Templates de áudio</h4>
@@ -118,7 +130,14 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     $('[data-k="tts.provider"]').replaceChildren(...data.providers.map((p) => new Option(p.label, p.id)));
     $('[data-k="tts.template"]').replaceChildren(new Option('nenhum', ''), ...s.templates.map((x) => new Option(`${x.label} (${x.id})`, x.id)));
     $('[data-k="elevenlabs.model"]').replaceChildren(...data.elevenModels.map((m) => new Option(m.label, m.id)));
-    const ek = data.elevenKey;
+    $('[data-k="fishaudio.model"]').replaceChildren(...data.fishModels.map((m) => new Option(m.label, m.id)));
+    const fk = data.keys.fishaudio;
+    $('.fish-state').textContent = fk.set ? `Chave salva (${fk.hint})${fk.fromEnv ? ', vinda de FISH_API_KEY' : ''}${data.fishCredit ? ` · crédito: ${data.fishCredit}` : ''}. Voz padrão: ${s.fishaudio.voiceName || 'nenhuma'}.` : 'Sem chave. Crie uma em fish.audio → API Keys.';
+    $('[data-a=fish-forget]').hidden = !fk.set || fk.fromEnv;
+    const fsel = $('[data-f=voice]');
+    if (fsel.options.length <= 1 && s.fishaudio.voice) fsel.replaceChildren(new Option('— busque e escolha a voz padrão —', ''), new Option(s.fishaudio.voiceName || s.fishaudio.voice, s.fishaudio.voice));
+    fsel.value = s.fishaudio.voice;
+    const ek = data.keys.elevenlabs;
     $('.eleven-state').textContent = ek.set ? `Chave salva (${ek.hint})${ek.fromEnv ? ', vinda de ELEVENLABS_API_KEY' : ''}. Voz padrão: ${s.elevenlabs.voiceName || 'nenhuma'}.` : 'Sem chave. Crie uma em elevenlabs.io → Profile → API keys.';
     $('[data-a=eleven-forget]').hidden = !ek.set || ek.fromEnv;
     const vsel = $('[data-e=voice]');
@@ -162,7 +181,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
         return chip;
       }));
     }
-    for (const el of box.querySelectorAll('[data-k^="tts."], [data-k^="agents."]')) el.value = get(s, el.dataset.k) ?? '';
+    for (const el of box.querySelectorAll('[data-k^="tts."], [data-k^="agents."], [data-k^="elevenlabs."], [data-k^="fishaudio."]')) el.value = get(s, el.dataset.k) ?? '';
     const st = data.status;
     $('.tts-state').textContent = !st ? 'Servidor do 3DI indisponível.' : st.installing ? 'Instalando as vozes…'
       : st.tts.installed ? `Instaladas em ${st.tts.dir}.` : `Não instaladas. O 3DI cria um ambiente Python em ${st.tts.dir} (alguns GB; precisa do python3-venv).`;
@@ -187,6 +206,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     try {
       data = await call('/settings');
       data.status = await call('/video/status').catch(() => null);
+      if (data.keys.fishaudio.set) await fishCredit();
       showAgents((await call('/agent/status').catch(() => null))?.agents);
       if (!es) {
         es = new EventSource(`/video/events?token=${encodeURIComponent(token)}`);
@@ -204,7 +224,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
 
   box.addEventListener('change', (e) => {
     const k = e.target.dataset.k;
-    if (k && (k.startsWith('tts.') || k.startsWith('agents.') || k.startsWith('elevenlabs.'))) save(patchOf(k, e.target.value)).then(() => k.endsWith('.path') && call('/agent/rescan', {}).then((r) => showAgents(r.agents))).catch((err) => log(`erro: ${err.message}`));
+    if (k && (k.startsWith('tts.') || k.startsWith('agents.') || k.startsWith('elevenlabs.') || k.startsWith('fishaudio.'))) save(patchOf(k, e.target.value)).then(() => k.endsWith('.path') && call('/agent/rescan', {}).then((r) => showAgents(r.agents))).catch((err) => log(`erro: ${err.message}`));
   });
   box.addEventListener('click', async (e) => {
     const a = e.target.dataset.a;
@@ -229,17 +249,44 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       } else if (a === 'eleven-key') {
         const k = $('[data-e=key]').value.trim();
         if (!k) throw new Error('cole a chave de API no campo');
-        const r = await call('/settings', { elevenKey: k });
+        const r = await call('/settings', { keys: { elevenlabs: k } });
         $('[data-e=key]').value = '';
-        data.settings = r.settings; data.elevenKey = r.elevenKey;
+        data.settings = r.settings; data.keys = r.keys;
         render();
         log('chave salva; carregando as vozes da conta…');
         await loadEleven();
       } else if (a === 'eleven-forget') {
         if (!confirm('Apagar a chave do ElevenLabs deste computador?')) return;
-        const r = await call('/settings', { elevenKey: '' });
-        data.settings = r.settings; data.elevenKey = r.elevenKey;
+        const r = await call('/settings', { keys: { elevenlabs: '' } });
+        data.settings = r.settings; data.keys = r.keys;
         render();
+      } else if (a === 'fish-key') {
+        const k = $('[data-f=key]').value.trim();
+        if (!k) throw new Error('cole a chave de API no campo');
+        const r = await call('/settings', { keys: { fishaudio: k } });
+        $('[data-f=key]').value = '';
+        data.settings = r.settings; data.keys = r.keys;
+        await fishCredit();
+        render();
+        log('chave do Fish Audio salva; buscando as suas vozes…');
+        await loadFish();
+      } else if (a === 'fish-forget') {
+        if (!confirm('Apagar a chave do Fish Audio deste computador?')) return;
+        const r = await call('/settings', { keys: { fishaudio: '' } });
+        data.settings = r.settings; data.keys = r.keys; data.fishCredit = null;
+        render();
+      } else if (a === 'fish-scope') {
+        fishMine = e.target.dataset.mine === '1';
+        for (const b of box.querySelectorAll('[data-a=fish-scope]')) b.classList.toggle('on', b === e.target);
+        await loadFish();
+      } else if (a === 'fish-load') {
+        await loadFish();
+      } else if (a === 'fish-voice-id') {
+        const id = $('[data-f=voice-id]').value.trim();
+        if (!/^[\w-]{8,64}$/.test(id)) throw new Error('ID de voz inválido (copie na página da voz em fish.audio)');
+        await save({ fishaudio: { voice: id, voiceName: id } });
+        $('[data-f=voice-id]').value = '';
+        log(`voz padrão do Fish Audio: ${id}`);
       } else if (a === 'eleven-load') {
         await loadEleven();
       } else if (a === 'eleven-voice-id') {
@@ -329,6 +376,29 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     sel.dataset.names = JSON.stringify(Object.fromEntries(r.voices.map((v) => [v.id, v.name])));
     log(`${r.voices.length} voz(es) na sua conta`);
   };
+  // Fish Audio: vozes da conta ou da biblioteca pública (busca por nome e idioma)
+  let fishMine = true;
+  const fishCredit = async () => { try { const c = await call('/video/fish-credit', {}); data.fishCredit = `${c.credit}${c.free ? ' (tem crédito grátis)' : ''}`; } catch { data.fishCredit = null; } };
+  const loadFish = async () => {
+    const err = $('.fish-error');
+    err.hidden = true;
+    let r;
+    try { r = await call('/video/fish-voices', { mine: fishMine, query: $('[data-f=query]').value.trim(), language: $('[data-f=language]').value }); }
+    catch (e) { err.hidden = false; err.textContent = `Não consegui buscar as vozes: ${e.message}`; throw e; }
+    const sel = $('[data-f=voice]');
+    sel.replaceChildren(new Option(r.voices.length ? '— escolha a voz padrão —' : '— nenhuma voz encontrada —', ''), ...r.voices.map((v) => {
+      const extra = [v.languages.join('/'), v.author && !fishMine ? `por ${v.author}` : ''].filter(Boolean).join(' · ');
+      return new Option(`${v.name}${extra ? ` (${extra})` : ''}`, v.id);
+    }));
+    sel.value = data.settings.fishaudio.voice;
+    sel.dataset.names = JSON.stringify(Object.fromEntries(r.voices.map((v) => [v.id, v.name])));
+    log(`${r.voices.length} voz(es) ${fishMine ? 'na sua conta' : 'na biblioteca'}`);
+  };
+  box.addEventListener('change', (e) => {
+    if (e.target.dataset.f !== 'voice') return;
+    const names = JSON.parse(e.target.dataset.names || '{}');
+    save({ fishaudio: { voice: e.target.value, voiceName: names[e.target.value] ?? '' } }).catch((err) => log(`erro: ${err.message}`));
+  });
   box.addEventListener('change', (e) => {
     if (e.target.dataset.e !== 'voice') return;
     const names = JSON.parse(e.target.dataset.names || '{}');

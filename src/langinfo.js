@@ -62,7 +62,7 @@ const DOCS = {
   osc: 'Vai de `a` até `b` e volta, suavemente, a cada `period` segundos.',
   keys: 'Valor animado por chaves (tempo, valor): número ou tupla. `ease` linear/smooth/in/out/step, `loop` repete. Vale onde vale time (at, rotate, scale, glow, camera).',
   timeline: 'Duração (s) e quadros por segundo do vídeo e da animação.',
-  voice: 'Define uma voz para as falas: provider ("qwen" local ou "elevenlabs"), speaker (voz pronta do Qwen, voz clonada ou voz do ElevenLabs pelo nome), language, template (template de áudio) e instruct (estilo livre). Sem speaker/provider valem os padrões das configurações.',
+  voice: 'Define uma voz para as falas: provider ("qwen" local, "elevenlabs" ou "fishaudio"), speaker (voz pronta do Qwen, voz clonada, voz do ElevenLabs pelo nome ou ID de voz do Fish Audio), language, template (template de áudio) e instruct (estilo livre). Sem speaker/provider valem os padrões das configurações.',
   overlay: 'Sobreposição React + Tailwind sobre a imagem (texto, títulos): component = "titulo", "lower_third", "texto", "contador", "lista", arquivo .jsx ou JSX direto; at, dur, z; os outros argumentos nomeados viram props. Anime pelo tempo (local, progress).',
   say: 'Fala do roteiro: legenda + áudio. Sem `at`, entra depois da anterior; `voice`; `style` = nome de um template de áudio (narrador, animado, calmo, sussurro...) ou estilo livre. Devolve o fim (s).',
   caption: 'Legenda sem áudio no instante `at` por `dur` segundos.',
