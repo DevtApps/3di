@@ -633,6 +633,11 @@ window.tdi = {
     return { duration: sc.duration ?? 0, fps: sc.fps ?? 30, script: sc.script ?? [], voices: sc.voices ?? {}, overlays: (sc.overlays ?? []).length, animated: !!sceneInfo.animated };
   },
   status: () => status.textContent,
+  // auto cull: { visible, total } peças avaliadas na última vista; cull(false) desliga (comparar desempenho)
+  cull(on) {
+    if (on !== undefined) { renderer.cullOff = !on; renderer.cullKey = ''; if (!on && renderer.cull) renderer.setCull(renderer.cull.boxes, renderer.cull.count); draw(1); }
+    return { on: !renderer.cullOff, ...renderer.cullStats };
+  },
   // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
   interactScale: () => interactRes.value,
   animScale: () => anim.res.value,

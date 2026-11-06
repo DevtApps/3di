@@ -216,6 +216,12 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 uniform highp sampler2D uCode;
 vec4 codeFetch(int col, int row) {
   int index = row * 5 + col;
@@ -241,17 +247,17 @@ M ci0(vec3 p) {
 
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
-  {
+  if (cullVis(0)) {
     vec3 q1 = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) * (p - vec3(0.0, 8.85, 0.0));
     M m2 = M(sdCone(q1, 1.1, 2.0, 0.0), vec3(0.391572, 0.08022, 0.042311), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m2);
   }
-  {
+  if (cullVis(1)) {
     vec3 q3 = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) * (p - vec3(0.0, 9.95, 0.0));
     M m4 = M(sdCyl(q3, 0.02, 0.6), vec3(0.057805, 0.057805, 0.057805), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m4);
   }
-  {
+  if (cullVis(2)) {
     vec3 q5 = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) * (p - vec3(0.32, 10.275, 0.0));
     M m6 = M(sdBox(q5, vec3(0.3, 0.175, 0.01)), vec3(0.672443, 0.045186, 0.045186), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m6);
@@ -260,7 +266,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m7 = M(p.y, vec3(0.109462, 0.327778, 0.042311), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m7);
   }
-  if (sdBox(p - vec3(0.0, 1.425, 4.0), vec3(4.01, 1.435, 0.31)) < u0.d) {
+  if (cullVis(3) && sdBox(p - vec3(0.0, 1.425, 4.0), vec3(4.01, 1.435, 0.31)) < u0.d) {
     M u8 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     {
       vec3 q9 = p - vec3(0.0, 1.25, 4.0);
@@ -289,7 +295,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m21 = mS(u8, u16);
     u0 = mU(u0, m21);
   }
-  if (sdBox(p - vec3(0.0, 3.725, 0.0), vec3(5.26, 3.735, 5.26)) < u0.d) {
+  if (cullVis(4) && sdBox(p - vec3(0.0, 3.725, 0.0), vec3(5.26, 3.735, 5.26)) < u0.d) {
     vec3 q22 = p;
     q22.x = abs(q22.x);
     q22.z = abs(q22.z);
@@ -336,7 +342,7 @@ M mapAll(vec3 p, bool wantMat) {
     }
     u0 = mU(u0, u24);
   }
-  {
+  if (cullVis(5)) {
     vec3 q49 = p - vec3(0.0, 3.5, 0.0);
     M m50 = M(sdCyl(q49, 1.6, 3.5), vec3(0.57758, 0.57758, 0.57758), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     vec3 q51 = p - vec3(0.0, 4.2, 1.6);
@@ -344,7 +350,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m53 = mS(m50, m52);
     u0 = mU(u0, m53);
   }
-  if (sdBox(p - vec3(0.0, 7.375, 0.0), vec3(1.85, 0.385, 1.85)) < u0.d) {
+  if (cullVis(6) && sdBox(p - vec3(0.0, 7.375, 0.0), vec3(1.85, 0.385, 1.85)) < u0.d) {
     M u54 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     {
       vec3 q55 = p - vec3(0.0, 7.2, 0.0);
@@ -371,9 +377,9 @@ M mapAll(vec3 p, bool wantMat) {
     u0 = mU(u0, m70);
   }
   int mk71 = 0;
-  if (sdBox(p - vec3(4.0, 1.425, 0.0), vec3(0.31, 1.435, 4.01)) < u0.d) mk71 |= 1;
-  if (sdBox(p - vec3(0.0, 1.425, -4.0), vec3(4.01, 1.435, 0.31)) < u0.d) mk71 |= 2;
-  if (sdBox(p - vec3(-4.0, 1.425, 0.0), vec3(0.31, 1.435, 4.01)) < u0.d) mk71 |= 4;
+  if (cullVis(7) && sdBox(p - vec3(4.0, 1.425, 0.0), vec3(0.31, 1.435, 4.01)) < u0.d) mk71 |= 1;
+  if (cullVis(8) && sdBox(p - vec3(0.0, 1.425, -4.0), vec3(4.01, 1.435, 0.31)) < u0.d) mk71 |= 2;
+  if (cullVis(9) && sdBox(p - vec3(-4.0, 1.425, 0.0), vec3(0.31, 1.435, 4.01)) < u0.d) mk71 |= 4;
   for (int b = uZero, bits = mk71; bits != 0; b++, bits = int(uint(bits) >> 1u)) {
     if ((bits & 1) == 0) continue;
     int i = 0 + b;

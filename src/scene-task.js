@@ -1,8 +1,10 @@
+import { ScriptError } from './parser.js';
 import { runScript } from './interp.js';
 import { compileScene } from './compiler.js';
 import { exportGLB } from './export.js';
 import { withTime, val0 } from './expr.js';
 import { sceneDuration, cameraTrack } from './timeline.js';
+import { scene2dMeta } from './shapes2d.js';
 
 /**
  * partRunner (opcional): ({ code, time, res }) => runParts, para malhar as peças do export em paralelo.
@@ -14,9 +16,17 @@ export function executeSceneTask({ code, task = 'compile', time = 0, res = 128 }
     const run = runScript(code);
     if (!run.ok) throw run.error;
     if (task === 'export') return exportGLB(run.scene, { res, runParts: partRunner?.({ code, time, res }) ?? null });
-    const out = compileScene(run.scene);
+    const out = compileOrFlat(run.scene);
     return { out, logs: run.logs, scene: sceneMeta(run.scene) };
   });
+}
+
+// Cena 2D (canvas2d): não há shader; a página desenha a árvore 2D
+export function compileOrFlat(scene) {
+  const c2 = scene2dMeta(scene);
+  if (!c2) return compileScene(scene);
+  if (scene.shapes?.length) throw new ScriptError('cena 2D (canvas2d) não mostra formas 3D', null, 'tire o canvas2d() ou use só formas 2D: circle, rect, path, text...');
+  return { mode: '2d', canvas2d: c2, leaves: c2.count, animated: c2.animated, parts: [], bbox: { min: [0, 0, 0], max: [c2.width, c2.height, 0] }, hasPlane: false };
 }
 
 // Dados da cena que atravessam o worker (só valores simples: formas e expressões ficam lá).

@@ -7,7 +7,8 @@ import { isExpr, glslOf } from './expr.js';
 import { resolveRig } from './rig.js';
 import { polygonGlsl, contoursGlsl } from './profile.js';
 import { PATTERN_GLSL, patternLip } from './pattern.js';
-import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
+import { sceneDuration } from './timeline.js';
+import { Shape, union, bboxAt, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
 export const INSTANCE_THRESHOLD = 40;
 const CODE_W = 5; // texels por instância de código: 3 linhas da inversa, centro da caixa + escala, meia caixa  // abaixo disso, tudo vira código (mais rápido por pixel)
@@ -254,6 +255,8 @@ class Gen {
   constructor(tag = '') {
     this.lines = [];
     this.funcs = []; // funções GLSL geradas por forma (polígonos de extrude/lathe)
+    this.cull = []; // caixas (mundo) das unidades de cull: [minx, miny, minz, maxx, maxy, maxz]
+    this.cullRoot = null; // a união da raiz, cujos filhos viram unidades de cull
     this.n = 0;
     this.indent = 1;
     this.tag = tag;
@@ -509,12 +512,20 @@ class Gen {
     // União simples: pula filhos complexos cuja caixa está mais longe que o melhor resultado.
     const acc = this.tmp('u');
     this.line(`M ${acc} = ${M_FAR};`);
+    // na união da raiz (coordenadas do mundo), cada filho finito e parado vira uma unidade de cull:
+    // fora da câmera (e da sombra dela), o shader nem avalia
+    const root = s === this.cullRoot;
     for (const c of s.children) {
       const b = c.bbox;
       const bounded = (c.leaves >= 3 || isHeavy(c)) && isFiniteBB(b) && !c.animated;
+      // peça animada: a caixa de cull cobre o movimento todo da timeline (sem duração, fica de fora)
+      const cb = !root ? null : c.animated ? this.motionBox?.(c) : isFiniteBB(b) ? b : null;
+      const cull = cb ? `cullVis(${this.cull.push([...cb.min, ...cb.max]) - 1}) && ` : '';
       if (bounded) {
         const half = size(b).map((x) => x / 2 + 0.01);
-        this.line(`if (sdBox(${p} - ${v3(center(b))}, ${v3(half)}) < ${acc}.d) {`);
+        this.line(`if (${cull}sdBox(${p} - ${v3(center(b))}, ${v3(half)}) < ${acc}.d) {`);
+      } else if (cull) {
+        this.line(`if (${cull.slice(0, -4)}) {`);
       } else {
         // bloco próprio: os temporários de cada filho morrem ao fim dele (compila mais rápido)
         this.line('{');
@@ -760,6 +771,16 @@ function buildBVH(instances) {
   return { bvh: data, nodeCount: nodes.length, order };
 }
 
+// Visibilidade das unidades de cull: 1 texel por unidade, atualizado pelo renderer a cada vista
+// (sem textura enviada, tudo é visível: o renderer sempre envia uma, nem que de 1 texel)
+const GLSL_VIS = /* glsl */ `
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+`;
+
 const GLSL_BVH = /* glsl */ `
 uniform highp sampler2D uInst;
 uniform highp sampler2D uBvh;
@@ -834,6 +855,31 @@ float bvhD(vec3 p, float best, out int hit) {
 }
 `;
 
+// Caixa que cobre o movimento de uma peça animada: amostra a timeline (o relógio do preview dá a volta
+// na duração) e alarga cada eixo pelo maior passo entre amostras vizinhas, o que cobre o trecho entre
+// elas. Sem duração (o tempo corre sem fim) ou com caixa infinita em algum instante: null, sem cull.
+const MOTION_SAMPLES = 120;
+function motionBoxes(scene) {
+  const dur = sceneDuration(scene);
+  if (!(dur > 0)) return () => null;
+  const times = [...Array(MOTION_SAMPLES + 1).keys()].map((i) => (i * dur) / MOTION_SAMPLES);
+  for (const k of scene.keyTimes ?? []) if (k > 0 && k < dur) times.push(k - 1e-4, k + 1e-4);
+  times.sort((p, q) => p - q);
+  return (s) => {
+    let box = null, prev = null;
+    const step = [0, 0, 0];
+    for (const t of times) {
+      const b = bboxAt(s, t);
+      if (!isFiniteBB(b)) return null;
+      if (prev) for (let i = 0; i < 3; i++) step[i] = Math.max(step[i], Math.abs(b.min[i] - prev.min[i]), Math.abs(b.max[i] - prev.max[i]));
+      box = box ? unionBB([box, b]) : b;
+      prev = b;
+    }
+    const pad = step.map((d) => d + 0.02);
+    return { min: box.min.map((v, i) => v - pad[i]), max: box.max.map((v, i) => v + pad[i]) };
+  };
+}
+
 export function compileScene(scene) {
   // partes presas a ossos recebem a pose do esqueleto
   const shapes = resolveRig(scene.shapes);
@@ -853,9 +899,13 @@ export function compileScene(scene) {
 
   let mBody = `  return ${M_FAR};`;
   let funcs = '';
+  let cullGen = null;
   let codeData = null;
   if (codeRoot || groups.length) {
     const Mg = new Gen();
+    Mg.cullRoot = codeRoot && codeRoot.kind === 'union' && !codeRoot.props.k ? codeRoot : null;
+    Mg.motionBox = motionBoxes(scene);
+    cullGen = Mg;
     let mOut;
     if (codeRoot && !emptyRoot) mOut = Mg.emit(codeRoot, 'p', {});
     else { mOut = Mg.tmp('m'); Mg.line(`M ${mOut} = ${M_FAR};`); }
@@ -892,7 +942,8 @@ vec4 codeFetch(int col, int row) {
       Mg.line(`int ${mk.map((m) => `${m} = 0`).join(', ')};`);
       occ.forEach((_, i) => {
         const r3 = rows[i * CODE_W + 3], r4 = rows[i * CODE_W + 4];
-        Mg.line(`if (sdBox(p - ${v3(r3.slice(0, 3))}, ${v3(r4.slice(0, 3))}) < ${mOut}.d) ${mk[i >> 5]} |= ${1 << (i & 31)};`);
+        const id = Mg.cull.push([...r3.slice(0, 3).map((c, k) => c - r4[k]), ...r3.slice(0, 3).map((c, k) => c + r4[k])]) - 1;
+        Mg.line(`if (cullVis(${id}) && sdBox(p - ${v3(r3.slice(0, 3))}, ${v3(r4.slice(0, 3))}) < ${mOut}.d) ${mk[i >> 5]} |= ${1 << (i & 31)};`);
       });
       // 2) um ponto de chamada por palavra: percorre as candidatas lendo a transformação da textura
       mk.forEach((m, w) => {
@@ -917,10 +968,19 @@ vec4 codeFetch(int col, int row) {
   }
 
   let glsl, data = null;
+  const cull = cullGen ? [...cullGen.cull] : [];
+  let bvhBase = -1;
   if (useBVH) {
     const { bvh, nodeCount, order } = buildBVH(instances);
+    // instâncias da BVH também são unidades de cull (pela ordem em que estão na textura)
+    bvhBase = cull.length;
+    for (const i of order) {
+      const it = instances[i];
+      const b = fromPoints(corners(it.s.bbox).map((c) => mulMV(it.m, c).map((v, k) => v + it.t[k])));
+      cull.push([...b.min, ...b.max]);
+    }
     data = { inst: packInstances(order.map((i) => instances[i])), instCount: instances.length, bvh, nodeCount, instW: INST_W, bvhW: BVH_W, ...codeData };
-    glsl = `${GLSL_LIB}${GLSL_BVH}${funcs}
+    glsl = `${GLSL_LIB}${GLSL_VIS}${GLSL_BVH.replace('float d = instD(p, st + k);', `if (!cullVis(${bvhBase} + st + k)) continue;\n        float d = instD(p, st + k);`)}${funcs}
 M codeM(vec3 p) {
 ${mBody}
 }
@@ -942,7 +1002,7 @@ M mapAll(vec3 p, bool wantMat) {
 `;
   } else {
     data = codeData;
-    glsl = `${GLSL_LIB}${funcs}
+    glsl = `${GLSL_LIB}${GLSL_VIS}${funcs}
 M mapAll(vec3 p, bool wantMat) {
 ${mBody}
 }
@@ -951,6 +1011,8 @@ ${mBody}
 
   const finite = shapes.filter((s) => isFiniteBB(s.bbox)).map((s) => s.bbox);
   const bbox = finite.length ? unionBB(finite) : { min: [-1, 0, -1], max: [1, 1, 1] };
+  // caixas das unidades de cull (vão para o renderer, que marca a cada quadro o que a câmera vê)
+  if (cull.length) data = { ...(data ?? {}), cull: Float32Array.from(cull.flat()), cullCount: cull.length };
   return {
     glsl,
     data,

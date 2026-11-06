@@ -32,12 +32,14 @@ function devtools(proc) {
   const out = proc.stdio[3], inp = proc.stdio[4];
   let id = 0, buf = '';
   const waiting = new Map();
+  const listeners = new Set();
   inp.on('data', (chunk) => {
     buf += chunk.toString('utf8');
     let k;
     while ((k = buf.indexOf('\0')) >= 0) {
       const msg = JSON.parse(buf.slice(0, k));
       buf = buf.slice(k + 1);
+      if (msg.method) { for (const l of listeners) l(msg); continue; }
       const w = waiting.get(msg.id);
       if (!w) continue;
       waiting.delete(msg.id);
@@ -45,12 +47,15 @@ function devtools(proc) {
       else w.resolve(msg.result);
     }
   });
-  return (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+  const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const msg = { id: ++id, method, params };
     if (sessionId) msg.sessionId = sessionId;
     waiting.set(msg.id, { resolve, reject });
     out.write(JSON.stringify(msg) + '\0');
   });
+  // eventos do navegador (sem id): ex. Runtime.consoleAPICalled
+  send.on = (fn) => listeners.add(fn);
+  return send;
 }
 
 // ---------- servidor local ----------
@@ -136,6 +141,13 @@ async function launch(chrome, url, flags, src) {
     return (await page('Page.captureScreenshot', { format: 'png' })).data;
   };
 
+  // erros do console da página (console.error e exceções), para diagnóstico: b.consoleErrors
+  b.consoleErrors = [];
+  send.on((m) => {
+    if (m.sessionId !== sessionId) return;
+    if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') b.consoleErrors.push(m.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
+    else if (m.method === 'Runtime.exceptionThrown') b.consoleErrors.push(m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text);
+  });
   await page('Runtime.enable');
   await page('Page.enable');
   // o editor abre com o código salvo no localStorage: assim já compila a cena pedida

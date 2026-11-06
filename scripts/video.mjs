@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Renderiza uma cena .3di com timeline() num vídeo MP4 pela linha de comando: quadros pelo editor
 // num Chrome headless, falas do roteiro (say) pelo Qwen3-TTS e legendas num .srt ao lado do vídeo,
-// embutidas como faixa ou gravadas na imagem (--burn). No app, o botão Vídeo faz o mesmo.
+// gravadas na imagem (ou só como faixa do player com --soft-subs). No app, o botão Vídeo faz o mesmo.
 // Uso: node scripts/video.mjs cena.3di saida.mp4 [--size 1280x720] [--fps 30] [--from 0] [--to 10]
-//                             [--burn] [--no-audio] [--no-subs] [--cpu]
+//                             [--no-subs] [--soft-subs] [--no-audio] [--cpu]
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,12 +11,12 @@ import { openEditor } from './headless.mjs';
 import { ffmpegPath, speech, toSrt, scriptRange, frameEncoder, muxVideo } from '../src/services/video.mjs';
 import { ttsConfig, apiKeys } from '../src/services/settings.mjs';
 
-const USAGE = 'uso: node scripts/video.mjs cena.3di saida.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--burn] [--no-audio] [--no-subs] [--cpu]';
+const USAGE = 'uso: node scripts/video.mjs cena.3di saida.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--no-subs] [--soft-subs] [--no-audio] [--cpu]';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const fail = (msg, code = 1) => { console.error(msg); process.exit(code); };
 
 const args = process.argv.slice(2), pos = [];
-const opt = { size: '1280x720', fps: null, from: 0, to: null, burn: false, audio: true, subs: true, cpu: false };
+const opt = { size: '1280x720', fps: null, from: 0, to: null, burn: true, audio: true, subs: true, cpu: false };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '--size') opt.size = args[++i];
@@ -24,7 +24,8 @@ for (let i = 0; i < args.length; i++) {
     const v = Number(args[++i]);
     if (!Number.isFinite(v)) fail(`${a} precisa de um número\n${USAGE}`, 2);
     opt[a.slice(2)] = v;
-  } else if (a === '--burn') opt.burn = true;
+  } else if (a === '--burn') opt.burn = true; // padrão; mantido por compatibilidade
+  else if (a === '--soft-subs') opt.burn = false;
   else if (a === '--no-audio') opt.audio = false;
   else if (a === '--no-subs') opt.subs = false;
   else if (a === '--cpu') opt.cpu = true;

@@ -216,13 +216,19 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   {
     M m1 = M(p.y, vec3(0.715694, 0.571125, 0.323143), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m1);
   }
-  if (sdBox(p - vec3(0.0, 0.27, 0.0), vec3(3.91, 0.28, 5.91)) < u0.d) {
+  if (cullVis(0) && sdBox(p - vec3(0.0, 0.27, 0.0), vec3(3.91, 0.28, 5.91)) < u0.d) {
     M u2 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     {
       vec3 q3 = p - vec3(0.0, 0.09, 0.0);
@@ -241,7 +247,7 @@ M mapAll(vec3 p, bool wantMat) {
     }
     u0 = mU(u0, u2);
   }
-  if (sdBox(p - vec3(0.0, 2.415, 0.0), vec3(3.035, 1.885, 5.035)) < u0.d) {
+  if (cullVis(1) && sdBox(p - vec3(0.0, 2.415, 0.0), vec3(3.035, 1.885, 5.035)) < u0.d) {
     vec3 q9 = p - vec3(0.0, 0.54, 0.0);
     M u10 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     if (sdBox(q9 - vec3(0.0, 1.875, 0.0), vec3(3.035, 1.885, 5.035)) < u10.d) {
@@ -296,19 +302,19 @@ M mapAll(vec3 p, bool wantMat) {
     }
     u0 = mU(u0, u10);
   }
-  {
+  if (cullVis(2)) {
     vec3 q35 = p - vec3(0.0, 4.54, 0.0);
     M m36 = M(sdBox(q35, vec3(3.1, 0.25, 5.1)), vec3(0.838799, 0.783538, 0.672443), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m36);
   }
-  {
+  if (cullVis(3)) {
     vec3 q37 = p - vec3(0.0, 5.49, 0.0);
     vec3 q38 = q37 / vec3(6.4, 1.4, 10.4);
     M m39 = M(sdPyramid((q38 + vec3(0.0, 0.5, 0.0)) / 1.0, 1.0) * 1.0, vec3(0.391572, 0.08022, 0.042311), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     M m40 = m39; m40.d = m39.d * 1.4;
     u0 = mU(u0, m40);
   }
-  {
+  if (cullVis(4)) {
     vec3 q41 = p - vec3(0.0, 2.29, 0.0);
     M m42 = M(sdBox(q41, vec3(2.0, 1.75, 3.5)), vec3(0.693872, 0.62396, 0.491021), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m42);

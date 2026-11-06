@@ -216,25 +216,31 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   {
     M m1 = M(p.y, vec3(0.693872, 0.730461, 0.791298), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m1);
   }
-  {
+  if (cullVis(0)) {
     vec3 q2 = p - vec3(0.0, 0.15, 0.0);
     M m3 = M(sdCyl(q2, 0.56, 0.11) - 0.04, vec3(0.042311, 0.049707, 0.068478), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m3);
   }
-  {
+  if (cullVis(1)) {
     vec3 q4 = p - vec3(0.0, ((0.25 + (0.65 * smoothstep(0.0, 1.0, clamp(((uTime - 0.0) / 2.0), 0.0, 1.0)))) + (-0.5 * smoothstep(0.0, 1.0, clamp(((uTime - 15.0) / 2.0), 0.0, 1.0)))), 0.0);
     vec3 q5 = q4 * rotEuler(vec3(0.0, (1080.0 * clamp(((uTime - 0.0) / 18.0), 0.0, 1.0)), 0.0));
     vec3 q6 = q5 - clamp(q5, -vec3(0.0, 0.09, 0.0), vec3(0.0, 0.09, 0.0));
     M m7 = M(length(q6) - 0.32, vec3(0.078187, 0.262251, 1.0), vec3(0.15, 0.0, (((0.2 * smoothstep(0.0, 1.0, clamp(((uTime - 0.0) / 4.0), 0.0, 1.0))) + smoothstep(0.0, 1.0, clamp(((uTime - 4.0) / 2.0), 0.0, 1.0))) + (-1.0 * smoothstep(0.0, 1.0, clamp(((uTime - 6.0) / 2.0), 0.0, 1.0))))), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 8192.0);
     u0 = mU(u0, m7);
   }
-  {
+  if (cullVis(2)) {
     vec3 q8 = p - vec3(0.0, 1.0, 0.0);
     vec3 q9 = q8 / vec3((0.01 + (0.99 * smoothstep(0.0, 1.0, clamp(((uTime - 3.0) / 1.0), 0.0, 1.0)))), (0.01 + (0.99 * smoothstep(0.0, 1.0, clamp(((uTime - 3.0) / 1.0), 0.0, 1.0)))), (0.01 + (0.99 * smoothstep(0.0, 1.0, clamp(((uTime - 3.0) / 1.0), 0.0, 1.0)))));
     vec3 q10 = q9 * rotEuler(vec3(0.0, (-540.0 * clamp(((uTime - 0.0) / 18.0), 0.0, 1.0)), 0.0));

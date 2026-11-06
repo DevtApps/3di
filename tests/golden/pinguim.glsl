@@ -216,18 +216,24 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   {
     M m1 = M(p.y, vec3(0.023153, 0.158961, 0.309469), vec3(0.05, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m1);
   }
-  {
+  if (cullVis(0)) {
     vec3 q2 = p - vec3(0.0, -0.03, 0.0);
     M m3 = M(sdCyl(q2, 1.5, 0.05) - 0.1, vec3(0.806952, 0.904661, 0.964686), vec3(0.4, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m3);
   }
-  if (sdBox(p - vec3(-0.25, 0.77826, 0.0), vec3(0.441717, 0.66826, 0.3225)) < u0.d) {
+  if (cullVis(1) && sdBox(p - vec3(-0.25, 0.77826, 0.0), vec3(0.441717, 0.66826, 0.3225)) < u0.d) {
     vec3 q4 = p - vec3(-0.25, 0.12, -0.0225);
     M u5 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     if (sdBox(q4 - vec3(0.0, 0.595, 0.01), vec3(0.441717, 0.575, 0.31)) < u5.d) {
@@ -319,7 +325,7 @@ M mapAll(vec3 p, bool wantMat) {
     }
     u0 = mU(u0, u5);
   }
-  if (sdBox(p - vec3(0.55, 0.528121, 0.35), vec3(0.279125, 0.418121, 0.271081)) < u0.d) {
+  if (cullVis(2) && sdBox(p - vec3(0.55, 0.528121, 0.35), vec3(0.279125, 0.418121, 0.271081)) < u0.d) {
     vec3 q52 = p - vec3(0.538523, -0.130139, 0.338927);
     vec3 q53 = q52 - vec3(0.0, 0.65826, 0.0225);
     vec3 q54 = q53 * mat3(0.819152, 0.0, 0.573576, 0.0, 1.0, 0.0, -0.573576, 0.0, 0.819152);
@@ -416,7 +422,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m104 = u57; m104.d = u57.d * 0.62;
     u0 = mU(u0, m104);
   }
-  {
+  if (cullVis(3)) {
     vec3 q105 = p - vec3(0.094189, 0.17, 0.761622);
     vec3 q106 = q105 * mat3(0.906308, 0.0, -0.422618, 0.0, 1.0, 0.0, 0.422618, 0.0, 0.906308);
     vec3 q107 = q106 - vec3(0.0275, 0.0, 0.0);

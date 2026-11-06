@@ -216,6 +216,12 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 float sdHull11(vec3 p) {
   float d = dot(p, vec3(0.0, -1.0, 0.0)) - 0.0;
   d = max(d, dot(p, vec3(0.0, -0.066519, -0.997785)) - 0.129712);
@@ -440,7 +446,7 @@ float sdHull86(vec3 p) {
 
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
-  if (sdBox(p - vec3(-0.032466, 0.665, 0.009738), vec3(0.437729, 0.675, 0.249738)) < u0.d) {
+  if (cullVis(0) && sdBox(p - vec3(-0.032466, 0.665, 0.009738), vec3(0.437729, 0.675, 0.249738)) < u0.d) {
     M u1 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
     {
       vec3 q2 = p - vec3(0.09, 0.24, 0.0);
@@ -608,7 +614,7 @@ M mapAll(vec3 p, bool wantMat) {
     }
     u0 = mU(u0, u1);
   }
-  {
+  if (cullVis(1)) {
     vec3 q85 = p - vec3(0.0, -0.03, 0.0);
     M m87 = M(sdHull86(q85), vec3(0.158961, 0.254152, 0.068478), vec3(0.6, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m87);

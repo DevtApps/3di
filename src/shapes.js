@@ -1,12 +1,22 @@
 // Modelo de cena: formas imutáveis, transformações, layout semântico e caixas envolventes.
 import { ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
-import { isExpr, val0, sym as esym } from './expr.js';
+import { isExpr, val0, withTime, sym as esym } from './expr.js';
 import { parsePoints, regularPolygon, starPoints, smoothOpen, lathePolygon, boundsOf } from './profile.js';
 import { text3d } from './text3d.js';
 import { convexHull, ringPoints, lowSphere, bevelPoints, loftRings } from './hull.js';
 
 export const INF = 1e4;
+
+let bboxFresh = false;
+// caixa de s no instante t (sem o cache de t = 0; as partes paradas reaproveitam o cache)
+export function bboxAt(s, t) {
+  const prev = bboxFresh;
+  bboxFresh = true;
+  try { return withTime(t, () => computeBBox(s)); } finally { bboxFresh = prev; }
+}
+// matriz de um rotate: os ângulos animados valem no instante da caixa
+const rotM = (s) => (bboxFresh && s.props.angles ? rotMatrix(...s.props.angles.map(val0)) : s.props.m);
 
 export class Shape {
   constructor(kind, props = {}, children = []) {
@@ -16,7 +26,8 @@ export class Shape {
     this._bb = null;
     this._leaves = null;
   }
-  get bbox() { return (this._bb ??= computeBBox(this)); }
+  // com bboxFresh (bboxAt), as partes animadas recalculam a caixa no instante corrente
+  get bbox() { return bboxFresh && this.animated ? computeBBox(this) : (this._bb ??= computeBBox(this)); }
   // as próprias propriedades dependem de time?
   get selfAnimated() {
     const p = this.props;
@@ -78,7 +89,7 @@ function transformedBBox(s, m, t) {
       const mv = mulMV(m, s.props.v.map(val0));
       return transformedBBox(s.children[0], m, t.map((v, i) => v + mv[i]));
     }
-    case 'rotate': return transformedBBox(s.children[0], mul3(m, s.props.m), t);
+    case 'rotate': return transformedBBox(s.children[0], mul3(m, rotM(s)), t);
     case 'scale': {
       const S = s.props.s.map(val0);
       return transformedBBox(s.children[0], mul3(m, [S[0], 0, 0, 0, S[1], 0, 0, 0, S[2]]), t);
@@ -126,7 +137,7 @@ function computeBBox(s) {
     case 'translate': return clampInf(bb(c0.bbox.min.map((v, i) => v + val0(p.v[i])), c0.bbox.max.map((v, i) => v + val0(p.v[i]))));
     case 'rotate': {
       if (!isFiniteBB(c0.bbox)) return bb([-INF, -INF, -INF], [INF, INF, INF]);
-      return transformedBBox(c0, p.m, [0, 0, 0]);
+      return transformedBBox(c0, rotM(s), [0, 0, 0]);
     }
     case 'scale': return clampInf(bb(c0.bbox.min.map((v, i) => v * val0(p.s[i])), c0.bbox.max.map((v, i) => v * val0(p.s[i]))));
     case 'displace': return expand(c0.bbox, p.amt);

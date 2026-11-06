@@ -216,6 +216,12 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   {
@@ -276,7 +282,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m25 = M(length(q24) - 0.3, vec3(0.672443, 0.045186, 0.045186), vec3(0.3, 0.0, 0.0), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m25);
   }
-  {
+  if (cullVis(0)) {
     vec3 q26 = p - vec3(2.2, 0.35, -0.6);
     M m27 = M(sdCyl(q26, 0.32, 0.32) - 0.03, vec3(0.887923, 0.887923, 0.887923), vec3(0.6, 0.0, 0.0), vec3(0.221981, 0.221981, 0.221981), vec4(3.0, 0.3, 1.0, 0.0), p, 0.0);
     u0 = mU(u0, m27);
@@ -290,7 +296,7 @@ M mapAll(vec3 p, bool wantMat) {
     M m33 = mI(m31, m32);
     u0 = mU(u0, m33);
   }
-  {
+  if (cullVis(1)) {
     vec3 q34 = p - vec3(0.0, 2.6, -3.0);
     M m35 = M(length(q34) - 0.35, vec3(1.0, 0.603827, 0.090842), vec3(0.6, 0.0, 1.2), vec3(0.0, 0.0, 0.0), vec4(0.0, 1.0, 1.0, 0.0), vec3(0.0), 0.0);
     u0 = mU(u0, m35);

@@ -216,13 +216,19 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 M mapAll(vec3 p, bool wantMat) {
   M u0 = M(1e10, vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0), vec4(0.0), vec3(0.0), 0.0);
   {
     M m1 = M(p.y, vec3(0.693872, 0.64448, 0.545724), vec3(0.6, 0.0, 0.0), vec3(0.48515, 0.434154, 0.351533), vec4(5.0, 0.5, 1.0, 0.0), p, 0.0);
     u0 = mU(u0, m1);
   }
-  {
+  if (cullVis(0)) {
     vec3 q2 = p - vec3(((cos((uTime * 0.5)) * 1.6) - 1.6), ((abs(cos((uTime * 5.0))) * 0.025) + 0.95), (sin((uTime * 0.5)) * 1.6));
     vec3 q3 = q2 * rotEuler(vec3(0.0, (((-(uTime * 0.5)) * 180.0) / 3.141593), 0.0));
     vec3 q4 = q3 - vec3(0.0, -0.95, 0.0);

@@ -135,15 +135,19 @@ e `screenshot(time=...)` conferem um instante.
 
 ## Render de vídeo
 
-**No app:** botão **Vídeo** (Exportar). Escolha nome, tamanho, quadros por segundo, legendas (faixa embutida,
-gravadas na imagem ou sem) e se as falas têm voz. Os quadros são desenhados pela própria vista; o vídeo e o `.srt` vão para a pasta de
+**No app:** botão **Vídeo** (Exportar). Escolha nome, tamanho, quadros por segundo, se as **legendas ficam gravadas
+no vídeo** (marcado por padrão: desenhadas na imagem, aparecem em qualquer player; desmarcado: sem legendas) e se
+as falas têm voz. Os quadros são desenhados pela própria vista; o vídeo e o `.srt` vão para a pasta de
 downloads do usuário (a do `xdg-user-dir DOWNLOAD`, padrão `~/Downloads`), sem sobrescrever arquivos.
 
 **Pela linha de comando** (no repositório):
 
 ```bash
-node scripts/video.mjs cena.3di out/video.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--burn] [--no-audio] [--no-subs] [--cpu]
+node scripts/video.mjs cena.3di out/video.mp4 [--size 1280x720] [--fps 30] [--from s] [--to s] [--no-subs] [--soft-subs] [--no-audio] [--cpu]
 ```
+
+Na linha de comando as legendas também saem gravadas na imagem; `--no-subs` tira, `--soft-subs` põe só como faixa
+que o player liga/desliga.
 
 O que o vídeo usa e onde fica:
 - **ffmpeg:** vem no pacote do 3DI (no desenvolvimento, o `ffmpeg-static` do npm).

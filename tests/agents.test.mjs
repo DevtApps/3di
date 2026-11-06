@@ -32,3 +32,21 @@ test('o agente não herda as variáveis de uma sessão do Claude Code que abriu 
   const env = agentEnv({ PATH: '/bin', HOME: '/h', CLAUDE_CODE_SESSION_ID: 'x', CLAUDECODE: '1', ANTHROPIC_BASE_URL: 'u' });
   assert.deepEqual(Object.keys(env).sort(), ['ANTHROPIC_BASE_URL', 'HOME', 'PATH']);
 });
+
+test('os agentes do painel só têm o MCP do 3DI: sem shell, arquivos, web nem ferramentas de arquivo do MCP', async () => {
+  const { agentArgs, AGENT_TOOLS } = await import('../src/services/agents.mjs');
+  const c = agentArgs('claude', { mcpEndpoint: 'http://127.0.0.1:1/mcp' });
+  assert.equal(c[c.indexOf('--tools') + 1], '', 'nenhuma ferramenta embutida');
+  assert.ok(c.includes('--strict-mcp-config'));
+  assert.ok(!c.includes('--permission-mode') || c[c.indexOf('--permission-mode') + 1] !== 'bypassPermissions');
+  const allowed = c[c.indexOf('--allowedTools') + 1].split(',');
+  assert.ok(allowed.every((t) => t.startsWith('mcp__3di__')) && allowed.includes('mcp__3di__get_documentation') && allowed.includes('mcp__3di__set_script'));
+  const denied = c[c.indexOf('--disallowedTools') + 1];
+  for (const t of ['delete_scene', 'set_workspace', 'install_skills', 'read_scene']) assert.ok(denied.includes(`mcp__3di__${t}`), t);
+  const x = agentArgs('codex', { mcpEndpoint: 'http://127.0.0.1:1/mcp' }).join(' ');
+  assert.ok(x.includes('--sandbox read-only'));
+  for (const f of ['shell_tool', 'unified_exec', 'browser_use', 'computer_use', 'view_image']) assert.ok(x.includes(`features.${f}=false`), f);
+  assert.ok(x.includes('web_search="disabled"') && x.includes('project_doc_max_bytes=0'));
+  assert.ok(x.includes(`mcp_servers.3di.enabled_tools=${JSON.stringify(AGENT_TOOLS)}`));
+  assert.ok(!AGENT_TOOLS.some((t) => /file|scene|workspace|skills|export/.test(t)));
+});

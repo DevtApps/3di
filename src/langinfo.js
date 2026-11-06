@@ -130,6 +130,17 @@ const DOCS = {
   split: 'Divide a caixa da forma (ou escopo) no eixo em faixas, da menor para a maior coordenada. Tamanhos: metros, "~" (o que sobrar), "2fr" (partes do que sobrar), "30%"; ou um inteiro = partes iguais. Devolve uma lista de escopos.',
   tile: 'Repete células de ~`size` metros ao longo do eixo, ajustando o tamanho para caberem inteiras (com `gap` entre elas). Sem `f` devolve os escopos; com `f(escopo)` ou `f(escopo, i)` devolve as formas juntas.',
   bind: 'Prende a forma (modelada na pose de repouso) a um osso.',
+  // modo 2D (canvas2d)
+  canvas2d: 'Declara a cena como 2D: quadro de `width` x `height` pixels com fundo `background` (cor, gradiente ou None = transparente). Origem no canto superior esquerdo, y para baixo. Depois dele, polygon, star, group, union, subtract, intersect e show fazem a versão 2D.',
+  circle: '2D: círculo de raio `r`, centrado na origem (posicione com .at(x, y)).',
+  ellipse: '2D: elipse de raios `rx` e `ry`.',
+  rect: '2D: retângulo `w` x `h` centrado; `round` arredonda os cantos.',
+  line: '2D: segmento de `a` = (x, y) até `b`. Dê .stroke(...) para aparecer.',
+  path: '2D: polilinha pelos `points`; `curve=True` passa uma curva suave por eles; `closed=True` fecha (e pode ter preenchimento).',
+  text: '2D: texto com as fontes do text3d ("sans", "serif", "mono"); `size` em pixels, base da primeira linha em y = 0, `align`, `spacing`, `line`; \\n quebra linha.',
+  image: '2D: imagem (URL, caminho relativo à página ou data:) de largura `w`, centrada; sem `h` mantém a proporção.',
+  linear_gradient: '2D: gradiente linear de (x1, y1) a (x2, y2) no espaço da forma; cores ou (posição 0..1, cor). Use em .fill() ou .stroke().',
+  radial_gradient: '2D: gradiente radial com centro (x, y) e raio `r` no espaço da forma.',
   // propriedades
   top: 'y do topo da caixa envolvente.', bottom: 'y da base.', left: 'x mínimo.', right: 'x máximo.',
   back: 'z mínimo.', front: 'z máximo.', width: 'Largura (x).', height: 'Altura (y).', depth: 'Profundidade (z).',
@@ -143,6 +154,7 @@ const CATEGORY = {
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
   skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação', keys: 'animação', timeline: 'animação', voice: 'roteiro', say: 'roteiro', caption: 'roteiro', overlay: 'roteiro',
   polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', text3d: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', loft: 'primitiva', implicit: 'primitiva',
+  canvas2d: '2d', circle: '2d', ellipse: '2d', rect: '2d', line: '2d', path: '2d', text: '2d', image: '2d', linear_gradient: '2d', radial_gradient: '2d',
   space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 
@@ -198,7 +210,8 @@ export function languageCatalog() {
     if (HIDDEN.has(name)) continue;
     if (v instanceof Native) {
       const category = CATEGORY[name] ?? 'python';
-      functions.push({ name, signature: v.signature(), params: v.params.map((p) => p.name), star: v.star, doc: DOCS[name] ?? (category === 'python' ? 'Função do Python.' : ''), category });
+      const f = v.f3 ?? v;
+      functions.push({ name, signature: v.signature(), params: f.params.map((p) => p.name), star: f.star, doc: DOCS[name] ?? (category === 'python' ? 'Função do Python.' : ''), category });
     } else {
       constants.push({ name, doc: DOCS[name] ?? (typeof v === 'number' ? `constante ${v.toFixed(5)}` : ''), category: CATEGORY[name] ?? 'python' });
     }
@@ -241,6 +254,7 @@ export function languageSummary() {
     `Rig:\n${fn('rig')}\n${c.rig.skeleton.map((m) => `  esq.${m.signature}  # ${m.doc}`).join('\n')}\n${c.rig.bone.map((m) => `  osso.${m.signature}  # ${m.doc}`).join('\n')}`,
     `Animação:\n${fn('animação')}\n  time  # ${DOCS.time}`,
     `Roteiro (legendas e falas; vídeo com scripts/video.mjs):\n${fn('roteiro')}`,
+    `Modo 2D (cena 2D própria: comece com canvas2d(); pixels, origem no canto superior esquerdo, y para baixo):\n${fn('2d')}\n  polygon(sides, r, points), star(points, r, inner), group/union/subtract/intersect(*formas) e show(...) viram 2D depois de canvas2d(); a + b, a - b, a & b também\n  métodos 2D: .at(x, y), .move(x, y), .rotate(graus, pivot), .scale(s, sy), .fill(cor|gradiente), .color(...), .stroke(cor, width, dash, cap, join), .opacity(a), .trim(end, start), .shadow(color, blur, x, y), .name(), .union/.subtract/.intersect(...)\n  qualquer número aceita time/keys(); export PNG/SVG/MP4`,
     `Cores: ${c.colors.filter((n) => /^[a-z]+$/.test(n)).join(', ')}, "#rrggbb" ou (r, g, b)`,
     `Texturas: ${['noise', 'wood', 'marble', 'stripes', 'checker', 'bricks', 'gradient', 'mottle', 'relief'].join(', ')} (parâmetros: color2, size, axis, bump, triplanar, range)`,
     `Python: def, for, while, if/elif/else, listas, compreensões, tuplas, dicts, lambda, f-strings, * no desempacotamento. Funções: ${c.functions.filter((f) => f.category === 'python').map((f) => f.name).join(', ')}.`,

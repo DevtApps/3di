@@ -12,8 +12,11 @@ import { join } from 'node:path';
 import { loadSettings } from './settings.mjs';
 
 const INSTRUCTIONS = 'Você está dentro do 3DI, um editor de cenas 3D por código. O usuário vê a cena aberta no editor ao lado deste chat. ' +
-  'Use as ferramentas do MCP "3di": comece por get_documentation(topic="inicio"), leia get_script antes de editar, valide com check_script, ' +
-  'aplique com set_script e confira com screenshot(view="grid"). Responda em português, de forma curta.';
+  'Você só tem as ferramentas do MCP "3di": documentação da linguagem e o código da cena aberta (mais o preview para conferir). ' +
+  'Não há shell, arquivos, internet nem outros projetos: não tente acessá-los. Para saber como fazer algo (inclusive desempenho), ' +
+  'consulte get_documentation (comece por topic="inicio") e describe_language; leia get_script antes de editar, valide com check_script, ' +
+  'aplique com set_script e confira com screenshot(view="grid"). Se algo exigir mudar o 3DI em si (o motor, não a cena), diga isso ao usuário ' +
+  'em vez de procurar o código-fonte. Responda em português, de forma curta.';
 
 // Executável de cada agente. O atalho em ~/.local/bin pode apontar para uma instalação que sumiu:
 // por isso cada candidato é testado com --version. O caminho escolhido em ⚙ → Agentes, ou
@@ -94,11 +97,22 @@ export function agentLogin(name) {
   return { ok: r.status === 0, text: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().slice(0, 300) || (r.error?.message ?? '') };
 }
 
+// Ferramentas que o agente do painel pode usar: documentação, código da cena aberta e o preview para
+// conferir. Arquivos, workspace, skills e exportação ficam de fora (o usuário faz pela IDE).
+export const AGENT_TOOLS = ['get_documentation', 'describe_language', 'get_script', 'check_script', 'set_script', 'screenshot',
+  'list_parts', 'frame', 'set_camera', 'set_time', 'check_glb', 'compare_reference'];
+const BLOCKED_TOOLS = ['get_workspace', 'set_workspace', 'list_files', 'read_scene', 'create_scene', 'open_scene', 'move_scene',
+  'delete_scene', 'install_skills', 'save_script', 'export_glb', 'set_reference'];
+
 // ---------- Claude Code: claude -p --output-format stream-json ----------
 function claudeArgs({ resume, mcpEndpoint, model }) {
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    // edita arquivos do projeto e usa o MCP do 3DI sem pedir confirmação; o resto (shell) não
-    '--permission-mode', 'acceptEdits', '--allowedTools', 'mcp__3di', '--append-system-prompt', INSTRUCTIONS];
+    // nenhuma ferramenta embutida (shell, leitura/edição de arquivos, busca, web): só o MCP do 3DI
+    '--tools', '',
+    // as do MCP permitidas rodam sem perguntar; as bloqueadas são negadas mesmo que as configurações do usuário liberem
+    '--allowedTools', AGENT_TOOLS.map((t) => `mcp__3di__${t}`).join(','),
+    '--disallowedTools', BLOCKED_TOOLS.map((t) => `mcp__3di__${t}`).join(','),
+    '--append-system-prompt', INSTRUCTIONS];
   // só o MCP deste 3DI (um "3di" da configuração do usuário pode apontar para outra porta)
   if (mcpEndpoint) args.push('--strict-mcp-config', '--mcp-config', JSON.stringify({ mcpServers: { '3di': { type: 'http', url: mcpEndpoint } } }));
   if (model) args.push('--model', model);
@@ -132,11 +146,18 @@ function claudeEvents(msg, emit, state) {
 }
 
 // ---------- Codex: codex exec --json (prompt pelo stdin) ----------
+const CODEX_OFF = ['shell_tool', 'unified_exec', 'shell_snapshot', 'apps', 'plugins', 'browser_use', 'browser_use_external', 'in_app_browser',
+  'computer_use', 'image_generation', 'view_image', 'skill_search'];
 function codexArgs({ resume, mcpEndpoint, model }) {
-  // `exec resume` herda o sandbox da conversa e não aceita --sandbox
-  const args = resume ? ['exec', 'resume', '--json', '--skip-git-repo-check'] : ['exec', '--json', '--sandbox', 'workspace-write', '--skip-git-repo-check'];
-  args.push('-c', 'approval_policy="never"');
-  if (mcpEndpoint) args.push('-c', `mcp_servers.3di.url="${mcpEndpoint}"`);
+  // `exec resume` herda o sandbox da conversa e não aceita --sandbox. Sandbox só leitura e sem as
+  // ferramentas embutidas (shell, exec, navegador, plugins, apps, imagens, web): só o MCP do 3DI.
+  const args = resume ? ['exec', 'resume', '--json', '--skip-git-repo-check'] : ['exec', '--json', '--sandbox', 'read-only', '--skip-git-repo-check'];
+  // sem AGENTS.md da pasta ou do usuário: o agente segue só as instruções do 3DI
+  args.push('-c', 'approval_policy="never"', '-c', 'web_search="disabled"', '-c', 'project_doc_max_bytes=0');
+  for (const f of CODEX_OFF) args.push('-c', `features.${f}=false`);
+  if (mcpEndpoint) {
+    args.push('-c', `mcp_servers.3di.url="${mcpEndpoint}"`, '-c', `mcp_servers.3di.enabled_tools=${JSON.stringify(AGENT_TOOLS)}`);
+  }
   if (model) args.push('--model', model);
   if (resume) args.push(resume);
   args.push('-'); // lê o prompt do stdin
@@ -167,6 +188,9 @@ const PROVIDERS = {
   claude: { args: claudeArgs, events: claudeEvents, prompt: (text) => text },
   codex: { args: codexArgs, events: codexEvents, prompt: (text) => `${INSTRUCTIONS}\n\n${text}` },
 };
+
+// argumentos do CLI de cada agente (para conferir as restrições nos testes)
+export const agentArgs = (provider, opts) => PROVIDERS[provider].args(opts);
 
 // Um agente por conversa: run() processa uma mensagem e devolve quando o turno termina.
 export class AgentSession {

@@ -1,5 +1,6 @@
 // Renderizador WebGL2: um triângulo de tela cheia + raymarching do SDF gerado.
 import { packDataTexture } from './data-texture.js';
+import { cullMask } from './cull.js';
 
 const VERT = `#version 300 es
 in vec2 pos;
@@ -281,7 +282,7 @@ export class Renderer {
   }
 
   uploadData(data) {
-    if (!data) return;
+    if (!data) { this.setCull(null, 0); return; }
     const gl = this.gl;
     const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     this.tex ??= [gl.createTexture(), gl.createTexture(), gl.createTexture()];
@@ -290,6 +291,8 @@ export class Renderer {
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      // descarta erros pendentes de chamadas anteriores: só o envio desta textura conta
+      for (let i = 0; i < 16 && gl.getError() !== gl.NO_ERROR; i++) { /* limpa a fila */ }
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, arr);
       const error = gl.getError();
       if (error !== gl.NO_ERROR) throw new Error(`Não foi possível carregar a cena na GPU (WebGL ${error}); a qualidade não foi reduzida.`);
@@ -307,6 +310,50 @@ export class Renderer {
       const code = packDataTexture(data.code, data.codeW, max);
       put(2, this.tex[2], code.width, code.height, code.pixels, 'uCode');
     }
+    this.setCull(data.cull ?? null, data.cullCount ?? 0);
+  }
+
+  // Auto cull: caixas (mundo) das peças; a cada vista, só o que a câmera vê (ou o que faz sombra
+  // dentro dela) é avaliado pelo shader. A máscara vai numa textura R8 de 1 texel por peça.
+  setCull(boxes, count) {
+    const gl = this.gl;
+    this.cull = count ? { boxes, count, mask: new Uint8Array(count), w: Math.min(count, 1024), h: Math.ceil(count / 1024) } : null;
+    this.cullKey = '';
+    this.visTex ??= gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.visTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    const c = this.cull;
+    const px = c ? new Uint8Array(c.w * c.h).fill(255) : new Uint8Array([255]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, c ? c.w : 1, c ? c.h : 1, 0, gl.RED, gl.UNSIGNED_BYTE, px);
+    if (c) c.mask.fill(1);
+    // sem programa ainda (antes da 1ª compilação), o uniform é ligado no próximo setScene
+    if (this.program) {
+      gl.useProgram(this.program);
+      gl.uniform1i(gl.getUniformLocation(this.program, 'uVis'), 3);
+    }
+    this.cullStats = { visible: c?.count ?? 0, total: c?.count ?? 0 };
+  }
+
+  updateCull(view, w, h) {
+    const c = this.cull;
+    if (!c || this.cullOff) return;
+    const key = `${view.eye}|${view.target}|${view.fov}|${w}x${h}|${view.sun}`;
+    if (key === this.cullKey) return;
+    this.cullKey = key;
+    const changed = cullMask(c.boxes, c.count, view, w / h, c.mask);
+    if (!changed) return;
+    const gl = this.gl;
+    const px = new Uint8Array(c.w * c.h);
+    let visible = 0;
+    for (let i = 0; i < c.count; i++) { px[i] = c.mask[i] ? 255 : 0; visible += c.mask[i]; }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.visTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, c.w, c.h, gl.RED, gl.UNSIGNED_BYTE, px);
+    this.cullStats = { visible, total: c.count };
   }
 
   // devolve false quando ainda não há shader (nada foi desenhado)
@@ -322,6 +369,7 @@ export class Renderer {
     }
     gl.viewport(0, 0, w, h);
     gl.useProgram(this.program);
+    this.updateCull(view, w, h);
     const L = this.loc;
     gl.uniform2f(L.uRes, w, h);
     gl.uniform3fv(L.uRo, view.eye);

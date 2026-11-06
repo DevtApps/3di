@@ -3,6 +3,7 @@ import { parse, ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, typeName, repr, str, tuple, fmtNum } from './runtime.js';
 import { Shape, shapeBuiltins, getShapeAttr, shapeBinary } from './shapes.js';
 import { isExpr, sym, TIME, EXPR_FUNCS, POS_VARS } from './expr.js';
+import { Shape2D, binary2d, builtins2d } from './shapes2d.js';
 import { toSrgb, hsvToRgb, rgbToHsv, isColorLike } from './color.js';
 import { makeRng } from './lib/rand.js';
 import { libBuiltins } from './lib/index.js';
@@ -88,6 +89,7 @@ function contains(container, x) {
 }
 
 function binary(op, a, b) {
+  if (a instanceof Shape2D || b instanceof Shape2D) return binary2d(op, a, b);
   if (a instanceof Shape || b instanceof Shape) return shapeBinary(op, a, b);
   if (isExpr(a) || isExpr(b)) {
     const ok = (x) => isExpr(x) || typeof x === 'number';
@@ -285,7 +287,8 @@ export class Interpreter {
       randint: N('randint', ['a', 'b'], ({ a, b }) => a + Math.floor((b - a + 1) * this.rng())),
       choice: N('choice', ['xs'], ({ xs }) => { const a = iterate(xs); return a[Math.floor(this.rng() * a.length)]; }),
     };
-    return { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...timelineBuiltins(this.scene), ...scopeBuiltins(), ...curveBuiltins(), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
+    const all = { ...b, ...shapeBuiltins(this.scene), ...rigBuiltins(this.scene), ...timelineBuiltins(this.scene), ...scopeBuiltins(), ...curveBuiltins(), ...libBuiltins({ rng: () => this.rng(), makeRng }) };
+    return { ...all, ...builtins2d(this.scene, all) };
   }
 
   toNum(x, what) {

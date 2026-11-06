@@ -23,7 +23,7 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
         <label class="field">Tamanho <select data-k="size"><option value="640x360">640 × 360</option><option value="1280x720" selected>1280 × 720 (HD)</option><option value="1920x1080">1920 × 1080 (Full HD)</option><option value="1080x1920">1080 × 1920 (vertical)</option></select></label>
         <label class="field">Quadros por segundo <input data-k="fps" type="number" min="1" max="120"></label>
       </div>
-      <label class="field">Legendas <select data-k="subs"><option value="soft">Faixa embutida (liga/desliga no player)</option><option value="burn">Gravadas na imagem</option><option value="off">Sem legendas</option></select></label>
+      <label class="check" title="As legendas do roteiro (say/caption) ficam desenhadas na imagem; um .srt sai ao lado do vídeo"><input data-k="subs" type="checkbox" checked> Gravar legendas no vídeo</label>
       <div class="card">
         <label class="check"><input data-k="audio" type="checkbox" checked> Falas com voz</label>
         <label class="field">Voz <select data-k="voice"><option value="">Voz do roteiro</option></select></label>
@@ -85,7 +85,7 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
     if (!(info.duration > 0)) { log('a cena não tem duração: use timeline(segundos), keys(...) ou say(...)'); return; }
     const [w, h] = $('[data-k=size]').value.split('x').map((v) => Number(v) & ~1);
     const fps = Number($('[data-k=fps]').value) || info.fps || 30;
-    const subs = $('[data-k=subs]').value, audio = $('[data-k=audio]').checked;
+    const subs = $('[data-k=subs]').checked, audio = $('[data-k=audio]').checked;
     running = true; cancel = false;
     renderBtn.disabled = true;
     $('[data-a=close]').textContent = 'Cancelar';
@@ -106,7 +106,7 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
       tdi.at(0);
       log(`${n} quadros desenhados`);
       const vsel = $('[data-k=voice]').value;
-      const r = await api(`finish?id=${id}`, { script: info.script, voices: info.voices, from: 0, to: info.duration, subs: subs !== 'off', burn: subs === 'burn', audio, override: vsel ? JSON.parse(vsel) : null });
+      const r = await api(`finish?id=${id}`, { script: info.script, voices: info.voices, from: 0, to: info.duration, subs, burn: subs, audio, override: vsel ? JSON.parse(vsel) : null });
       bar.style.width = '100%';
       log(`pronto: ${r.output}${r.falas ? ` (${r.falas} fala(s))` : ''}${r.srt ? `\nlegendas: ${r.srt}` : ''}`);
       tts.textContent = 'Vídeo gravado.';

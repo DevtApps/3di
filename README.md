@@ -2,9 +2,9 @@
 
 # 3DI
 
-**Crie cenas 3D com código. Visualize em tempo real. Exporte para GLB.**
+**Crie cenas 3D com código. Visualize em tempo real. Exporte para GLB e vídeo.**
 
-Editor desktop e web com linguagem própria, modelagem procedural e integração com agentes via MCP.
+Studio desktop e web com linguagem própria, modelagem procedural, vídeo com narração e agentes de IA integrados.
 
 [Começar](#começar) · [Exemplos](#exemplos-de-criação) · [Instalação](#instalação-no-linux) · [Build](#build-e-distribuição) · [Documentação](#documentação)
 
@@ -30,14 +30,19 @@ amostragem para operações mais complexas.
 | Composição procedural | Usar funções, loops, simetria, repetição e distribuição radial |
 | Layout semântico | Apoiar e posicionar peças com `ground`, `place`, `on` e `beside` |
 | Materiais | Aplicar cores, metal, rugosidade, emissão, verniz e texturas procedurais |
-| Animação | Animar com `time` e `osc`, ou criar esqueletos e vincular peças a ossos |
+| Animação | Animar com `time`, `osc` e chaves (`keys`) numa timeline, ou criar esqueletos e vincular peças a ossos |
+| Texto | Letras 3D extrudadas (`text3d`) e títulos animados em React + Tailwind por cima da imagem (`overlay`) |
+| Vídeo | Roteiro com falas e legendas, vozes locais (Qwen3-TTS) ou por API (ElevenLabs, Fish Audio), MP4 com legenda gravada |
 | Revisão visual | Conferir frente, lado, topo, perspectiva, peças nomeadas e comparação com GLB |
 | Exportação | Gerar GLB com materiais, texturas incorporadas, esqueleto e animação compatível |
-| Agentes | Consultar documentação, editar cenas, capturar imagens e exportar pelo MCP HTTP |
+| Agentes | Claude Code ou Codex no painel Agente, ou o seu agente pelo MCP HTTP |
 
-O app Electron e o editor web compartilham a mesma interface e a mesma engine. O editor Monaco
-inclui autocomplete, assinaturas, documentação, snippets e erros na linha. O processamento de
-scripts e as exportações usam workers para manter a interface responsiva.
+O app Electron e o editor web compartilham a mesma interface e a mesma engine. A interface é um
+studio: barra de atividades (Código, Agente, Integrações), painel lateral redimensionável, vista com
+câmeras e menu Exportar, timeline encaixada com régua e trilhas (chaves, falas, legendas, sobreposições)
+e configurações por categoria. O editor Monaco inclui autocomplete, assinaturas, documentação,
+snippets e erros na linha. O processamento de scripts e as exportações usam workers, e o **auto cull**
+só avalia no shader as peças que a câmera vê (ou cuja sombra aparece), inclusive as animadas.
 
 ## Começar
 
@@ -229,29 +234,48 @@ Esse atalho aparece como **3DI (dev)** e usa as portas de desenvolvimento. Ele d
 cópia local do repositório; se mover a pasta, reinstale o atalho. O atalho do pacote `.deb`
 abre o aplicativo Electron instalado.
 
+## Texto 3D e sobreposições
+
+```python
+show(text3d("Olá 3DI!", size=0.6, depth=0.2, round=0.02).color("#f59e0b").at(0, 0.5, 0))
+overlay("titulo", at=0, dur=3, title="3DI", subtitle="cenas 3D com código")
+overlay("lower_third", at=3, dur=3, name="Ana", role="apresentadora")
+```
+
+- `text3d()`: letras extrudadas com furos e acentos, fontes `sans`, `serif` e `mono` embutidas (DejaVu), várias
+  linhas com `\n`. Saem no preview, no vídeo e no GLB.
+- `overlay()`: componentes **React + Tailwind CSS** por cima da imagem, animados pelo tempo. Prontos: `titulo`,
+  `lower_third`, `texto`, `contador`, `lista`; ou um `.jsx` ao lado da cena, ou o JSX direto no script. React,
+  Tailwind e o compilador de JSX vão no pacote (funciona offline). Detalhes em [docs/rotas/video.md](docs/rotas/video.md).
+
 ## Vídeo (chaves, roteiro, falas e legendas)
 
-Com `timeline()`, `keys()` e `say()`/`caption()`, o botão **Vídeo** grava um MP4 com as falas (Qwen3-TTS local,
-ElevenLabs ou Fish Audio) e
-legendas na pasta de downloads. Textos e títulos animados entram com `overlay()`: componentes React com
-Tailwind CSS por cima da imagem (React, Tailwind e o compilador de JSX vão no pacote). O ffmpeg vem no pacote; as vozes são instaladas pelo próprio app em
-`~/.local/share/3di/tts` (botão Instalar vozes; precisa do `python3-venv`). Detalhes em
+Com `timeline()`, `keys()` e `say()`/`caption()`, **Exportar → Vídeo** grava um MP4 na pasta de downloads:
+
+- **Falas:** Qwen3-TTS local (instalado pelo app em `~/.local/share/3di/tts`; precisa do `python3-venv`), vozes
+  clonadas a partir de um áudio seu, **ElevenLabs** ou **Fish Audio** (chaves em ⚙ → Configurações, guardadas em
+  `secrets.json` só legível por você). Templates de áudio dão o estilo (`say("...", style="narrador")`).
+- **Narração contínua:** falas seguidas da mesma voz são geradas numa chamada só, para manter o ritmo.
+- **Cache por fala:** cada fala fica em cache pelo texto e pela voz; editar ou acrescentar uma fala gera só ela.
+- **Legendas:** gravadas na imagem por padrão (aparecem em qualquer player), com um `.srt` ao lado; dá para desligar.
+- **Preview:** as falas tocam junto com a timeline; o seletor de voz troca a voz de todas as falas.
+
+O ffmpeg vem no pacote. Pela linha de comando: `node scripts/video.mjs cena.3di out/video.mp4`. Detalhes em
 [docs/rotas/video.md](docs/rotas/video.md).
 
 ## Agente dentro do 3DI (Claude Code e Codex)
 
-A aba **Agente**, ao lado de Código, conversa com o Claude Code ou o Codex instalados na máquina, sem sair do 3DI.
-O 3DI roda o CLI do agente (como o Cooder faz), uma vez por mensagem, retomando a mesma conversa, e conecta nele o
-MCP do próprio 3DI: o agente lê a documentação, altera a cena aberta, confere screenshots e o GLB, e você vê o
-resultado no editor enquanto acompanha o texto e as ferramentas usadas no chat.
+A aba **Agente** conversa com o Claude Code ou o Codex instalados na máquina, sem sair do 3DI. O 3DI roda o CLI do
+agente uma vez por mensagem, retomando a mesma conversa, e conecta nele o MCP do próprio 3DI. Você vê a cena mudar
+no editor enquanto acompanha o texto e as ferramentas usadas no chat.
 
-- Requisitos: `claude` (Claude Code) e/ou `codex` instalados e com login feito no terminal. O 3DI procura o
-  executável no PATH, em `~/.local/bin` e nas instalações globais do npm do nvm; `THREEDI_CLAUDE` / `THREEDI_CODEX`
-  apontam outro caminho.
-- Pasta de trabalho: o workspace ativo, senão a pasta da cena aberta, senão `~/3DI`.
-- Permissões: o Claude edita arquivos da pasta e usa só o MCP do 3DI sem perguntar (sem shell); o Codex roda com
-  sandbox `workspace-write` e sem pedidos de aprovação.
-- Escolha de modelo no painel (ou digite um nome); trocar de agente ou de modelo começa uma conversa nova.
+- **Acesso restrito:** o agente só usa a documentação, o código da cena aberta e o preview (ferramentas do MCP do
+  3DI). Sem shell, sem ler ou editar arquivos, sem web, sem os `AGENTS.md` e servidores MCP da sua configuração, e
+  sem as ferramentas de arquivo, workspace e exportação do MCP.
+- **Requisitos:** `claude` e/ou `codex` instalados e com login feito no terminal. O 3DI procura o executável no
+  PATH, em `~/.local/bin`, nas instalações globais do npm, pnpm e nvm; em ⚙ → Agentes dá para indicar o caminho,
+  detectar de novo e ver o login.
+- **Modelos:** escolha no painel (ou digite um nome); trocar de agente ou de modelo começa uma conversa nova.
 - Funciona no app desktop e no modo dev (`npm run dev`); o servidor simples (`scripts/serve.py`) não roda agentes.
 
 ## Integração com agentes via MCP
@@ -316,6 +340,17 @@ Todas as saídas de compilação e empacotamento ficam em `build/`:
 `npm run desktop:build` é um alias para `npm run build`. `npm run app` e `npm run dev`
 compilam antes de iniciar. Para gerar o instalador Linux, use `npm run desktop:deb`.
 
+O que o app usa vai no pacote, sem CDN: o ffmpeg (`ffmpeg-static`) e o gerador de falas
+(`scripts/tts.py`) são copiados pelo build, e alguns recursos ficam versionados no repositório. Gere de novo
+só ao trocar versões:
+
+| Comando | Gera |
+| --- | --- |
+| `npm run vendor:three` | `assets/vendor/three-preview.js` (Conferir GLB) |
+| `npm run vendor:overlay` | React, Sucrase e Tailwind em `assets/vendor/` (sobreposições) |
+| `npm run vendor:ui` | Ícones Lucide (`src/ide/icons.js`) e fontes Inter/JetBrains Mono (`assets/fonts/`) |
+| `node scripts/vendor-fonts.mjs` | Contornos das fontes do `text3d` (`src/fonts/`) |
+
 Para apagar somente as saídas geradas:
 
 ```sh
@@ -351,8 +386,10 @@ vistas do editor e na malha exportada.
 ```text
 apps/desktop/    Aplicativo Electron e integração com o sistema operacional
 src/             Linguagem, geometria, compilador, renderização e exportação
-  ide/           Interface compartilhada pelo navegador e pelo desktop
-  services/      MCP HTTP, servidor da IDE, projetos, workspace e workers Node
+  ide/           Interface do studio (navegador e desktop); estilos em ide/styles/
+  overlays/      Componentes React + Tailwind prontos para overlay()
+  fonts/         Contornos das fontes do text3d (gerados por scripts/vendor-fonts.mjs)
+  services/      MCP HTTP, servidor da IDE, agentes, vídeo e vozes, projetos e workers Node
 scripts/         Build, desenvolvimento, instalação e utilitários de linha de comando
 tests/           Testes automatizados
 docs/            Referência da linguagem e guias por tema
@@ -371,6 +408,7 @@ out/             Exportações locais de modelos
 - [Combinações e repetição](docs/rotas/combinar.md)
 - [Materiais e pintura](docs/rotas/materiais.md)
 - [Animação](docs/rotas/animacao.md)
+- [Vídeo, falas, legendas e textos](docs/rotas/video.md)
 - [Revisão de modelos](docs/rotas/revisao.md)
 - [Exportação GLB](docs/rotas/exportar.md)
 - [Ferramentas MCP](docs/rotas/ferramentas.md)

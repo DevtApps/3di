@@ -216,6 +216,12 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 uniform highp sampler2D uInst;
 uniform highp sampler2D uBvh;
 vec4 instFetch(int col, int row) {
@@ -266,6 +272,7 @@ float bvhD(vec3 p, float best, out int hit) {
     if (cnt > 0) {
       int st = int(a.w);
       for (int k = 0; k < cnt; k++) {
+        if (!cullVis(0 + st + k)) continue;
         float d = instD(p, st + k);
         if (d < best) { best = d; hit = st + k; }
       }

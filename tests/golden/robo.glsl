@@ -216,6 +216,12 @@ M mSs(M a, M b, float k) { a.d = smax(a.d, -b.d, k); return a; }
 M mI(M a, M b) { a.d = max(a.d, b.d); return a; }
 M mIs(M a, M b, float k) { a.d = smax(a.d, b.d, k); return a; }
 
+uniform highp sampler2D uVis;
+bool cullVis(int i) {
+  int w = textureSize(uVis, 0).x;
+  return texelFetch(uVis, ivec2(i % w, i / w), 0).r > 0.5;
+}
+
 float sdPoly44(vec2 p) {
   const vec2 v[5] = vec2[5](vec2(0.0, 0.045), vec2(-0.09, 0.045), vec2(-0.12, 0.0), vec2(-0.09, -0.045), vec2(0.0, -0.045));
   float d = dot(p - v[0], p - v[0]);
