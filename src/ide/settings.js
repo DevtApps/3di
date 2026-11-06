@@ -19,6 +19,8 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       <div class="row"><input data-e="key" type="password" autocomplete="off" placeholder="cole aqui a sua chave de API (xi-api-key)"><button data-a="eleven-key">Salvar chave</button><button data-a="eleven-forget">Apagar</button></div>
       <label>Modelo <select data-k="elevenlabs.model"></select></label>
       <div class="row"><select data-e="voice"><option value="">— carregue as vozes da sua conta —</option></select><button data-a="eleven-load">Carregar vozes</button></div>
+      <p class="hint eleven-error" hidden></p>
+      <div class="row"><input data-e="voice-id" placeholder="ou cole o ID da voz (elevenlabs.io → Voices → ⋯ → Copy voice ID)"><button data-a="eleven-voice-id">Usar ID</button></div>
       <p class="hint">No script: <code>voice("narrador", provider="elevenlabs", speaker="Nome da voz")</code>. As marcações de áudio dos templates (ex.: [excited]) só valem no modelo v3.</p>
     </section>
     <section class="templates">
@@ -211,6 +213,12 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
         render();
       } else if (a === 'eleven-load') {
         await loadEleven();
+      } else if (a === 'eleven-voice-id') {
+        const id = $('[data-e=voice-id]').value.trim();
+        if (!/^[\w-]{8,64}$/.test(id)) throw new Error('ID de voz inválido (copie em elevenlabs.io → Voices → ⋯ → Copy voice ID)');
+        await save({ elevenlabs: { voice: id, voiceName: id } });
+        $('[data-e=voice-id]').value = '';
+        log(`voz padrão do ElevenLabs: ${id}`);
       } else if (a === 'tpl-edit') {
         const x = data.settings.templates.find((t) => t.id === e.target.closest('[data-tpl]').dataset.tpl);
         for (const k of ['id', 'label', 'prompt', 'tags', 'stability', 'style', 'speed']) box.querySelector(`[data-t=${k}]`).value = x[k] ?? '';
@@ -265,7 +273,18 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
   });
   // vozes da conta do ElevenLabs no seletor; escolher uma a torna a voz padrão do ElevenLabs
   const loadEleven = async () => {
-    const r = await call('/video/eleven-voices');
+    const err = $('.eleven-error');
+    err.hidden = true;
+    let r;
+    try { r = await call('/video/eleven-voices'); }
+    catch (e) {
+      // chave sem a permissão de listar vozes: explica e oferece colar o ID
+      err.hidden = false;
+      err.textContent = /voices_read/.test(e.message)
+        ? 'A sua chave não tem permissão para listar vozes (voices_read). Em elevenlabs.io → Developers → API Keys, edite a chave e ligue "Voices: Read" (e "Text to Speech"), ou cole o ID da voz abaixo.'
+        : `Não consegui carregar as vozes: ${e.message}`;
+      throw e;
+    }
     const sel = $('[data-e=voice]');
     sel.replaceChildren(new Option('— escolha a voz padrão —', ''), ...r.voices.map((v) => {
       const lab = [v.labels.gender, v.labels.accent, v.labels.language].filter(Boolean).join(', ');

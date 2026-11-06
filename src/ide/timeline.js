@@ -1,6 +1,6 @@
 // Linha do tempo do preview: tocar/pausar, arrastar o tempo, marcas das chaves (keys) e blocos das
 // falas/legendas do roteiro, mais a legenda ativa por cima da vista.
-export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () => {} }) {
+export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () => {}, onVoice = () => {} }) {
   const bar = document.createElement('div');
   bar.id = 'timeline';
   bar.hidden = true;
@@ -9,6 +9,7 @@ export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () =
     <div class="track"><div class="lanes"></div><div class="head"></div></div>
     <span class="time">0.0 / 0.0 s</span>
     <button data-a="mute" title="Liga/desliga o som das falas no preview">🔊</button>
+    <select data-a="voice" title="Voz das falas no preview (e no vídeo)"><option value="">voz do roteiro</option></select>
     <span class="audio-state"><i class="spin"></i><span class="txt"></span><span class="bar"><span></span></span></span>
     <button data-a="follow" class="on" title="Usar a câmera animada do roteiro (girar a vista solta a câmera)">🎥</button>`;
   const caption = document.createElement('div');
@@ -39,7 +40,15 @@ export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () =
     else if (a === 'mute') { const b = e.target; const off = b.textContent === '🔊'; b.textContent = off ? '🔇' : '🔊'; onMute(off); }
   });
 
+  const voiceSel = bar.querySelector('[data-a=voice]');
+  voiceSel.addEventListener('change', () => onVoice(voiceSel.value ? JSON.parse(voiceSel.value) : null));
   return {
+    // opções do seletor de voz: [{ provider, speaker, label }]; current = override atual ou null
+    setVoices(options, current) {
+      voiceSel.replaceChildren(new Option('voz do roteiro', ''), ...options.map((o) => new Option(o.label, JSON.stringify({ provider: o.provider, speaker: o.speaker }))));
+      voiceSel.value = current ? JSON.stringify({ provider: current.provider, speaker: current.speaker }) : '';
+      if (current && !voiceSel.value) voiceSel.value = '';
+    },
     // dados da cena compilada: duração, chaves, roteiro e se há câmera animada
     setScene({ duration: d = 0, keyTimes = [], script: s = [], camTrack = null } = {}) {
       duration = d;
@@ -80,7 +89,7 @@ export function createTimeline({ host, onSeek, onToggle, onFollow, onMute = () =
     setFollow(on) { follow.classList.toggle('on', on); },
     // estado das falas: busy = gerando (blocos das falas piscam), progress = 0..1 ou null (indeterminado)
     setAudio({ has, status, busy = false, progress = null }) {
-      if (has !== undefined) bar.querySelector('[data-a=mute]').hidden = !has;
+      if (has !== undefined) { bar.querySelector('[data-a=mute]').hidden = !has; voiceSel.hidden = !has; }
       const st = bar.querySelector('.audio-state');
       st.classList.toggle('busy', busy);
       st.querySelector('.txt').textContent = status ?? '';

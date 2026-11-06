@@ -27,6 +27,11 @@ O layout (`on`, `beside`, `place`) e as caixas usam o valor em t = 0. Anime a pe
 | `say(text, at=None, dur=None, voice=None, style=None)` | fala: legenda + áudio. Sem `at`, entra depois da fala anterior; `style` é o nome de um template de áudio ou um estilo livre. Devolve o instante em que termina |
 | `caption(text, at=None, dur=None)` | só legenda, sem áudio |
 
+**Narração contínua:** falas seguidas com a mesma voz e o mesmo estilo (sem `at` explícito) são geradas numa
+chamada só, para a voz manter o ritmo e a entonação entre as frases; as legendas de cada frase são achadas pelas
+pausas do áudio. Uma fala com `at`, outra voz ou outro estilo começa outro trecho (e trechos passam de ~900 caracteres
+são divididos).
+
 `dur` é estimada pelo tamanho do texto (~12 caracteres/s). No vídeo vale a duração real do áudio:
 falas sem `at` são reagendadas em sequência; com `at` ficam no lugar (o render avisa se sobrepuserem).
 Sem `timeline()`, a duração é o fim do roteiro ou a última chave.
@@ -41,7 +46,8 @@ e os ajustes de estabilidade, estilo e velocidade. Use em `say("...", style="nar
 ## ElevenLabs
 
 Em ⚙ → ElevenLabs: cole a chave de API (fica em `~/.local/share/3di/secrets.json`, só legível por você; ou use a
-variável `ELEVENLABS_API_KEY`), escolha o modelo e carregue as vozes da sua conta para escolher a padrão. Use como
+variável `ELEVENLABS_API_KEY`), escolha o modelo e carregue as vozes da sua conta para escolher a padrão (a chave precisa da permissão **Voices: Read**; sem ela,
+cole o ID da voz, ou use o ID em `speaker=`). Use como
 provedor padrão ou por voz: `voice("narrador", provider="elevenlabs", speaker="Rachel")`. As falas ficam no mesmo
 cache (cada fala é paga uma vez só). A conta e o consumo são os do ElevenLabs.
 
@@ -55,7 +61,8 @@ o modelo Base do Qwen3-TTS (1.7B ou 0.6B, baixado na primeira vez). Clone só vo
 ## Preview
 
 A barra de timeline embaixo da vista toca/pausa, arrasta o tempo, mostra as chaves (amarelo) e as falas
-(azul) e legendas (cinza). A legenda ativa aparece por cima da vista e as falas tocam junto (🔊 liga/desliga); enquanto são geradas,
+(azul) e legendas (cinza). A legenda ativa aparece por cima da vista e as falas tocam junto (🔊 liga/desliga; o seletor ao lado troca a voz de
+todas as falas no preview e, por padrão, no vídeo); enquanto são geradas,
 a barra mostra o progresso (fala x de n) e os blocos das falas piscam. Com câmera animada, o botão 🎥
 segue a câmera do roteiro; girar a vista solta a câmera. Pelo MCP: `set_time(time=..., playing=False)`
 e `screenshot(time=...)` conferem um instante.

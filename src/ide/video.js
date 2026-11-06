@@ -11,7 +11,8 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
     <label>Tamanho <select data-k="size"><option>640x360</option><option selected>1280x720</option><option>1920x1080</option><option>1080x1920</option></select></label>
     <label>Quadros por segundo <input data-k="fps" type="number" min="1" max="120"></label>
     <label>Legendas <select data-k="subs"><option value="soft">faixa embutida (liga/desliga no player)</option><option value="burn">gravadas na imagem</option><option value="off">sem legendas</option></select></label>
-    <label class="row"><input data-k="audio" type="checkbox" checked> Falas com voz (Qwen3-TTS)</label>
+    <label class="row"><input data-k="audio" type="checkbox" checked> Falas com voz</label>
+    <label>Voz <select data-k="voice"><option value="">voz do roteiro</option></select></label>
     <p class="tts"></p>
     <div class="progress"><div></div></div>
     <pre class="log"></pre>
@@ -82,7 +83,8 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
       }
       tdi.at(0);
       log(`${n} quadros desenhados`);
-      const r = await api(`finish?id=${id}`, { script: info.script, voices: info.voices, from: 0, to: info.duration, subs: subs !== 'off', burn: subs === 'burn', audio });
+      const vsel = $('[data-k=voice]').value;
+      const r = await api(`finish?id=${id}`, { script: info.script, voices: info.voices, from: 0, to: info.duration, subs: subs !== 'off', burn: subs === 'burn', audio, override: vsel ? JSON.parse(vsel) : null });
       bar.style.width = '100%';
       log(`pronto: ${r.output}${r.falas ? ` (${r.falas} fala(s))` : ''}${r.srt ? `\nlegendas: ${r.srt}` : ''}`);
       tts.textContent = 'Vídeo gravado.';
@@ -110,5 +112,15 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
     $('[data-k=fps]').value = info.fps || 30;
     bar.style.width = '0';
     refresh();
+    // mesma voz escolhida no preview
+    (async () => {
+      try {
+        const opts = (await api('voice-options', {})).options;
+        const cur = (() => { try { return localStorage.getItem('3di.voiceOverride'); } catch { return null; } })();
+        const sel = $('[data-k=voice]');
+        sel.replaceChildren(new Option('voz do roteiro', ''), ...opts.map((o) => new Option(o.label, JSON.stringify({ provider: o.provider, speaker: o.speaker }))));
+        sel.value = cur ?? '';
+      } catch {}
+    })();
   };
 }

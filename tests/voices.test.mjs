@@ -74,3 +74,25 @@ test('erros claros: chave errada e voz que não existe', async () => {
   await assert.rejects(speech(one, { n: { provider: 'elevenlabs', speaker: 'Ninguém' } }, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() }), /não existe na sua conta/);
   await assert.rejects(speech([{ ...one[0], text: 'y' }], { n: { provider: 'elevenlabs' } }, { root: process.cwd(), tts: ttsConfig(), elevenKey: 'chave-errada-000' }), /recusou \(invalid api key\)/);
 });
+
+test('narração contínua: falas seguidas da mesma voz numa chamada, legendas pelas pausas', async () => {
+  const { splitByPauses } = await import('../src/services/video.mjs');
+  // 3 frases de tamanhos parecidos em 9 s, pausas perto de 3 e 6 s (e uma falsa em 1 s)
+  const parts = splitByPauses(['Primeira frase aqui.', 'Segunda frase aqui.', 'Terceira frase aqui.'], 9, [{ start: 0.9, end: 1.1 }, { start: 2.8, end: 3.2 }, { start: 6.3, end: 6.5 }]);
+  assert.deepEqual(parts.map((p) => [+p.start.toFixed(2), +p.end.toFixed(2)]), [[0, 3], [3, 6.4], [6.4, 9]]);
+  // sem pausas: corta proporcional ao texto
+  assert.deepEqual(splitByPauses(['aa', 'aaaaaa'], 8, []).map((p) => p.start), [0, 2]);
+  saveSettings({ tts: { provider: 'elevenlabs' }, elevenlabs: { model: 'eleven_multilingual_v2', voice: 'v-adam', voiceName: 'Adam' } });
+  const script = ['Um.', 'Dois.', 'Três.'].map((text, i) => ({ text: `${text} ${Date.now()}`, start: i, end: i + 0.5, speak: true, voice: null, style: null, auto: true }));
+  requests.length = 0;
+  const clips = await speech(script, {}, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey() });
+  const calls = requests.filter((r) => r.url.startsWith('/v1/text-to-speech/'));
+  assert.equal(calls.length, 1, 'uma chamada para as três falas');
+  assert.ok(calls[0].body.text.includes('Um.') && calls[0].body.text.includes('Três.'));
+  assert.equal(clips.length, 1);
+  assert.ok(script[1].start > script[0].start && script[2].end <= clips[0].seconds + 0.2, 'legendas dentro do áudio contínuo');
+  // override: troca a voz de todas as falas
+  requests.length = 0;
+  await speech(script.map((l) => ({ ...l, text: `${l.text}!` })), {}, { root: process.cwd(), tts: ttsConfig(), elevenKey: elevenKey(), override: { provider: 'elevenlabs', speaker: 'Rachel' } });
+  assert.ok(requests.find((r) => r.url.startsWith('/v1/text-to-speech/')).url.startsWith('/v1/text-to-speech/v-rachel'));
+});

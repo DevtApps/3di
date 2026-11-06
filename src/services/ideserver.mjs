@@ -242,7 +242,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
       if (url.pathname === '/video/speech') {
         try {
           const script = (args.script ?? []).map((l) => ({ ...l }));
-          const clips = await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), log: (text) => videoEmit({ kind: 'log', text }), progress: (p) => videoEmit({ kind: 'speech-progress', ...p }) });
+          const clips = await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), override: args.override ?? null, log: (text) => videoEmit({ kind: 'log', text }), progress: (p) => videoEmit({ kind: 'speech-progress', ...p }) });
           json({ clips: clips.map(({ key, start, seconds }) => ({ key, start, seconds })), script });
         } catch (e) { json({ error: e.message }, 500); }
         return;
@@ -256,6 +256,21 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
             instruct: args.instruct ?? tts.instruct }], { root, tts, elevenKey: elevenKey(), log: (text) => videoEmit({ kind: 'log', text }) });
           json({ key: clip.key, seconds: clip.seconds });
         } catch (e) { json({ error: e.message }, 500); }
+        return;
+      }
+      // opções do seletor de voz (preview e vídeo): Qwen prontas, clonadas e ElevenLabs
+      if (url.pathname === '/video/voice-options') {
+        const st = loadSettings();
+        const opts = [];
+        for (const v of SPEAKERS) opts.push({ provider: 'qwen', speaker: v.id, label: `${v.id} · Qwen (${v.note})` });
+        for (const v of st.voices) opts.push({ provider: 'qwen', speaker: v.id, label: `${v.id} · clonada` });
+        if (elevenKey()) {
+          let list = [];
+          try { list = await elevenVoices(elevenKey()); } catch {}
+          for (const v of list) opts.push({ provider: 'elevenlabs', speaker: v.id, label: `${v.name} · ElevenLabs` });
+          if (st.elevenlabs.voice && !list.some((v) => v.id === st.elevenlabs.voice)) opts.push({ provider: 'elevenlabs', speaker: st.elevenlabs.voice, label: `${st.elevenlabs.voiceName || st.elevenlabs.voice} · ElevenLabs` });
+        }
+        json({ options: opts });
         return;
       }
       // ElevenLabs: vozes da conta
@@ -302,7 +317,7 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
           const from = Number(args.from) || 0, to = Number(args.to);
           const script = args.subs === false && args.audio === false ? [] : scriptRange(args.script ?? [], from, to);
           const log = (text) => videoEmit({ kind: 'log', text });
-          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), log });
+          const clips = args.audio === false ? [] : await speech(script, args.voices ?? {}, { root, tts: ttsConfig(), elevenKey: elevenKey(), override: args.override ?? null, log });
           const srt = args.subs !== false && script.length ? job.output.replace(/\.mp4$/, '.srt') : null;
           if (srt) await writeFileP(srt, toSrt(script));
           log('juntando vídeo, falas e legendas');

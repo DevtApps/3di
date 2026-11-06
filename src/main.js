@@ -11,7 +11,7 @@ import { setupWorkspace } from './ide/workspace.js';
 import { createReference } from './ide/reference.js';
 import { createTimeline } from './ide/timeline.js';
 import { createVideoDialog } from './ide/video.js';
-import { createPreviewAudio } from './ide/audio.js';
+import { createPreviewAudio, voiceOverride } from './ide/audio.js';
 import { createSettingsDialog } from './ide/settings.js';
 
 const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'video', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
@@ -191,6 +191,7 @@ function trackView(tr, t) {
   const center = [0, 1, 2].map((k) => (b.min[k] + b.max[k]) / 2);
   return { eye: lerp(tr.pos[i], tr.pos[i + 1]), target: tr.look[i] ? lerp(tr.look[i], tr.look[i + 1]) : center, fov: tr.fov[i] + (tr.fov[i + 1] - tr.fov[i]) * u };
 }
+let originalScript = [], voicesLoaded = false;
 // falas tocando no preview; o roteiro volta reagendado pela duração real do áudio
 const previewAudio = createPreviewAudio({
   onScript(script) { if (sceneInfo.scene) { sceneInfo.scene.script = script; timeline.setScene(sceneInfo.scene); } },
@@ -199,6 +200,8 @@ const previewAudio = createPreviewAudio({
 const timeline = createTimeline({
   host: $('right'),
   onMute(off) { previewAudio.setMuted(off); },
+  // a voz escolhida troca todas as falas; o roteiro volta ao original (tempos do script) antes de gerar
+  onVoice(o) { if (sceneInfo.scene) { sceneInfo.scene.script = originalScript.map((l) => ({ ...l })); previewAudio.setVoice(o, sceneInfo.scene); } },
   onSeek(t) { anim.time = t; anim.last = 0; draw(1); },
   onToggle() { $('btnPlay').click(); },
   onFollow(on) { follow = on; timeline.setFollow(on); requestRender(); draw(1); },
@@ -413,7 +416,10 @@ async function compile() {
   // cenas com câmera animada ou roteiro também tocam, mesmo sem nada animado no shader
   const timed = out.animated || !!scene.camTrack || (scene.script?.length ?? 0) > 0 || scene.duration > 0;
   timeline.setScene(scene);
-  timeline.setAudio({ has: (scene.script ?? []).some((l) => l.speak) });
+  const hasSpeech = (scene.script ?? []).some((l) => l.speak);
+  timeline.setAudio({ has: hasSpeech });
+  originalScript = (scene.script ?? []).map((l) => ({ ...l }));
+  if (hasSpeech && !voicesLoaded) { voicesLoaded = true; previewAudio.voiceOptions().then((o) => timeline.setVoices(o, voiceOverride())).catch(() => { voicesLoaded = false; }); }
   previewAudio.setScene(scene);
   if (scene.camTrack && camChanged) { follow = true; timeline.setFollow(true); }
   setAnimated(timed);
@@ -704,7 +710,11 @@ connectBridge({
   $('mcpState').title = on ? 'ponte do editor conectada; confira o estado do agente externo no próprio cliente' : 'sem servidor MCP (rode npm run dev ou o app 3DI)';
 });
 
-const settingsDialog = createSettingsDialog({ button: $('btnSettings'), onChange: () => window.dispatchEvent(new Event('3di-settings')) });
+const settingsDialog = createSettingsDialog({ button: $('btnSettings'), onChange: () => {
+  window.dispatchEvent(new Event('3di-settings'));
+  // vozes novas (clonadas, ElevenLabs) aparecem no seletor da timeline
+  previewAudio.voiceOptions().then((o) => timeline.setVoices(o, voiceOverride())).catch(() => {});
+} });
 createVideoDialog({ button: $('btnVideo'), tdi: window.tdi, openSettings: () => settingsDialog.open() });
 
 // ---------- início: arquivo da linha de comando, rascunho salvo ou exemplo ----------

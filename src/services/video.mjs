@@ -118,10 +118,17 @@ export async function synthesize(jobs, { root, tts = {}, log = () => {}, progres
       // voz: o speaker do script (nome ou id) ou a voz padrão do ElevenLabs nas configurações
       let voiceId = eleven.voice;
       if (j.speaker && j.speaker !== tts.speaker) {
-        elevenVoiceList ??= await (await import('./elevenlabs.mjs')).elevenVoices(elevenKey);
-        const v = (await import('./elevenlabs.mjs')).findElevenVoice(elevenVoiceList, j.speaker);
-        if (!v) throw new Error(`voz '${j.speaker}' não existe na sua conta do ElevenLabs`);
-        voiceId = v.id;
+        // nome da voz: procura na conta; um ID de voz é usado direto (funciona sem a permissão voices_read)
+        const looksLikeId = /^[A-Za-z0-9]{18,32}$/.test(String(j.speaker));
+        try {
+          elevenVoiceList ??= await (await import('./elevenlabs.mjs')).elevenVoices(elevenKey);
+          const v = (await import('./elevenlabs.mjs')).findElevenVoice(elevenVoiceList, j.speaker);
+          if (!v && !looksLikeId) throw new Error(`voz '${j.speaker}' não existe na sua conta do ElevenLabs`);
+          voiceId = v?.id ?? j.speaker;
+        } catch (e) {
+          if (!looksLikeId || !/voices_read/.test(e.message)) throw /voices_read/.test(e.message) ? new Error(`${e.message}: use o ID da voz em speaker= ou ligue a permissão "Voices: Read" na chave`) : e;
+          voiceId = j.speaker;
+        }
       }
       if (!voiceId) throw new Error('escolha uma voz do ElevenLabs nas configurações (⚙ → Vozes)');
       job = { provider, text: j.text, voiceId, model: eleven.model, language: j.language, tags: tpl?.tags || '',
@@ -182,40 +189,112 @@ export function clipFile(key) {
 
 // Gera as falas do roteiro. A voz de cada say() vem da voice() dele (provider, speaker, language,
 // instruct, template) ou das configurações; style é o nome de um template ou um estilo livre.
-export async function speech(script, voices, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null }) {
-  const lines = script.filter((l) => l.speak);
+// Pausas de um WAV (silencedetect do ffmpeg): [{ start, end }] em segundos
+export async function detectSilences(ffmpeg, file, { noise = -32, min = 0.12 } = {}) {
+  return new Promise((res) => {
+    const p = spawn(ffmpeg, ['-hide_banner', '-nostats', '-i', file, '-af', `silencedetect=noise=${noise}dB:d=${min}`, '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', () => res([]));
+    p.on('exit', () => {
+      const out = [];
+      let start = null;
+      for (const m of err.matchAll(/silence_(start|end): (-?[\d.]+)/g)) {
+        if (m[1] === 'start') start = Math.max(0, Number(m[2]));
+        else if (start !== null) { out.push({ start, end: Number(m[2]) }); start = null; }
+      }
+      res(out);
+    });
+  });
+}
+
+// Onde cada frase de um bloco começa no áudio contínuo: perto da posição proporcional ao texto,
+// na pausa mais próxima (a fala tem ritmo variável; as pausas entre frases são o corte natural)
+export function splitByPauses(texts, total, silences) {
+  const chars = texts.map((t) => Math.max(1, t.length));
+  const sum = chars.reduce((p, q) => p + q, 0);
+  const cuts = [0];
+  let acc = 0;
+  for (let i = 0; i + 1 < texts.length; i++) {
+    acc += chars[i];
+    const expected = (total * acc) / sum;
+    const prev = cuts[cuts.length - 1];
+    const window = Math.max(0.6, total * 0.25);
+    let best = null;
+    for (const sil of silences) {
+      const mid = (sil.start + sil.end) / 2;
+      if (mid <= prev + 0.3 || mid >= total - 0.2) continue;
+      const d = Math.abs(mid - expected);
+      if (d <= window && (!best || d < best.d)) best = { d, at: mid };
+    }
+    cuts.push(best ? best.at : Math.max(prev + 0.3, expected));
+  }
+  cuts.push(total);
+  return texts.map((_, i) => ({ start: cuts[i], end: cuts[i + 1] }));
+}
+
+// Gera as falas do roteiro. A voz de cada say() vem da voice() dele (provider, speaker, language,
+// instruct, template) ou das configurações; style é o nome de um template ou um estilo livre.
+// override = { provider, speaker }: troca a voz de todas as falas (seletor de voz do preview/vídeo).
+//
+// Falas seguidas com a mesma voz e o mesmo estilo saem NUMA chamada só (a entonação segue de uma frase
+// para a outra, como numa narração); as legendas de cada frase são achadas pelas pausas do áudio. Uma
+// fala com `at` explícito, outra voz ou outro estilo começa outro bloco. Devolve um trecho por bloco.
+const BLOCK_CHARS = 900;
+export async function speech(script, voices, { root, tts = {}, log = () => {}, progress = () => {}, elevenKey = null, override = null }) {
+  const lines = script.filter((l) => l.speak).sort((p, q) => p.start - q.start);
   if (!lines.length) return [];
-  const provider = tts.provider || 'qwen';
-  if (provider === 'qwen' && !ttsPython(root) && !Object.values(voices ?? {}).some((v) => v.provider === 'elevenlabs')) {
+  const provider = override?.provider || tts.provider || 'qwen';
+  const usesQwen = provider === 'qwen' || Object.values(voices ?? {}).some((v) => v.provider === 'qwen');
+  if (usesQwen && !ttsPython(root) && provider !== 'elevenlabs' && !Object.values(voices ?? {}).some((v) => v.provider === 'elevenlabs')) {
     log('aviso: vozes não instaladas, sem as falas (instale nas configurações do 3DI ou use o ElevenLabs)');
     return [];
   }
   const templates = new Set((tts.templates ?? []).map((x) => x.id.toLowerCase()));
-  const made = await synthesize(lines.map((l) => {
+  const jobOf = (l) => {
     const v = (l.voice && voices[l.voice]) || {};
     const isTemplate = l.style && templates.has(String(l.style).toLowerCase());
     return {
-      text: l.text,
-      provider: v.provider || provider,
-      speaker: v.speaker || tts.speaker,
+      provider: override?.provider || v.provider || provider,
+      speaker: override?.speaker || v.speaker || tts.speaker,
       language: v.language || tts.language || 'Portuguese',
       template: isTemplate ? l.style : (v.template || tts.template || null),
       instruct: [v.instruct ?? (l.voice ? null : tts.instruct), isTemplate ? null : l.style].filter(Boolean).join('; ') || null,
     };
-  }), { root, tts, log, progress, elevenKey });
-  const items = lines.map((line, i) => ({ line, job: { out: made[i].file, key: made[i].key } }));
+  };
+  // blocos de fala contínua
+  const blocks = [];
+  for (const line of lines) {
+    const job = jobOf(line);
+    const sig = JSON.stringify(job);
+    const last = blocks[blocks.length - 1];
+    const chars = last ? last.lines.reduce((n, l) => n + l.text.length, 0) : 0;
+    if (last && last.sig === sig && line.auto && chars + line.text.length <= BLOCK_CHARS) last.lines.push(line);
+    else blocks.push({ sig, job, lines: [line] });
+  }
+  const made = await synthesize(blocks.map((b) => ({ ...b.job, text: b.lines.map((l) => l.text.trim()).join(' ') })), { root, tts, log, progress, elevenKey });
+  const ffmpeg = ffmpegPath(root);
   const clips = [];
   let prevEnd = 0;
-  for (const { line, job } of items.sort((p, q) => p.line.start - q.line.start)) {
-    const len = wavSeconds(job.out);
-    if (line.start < prevEnd) {
-      if (line.auto) { const shift = prevEnd + 0.25 - line.start; line.start += shift; line.end += shift; }
-      else log(`aviso: a fala em ${line.start.toFixed(2)} s começa antes da anterior acabar (${prevEnd.toFixed(2)} s)`);
+  for (let i = 0; i < blocks.length; i++) {
+    const { lines: ls } = blocks[i];
+    const len = made[i].seconds;
+    const first = ls[0];
+    let start = first.start;
+    if (start < prevEnd) {
+      if (first.auto) start = prevEnd + 0.25;
+      else log(`aviso: a fala em ${start.toFixed(2)} s começa antes da anterior acabar (${prevEnd.toFixed(2)} s)`);
     }
-    line.end = Math.max(line.end, line.start + len + 0.15);
-    prevEnd = line.start + len;
-    clips.push({ file: job.out, key: job.key, start: line.start, seconds: len });
+    // legendas por frase: pelas pausas do áudio contínuo
+    const parts = ls.length > 1 ? splitByPauses(ls.map((l) => l.text), len, await detectSilences(ffmpeg, made[i].file)) : [{ start: 0, end: len }];
+    ls.forEach((l, k) => {
+      l.start = start + parts[k].start;
+      l.end = start + parts[k].end + (k === ls.length - 1 ? 0.15 : 0);
+    });
+    prevEnd = start + len;
+    clips.push({ file: made[i].file, key: made[i].key, start, seconds: len, lines: ls.length });
   }
+  if (blocks.length < lines.length) log(`${lines.length} falas em ${blocks.length} trecho(s) contínuo(s)`);
   return clips;
 }
 
