@@ -151,5 +151,7 @@ O que o vídeo usa e onde fica:
   ambiente Python próprio em `~/.local/share/3di/tts/venv` (precisa do `python3-venv`, recomendado pelo `.deb`).
   Os pesos do modelo (1.7B CustomVoice) são baixados na primeira fala; GPU com ~6 GB ou CPU (lenta).
   `THREEDI_TTS_MODEL` troca o modelo (0.6B gasta menos memória, sem `instruct`).
-- **Cache das falas:** `~/.local/share/3di/tts/cache`; só fala nova ou alterada é gerada de novo.
+- **Cache das falas:** `~/.local/share/3di/tts/cache`, **por fala** (texto + voz, modelo e template). Num trecho contínuo, o
+  áudio é cortado nas pausas em um arquivo por fala: editar ou acrescentar uma fala gera só ela (as novas seguidas
+  numa chamada só); mudar a cena, os tempos ou outras falas não gera nada de novo.
 - Legendas: `.srt` ao lado do vídeo e faixa embutida no MP4, ou gravadas na imagem.

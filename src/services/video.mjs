@@ -7,7 +7,7 @@
 //   tts/cache  falas já geradas (só fala nova ou alterada é gerada de novo)
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, openSync, readSync, closeSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readSync, closeSync, writeFileSync, rmSync, statSync, copyFileSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -209,6 +209,20 @@ export function clipFile(key) {
   return /^[0-9a-f]{16}$/.test(key) ? join(cacheDir(), `${key}.wav`) : null;
 }
 
+// recorta [from, to) de um WAV (to = null: até o fim), com precisão de amostra
+async function cutWav(ffmpeg, src, out, from, to) {
+  const tmp = `${out}.${process.pid}.tmp.wav`;
+  const trim = `atrim=start=${from.toFixed(4)}${to === null ? '' : `:end=${to.toFixed(4)}`},asetpts=PTS-STARTPTS`;
+  await new Promise((ok, fail) => {
+    const p = spawn(ffmpeg, ['-v', 'error', '-y', '-i', src, '-af', trim, '-c:a', 'pcm_s16le', tmp], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', fail);
+    p.on('close', (code) => (code === 0 ? ok() : fail(new Error(`ffmpeg não cortou a fala: ${err.trim().slice(-200)}`))));
+  });
+  renameSync(tmp, out);
+}
+
 // Gera as falas do roteiro. A voz de cada say() vem da voice() dele (provider, speaker, language,
 // instruct, template) ou das configurações; style é o nome de um template ou um estilo livre.
 // Pausas de um WAV (silencedetect do ffmpeg): [{ start, end }] em segundos
@@ -284,37 +298,70 @@ export async function speech(script, voices, { root, tts = {}, log = () => {}, p
       instruct: [v.instruct ?? (l.voice ? null : tts.instruct), isTemplate ? null : l.style].filter(Boolean).join('; ') || null,
     };
   };
-  // blocos de fala contínua
+  // Cache por fala: texto + tudo que define a voz (provedor, voz, modelo, template). Editar ou adicionar
+  // uma fala gera só ela; as outras saem do cache, mesmo dentro de um trecho contínuo.
+  const tplById = new Map((tts.templates ?? []).map((x) => [x.id.toLowerCase(), x]));
+  const clonedById = new Map((tts.voices ?? []).map((v) => [v.id.toLowerCase(), v]));
+  const voiceCfg = { provider: tts.provider, speaker: tts.speaker, model: tts.model, cloneModel: tts.cloneModel, elevenlabs: tts.elevenlabs ?? null, fishaudio: tts.fishaudio ?? null };
+  const lineKey = (job, text) => createHash('sha1').update(JSON.stringify({
+    v: 1, text: text.trim(), job, cfg: voiceCfg,
+    tpl: job.template ? tplById.get(String(job.template).toLowerCase()) ?? null : null,
+    cloned: clonedById.get(String(job.speaker).toLowerCase()) ?? null,
+  })).digest('hex').slice(0, 16);
+
+  // blocos de fala contínua (mesma voz, sem `at`, até BLOCK_CHARS)
   const blocks = [];
   for (const line of lines) {
     const job = jobOf(line);
     const sig = JSON.stringify(job);
     const last = blocks[blocks.length - 1];
-    const chars = last ? last.lines.reduce((n, l) => n + l.text.length, 0) : 0;
-    if (last && last.sig === sig && line.auto && chars + line.text.length <= BLOCK_CHARS) last.lines.push(line);
-    else blocks.push({ sig, job, lines: [line] });
+    const chars = last ? last.items.reduce((n, it) => n + it.line.text.length, 0) : 0;
+    const key = lineKey(job, line.text);
+    const item = { line, key, file: join(cacheDir(), `${key}.wav`) };
+    if (last && last.sig === sig && line.auto && chars + line.text.length <= BLOCK_CHARS) last.items.push(item);
+    else blocks.push({ sig, job, items: [item] });
   }
-  const made = await synthesize(blocks.map((b) => ({ ...b.job, text: b.lines.map((l) => l.text.trim()).join(' ') })), { root, tts, log, progress, keys });
+  // falas sem cache: as seguidas de um mesmo bloco vão numa chamada só (continuidade da fala)
+  const runs = [];
+  for (const b of blocks) {
+    let run = null;
+    for (const it of b.items) {
+      if (existsSync(it.file)) { run = null; continue; }
+      if (!run) { run = { job: b.job, items: [] }; runs.push(run); }
+      run.items.push(it);
+    }
+  }
   const ffmpeg = ffmpegPath(root);
+  if (runs.length) {
+    const cached = lines.length - runs.reduce((n, r) => n + r.items.length, 0);
+    if (cached) log(`${cached} fala(s) do cache; gerando ${lines.length - cached}`);
+    const made = await synthesize(runs.map((r) => ({ ...r.job, text: r.items.map((it) => it.line.text.trim()).join(' ') })), { root, tts, log, progress, keys });
+    for (let i = 0; i < runs.length; i++) {
+      const its = runs[i].items, src = made[i];
+      if (its.length === 1) { copyFileSync(src.file, its[0].file); continue; }
+      // o áudio contínuo é cortado nas pausas: um arquivo por fala, emendados de volta sem lacuna
+      const parts = splitByPauses(its.map((it) => it.line.text), src.seconds, await detectSilences(ffmpeg, src.file));
+      for (let k = 0; k < its.length; k++) await cutWav(ffmpeg, src.file, its[k].file, parts[k].start, k === its.length - 1 ? null : parts[k].end);
+    }
+  }
+  // agenda: um bloco começa no seu tempo (ou depois do anterior) e as falas dele vêm emendadas
   const clips = [];
   let prevEnd = 0;
-  for (let i = 0; i < blocks.length; i++) {
-    const { lines: ls } = blocks[i];
-    const len = made[i].seconds;
-    const first = ls[0];
-    let start = first.start;
-    if (start < prevEnd) {
-      if (first.auto) start = prevEnd + 0.25;
-      else log(`aviso: a fala em ${start.toFixed(2)} s começa antes da anterior acabar (${prevEnd.toFixed(2)} s)`);
+  for (const b of blocks) {
+    const first = b.items[0].line;
+    let t = first.start;
+    if (t < prevEnd) {
+      if (first.auto) t = prevEnd + 0.25;
+      else log(`aviso: a fala em ${t.toFixed(2)} s começa antes da anterior acabar (${prevEnd.toFixed(2)} s)`);
     }
-    // legendas por frase: pelas pausas do áudio contínuo
-    const parts = ls.length > 1 ? splitByPauses(ls.map((l) => l.text), len, await detectSilences(ffmpeg, made[i].file)) : [{ start: 0, end: len }];
-    ls.forEach((l, k) => {
-      l.start = start + parts[k].start;
-      l.end = start + parts[k].end + (k === ls.length - 1 ? 0.15 : 0);
+    b.items.forEach((it, k) => {
+      const seconds = wavSeconds(it.file);
+      it.line.start = t;
+      it.line.end = t + seconds + (k === b.items.length - 1 ? 0.15 : 0);
+      clips.push({ file: it.file, key: it.key, start: t, seconds, lines: 1 });
+      t += seconds;
     });
-    prevEnd = start + len;
-    clips.push({ file: made[i].file, key: made[i].key, start, seconds: len, lines: ls.length });
+    prevEnd = t;
   }
   if (blocks.length < lines.length) log(`${lines.length} falas em ${blocks.length} trecho(s) contínuo(s)`);
   return clips;

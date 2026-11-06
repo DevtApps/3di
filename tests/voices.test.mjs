@@ -103,8 +103,21 @@ test('narração contínua: falas seguidas da mesma voz numa chamada, legendas p
   const calls = requests.filter((r) => r.url.startsWith('/v1/text-to-speech/'));
   assert.equal(calls.length, 1, 'uma chamada para as três falas');
   assert.ok(calls[0].body.text.includes('Um.') && calls[0].body.text.includes('Três.'));
-  assert.equal(clips.length, 1);
-  assert.ok(script[1].start > script[0].start && script[2].end <= clips[0].seconds + 0.2, 'legendas dentro do áudio contínuo');
+  assert.equal(clips.length, 3, 'o áudio contínuo é cortado em um arquivo por fala');
+  assert.ok(clips.every((c, i) => !i || Math.abs(c.start - (clips[i - 1].start + clips[i - 1].seconds)) < 1e-6), 'falas emendadas sem lacuna');
+  assert.ok(Math.abs(clips.reduce((t, c) => t + c.seconds, 0) - 1) < 0.01, 'a soma dos cortes é o áudio inteiro');
+  assert.ok(script[1].start > script[0].start && script[2].end <= clips[2].start + clips[2].seconds + 0.2, 'legendas dentro do áudio contínuo');
+  // cache por fala: editar uma fala ou acrescentar outra gera só ela
+  requests.length = 0;
+  const edited = script.map((l, i) => ({ ...l, start: i, end: i + 0.5, text: i === 1 ? `${l.text} editada` : l.text }));
+  await speech([...edited, { text: `Quatro ${Date.now()}.`, start: 3, end: 3.5, speak: true, voice: null, style: null, auto: true }], {}, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
+  const texts = requests.filter((r) => r.url.startsWith('/v1/text-to-speech/')).map((r) => r.body.text);
+  assert.equal(texts.length, 2, 'uma chamada por trecho novo');
+  assert.ok(texts[0].includes('editada') && !texts.some((t) => t.includes('Um.')), `só as falas novas: ${texts}`);
+  // nada mudou: nenhuma chamada
+  requests.length = 0;
+  await speech(script.map((l, i) => ({ ...l, start: i, end: i + 0.5 })), {}, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys() });
+  assert.equal(requests.filter((r) => r.url.startsWith('/v1/text-to-speech/')).length, 0);
   // override: troca a voz de todas as falas
   requests.length = 0;
   await speech(script.map((l) => ({ ...l, text: `${l.text}!` })), {}, { root: process.cwd(), tts: ttsConfig(), keys: apiKeys(), override: { provider: 'elevenlabs', speaker: 'Rachel' } });
