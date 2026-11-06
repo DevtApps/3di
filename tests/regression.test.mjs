@@ -897,3 +897,42 @@ camera(pos=keys((0, (0, 1, 4)), (6, (4, 1, 0))), look=(0, 0, 0))`;
     assert.equal(runScript(`v = ${bad}\nshow(box())`).ok, false, bad);
   }
 });
+
+test('overlay() records React components with props and accepts **kwargs generically', async () => {
+  const { executeSceneTask } = await import('../src/scene-task.js');
+  const code = `show(box())
+overlay("titulo", at=1, dur=2, title="Olá", items=[1, 2], cfg={"a": 1})
+overlay("""(p) => <div className="text-white">{p.t}</div>""", z=2)`;
+  const sc = executeSceneTask({ code }).scene;
+  assert.equal(sc.overlays.length, 2);
+  assert.deepEqual(sc.overlays[0], { src: 'titulo', start: 1, end: 3, z: 0, props: { title: 'Olá', items: [1, 2], cfg: { a: 1 } } });
+  assert.equal(sc.overlays[1].end, null);
+  assert.ok(sc.duration >= 3);
+  for (const bad of ['overlay("")', 'overlay("titulo", dur=0)', 'overlay("titulo", x=keys((0, 0), (1, 1)))', 'overlay("titulo", s=box())']) {
+    assert.equal(runScript(`${bad}\nshow(box())`).ok, false, bad);
+  }
+  // argumento nomeado desconhecido continua sendo erro nas funções sem **
+  assert.equal(runScript('show(box(1, cor=2))').ok, false);
+});
+
+test('text3d() builds extruded glyphs with holes; distance works on CPU and GLSL compiles', async () => {
+  const { executeSceneTask } = await import('../src/scene-task.js');
+  const { buildDist } = await import('../src/sdf.js');
+  const run = runScript('show(text3d("OBA ação", size=1, depth=0.2, font="serif"))');
+  assert.equal(run.ok, true, run.error?.toString());
+  const d = buildDist(run.scene.shapes[0]);
+  const b = run.scene.shapes[0].bbox;
+  assert.ok(b.max[1] > 0.6 && Math.abs(b.max[2] - 0.1) < 1e-9, JSON.stringify(b));
+  // centro do O é furo (fora), a borda do O é dentro
+  const o = runScript('show(text3d("O", align="left"))').scene.shapes[0];
+  const dO = buildDist(o), ob = o.bbox, cx = (ob.min[0] + ob.max[0]) / 2, cy = (ob.min[1] + ob.max[1]) / 2;
+  assert.ok(dO(cx, cy, 0) > 0, 'furo do O');
+  assert.ok(dO(ob.min[0] + 0.03, cy, 0) < 0, 'traço do O');
+  for (let x = -2; x < 2; x += 0.37) assert.ok(Number.isFinite(d(x, 0.3, 0)));
+  // letras repetidas reaproveitam a função do shader
+  const glsl = executeSceneTask({ code: 'show(text3d("aaaa"))' }).out.glsl;
+  assert.equal((glsl.match(/float sdPoly\w*\(vec2 p\)/g) ?? []).length, 1);
+  for (const bad of ['text3d("")', 'text3d("x", font="arial")', 'text3d("x", size=0)', 'text3d("x", align="meio")']) {
+    assert.equal(runScript(`show(${bad})`).ok, false, bad);
+  }
+});

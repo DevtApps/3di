@@ -52,7 +52,7 @@ const DEFAULTS = {
   templates: DEFAULT_TEMPLATES,
   // vozes clonadas: { id, file (WAV na pasta do 3DI), refText, language }
   voices: [],
-  agents: { claude: { model: '', models: [] }, codex: { model: '', models: [] } },
+  agents: { claude: { model: '', models: [], path: '' }, codex: { model: '', models: [], path: '' } },
 };
 
 const file = () => join(dataDir(), 'settings.json');
@@ -100,6 +100,7 @@ export function saveSettings(patch) {
     voices,
     agents: Object.fromEntries(['claude', 'codex'].map((p) => [p, {
       model: str(s.agents?.[p]?.model),
+      path: str(s.agents?.[p]?.path).trim(),
       models: [...new Set((Array.isArray(s.agents?.[p]?.models) ? s.agents[p].models : []).map((m) => str(m).trim()).filter(Boolean))].slice(0, 30),
     }])),
   };

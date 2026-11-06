@@ -1,0 +1,21 @@
+# Textos: text3d() na cena e overlay() por cima da imagem (componentes React + Tailwind animados pelo tempo).
+# Componentes do 3DI: titulo, lower_third, texto, contador, lista. Também dá para usar um
+# arquivo .jsx ao lado da cena ou escrever o JSX direto num texto.
+timeline(12)
+camera(pos=keys((0, (0, 1.8, 6)), (12, (3.5, 2.4, 4.5))), look=(0, 0.7, 0), fov=40)
+chao = plane().color("#1e293b")
+cubo = box(1.2, round=0.15).color("#38bdf8").material(rough=0.3).rotate(y=keys((0, 0), (12, 360), ease="linear")).at(0, 0.75, 0)
+# texto 3D de verdade, na cena (com luz e sombra): text3d()
+letreiro = text3d("3DI", size=0.5, depth=0.15, round=0.02).color("#f59e0b").material(rough=0.35).at(0, 0, -1.2)
+show(chao, cubo, letreiro)
+sky("#0f172a")
+
+overlay("titulo", at=0, dur=3.5, title="3DI", subtitle="cenas 3D com código")
+overlay("lower_third", at=3.8, dur=3.5, name="Cubo arredondado", role="box(1.2, round=0.15)")
+overlay("contador", at=7.5, dur=2.2, to=360, suffix="°", label="rotação")
+overlay("""({ local }) => (
+  <div className="absolute top-12 right-16 px-6 py-3 rounded-full bg-white/15 text-white text-3xl font-semibold">
+    {local.toFixed(1)} s
+  </div>
+)""", at=0)
+caption("Textos em React e Tailwind por cima da imagem", at=9.8, dur=2)

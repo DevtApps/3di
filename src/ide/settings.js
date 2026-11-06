@@ -1,19 +1,31 @@
 // Configurações (⚙): provedor das falas (Qwen3-TTS local ou ElevenLabs), templates de áudio, vozes do Qwen
 // (instalar, modelo, voz padrão, clonadas) e modelos dos agentes. Ficam no servidor, em ~/.local/share/3di;
 // a chave do ElevenLabs vai para secrets.json e só volta para cá como '…1234'.
+import { hydrateIcons } from './icons.js';
+
 export function createSettingsDialog({ button, onChange = () => {} }) {
   const box = document.createElement('div');
   box.id = 'settingsDialog';
   box.hidden = true;
-  box.innerHTML = `<div class="card">
-    <h3>Configurações</h3>
-    <section>
+  box.className = 'modal';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-labelledby', 'settingsTitle');
+  box.innerHTML = `<div class="modal-card settings-card">
+    <div class="modal-head">
+      <h3 id="settingsTitle">Configurações</h3><span class="spacer"></span>
+      <button data-a="close" class="ghost icon-btn" title="Fechar (Esc)" aria-label="Fechar"><i data-icon="x"></i></button>
+    </div>
+    <div class="settings-layout">
+    <nav class="settings-nav" aria-label="Categorias"><button data-page="provider" class="on"><i data-icon="audio-lines"></i>Provedor das falas</button><button data-page="eleven" class=""><i data-icon="key-round"></i>ElevenLabs</button><button data-page="templates" class=""><i data-icon="list"></i>Templates de áudio</button><button data-page="qwen" class=""><i data-icon="cpu"></i>Vozes Qwen</button><button data-page="clone" class=""><i data-icon="mic"></i>Vozes clonadas</button><button data-page="agents" class=""><i data-icon="sparkles"></i>Agentes</button></nav>
+    <div class="settings-pages">
+    <section class="page" data-page="provider">
       <h4>Provedor das falas</h4>
       <label>Provedor padrão (vale para voice() sem provider) <select data-k="tts.provider"></select></label>
       <label>Template padrão <select data-k="tts.template"></select></label>
       <div class="row"><input data-k="sample" value="Olá! Esta é a minha voz no três D I." title="Texto para ouvir"><button data-a="listen">Ouvir</button></div>
     </section>
-    <section class="eleven">
+    <section class="page eleven" data-page="eleven" hidden>
       <h4>ElevenLabs</h4>
       <p class="hint eleven-state"></p>
       <div class="row"><input data-e="key" type="password" autocomplete="off" placeholder="cole aqui a sua chave de API (xi-api-key)"><button data-a="eleven-key">Salvar chave</button><button data-a="eleven-forget">Apagar</button></div>
@@ -23,7 +35,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       <div class="row"><input data-e="voice-id" placeholder="ou cole o ID da voz (elevenlabs.io → Voices → ⋯ → Copy voice ID)"><button data-a="eleven-voice-id">Usar ID</button></div>
       <p class="hint">No script: <code>voice("narrador", provider="elevenlabs", speaker="Nome da voz")</code>. As marcações de áudio dos templates (ex.: [excited]) só valem no modelo v3.</p>
     </section>
-    <section class="templates">
+    <section class="page templates" data-page="templates" hidden>
       <h4>Templates de áudio</h4>
       <p class="hint">Estilos com o prompt usado na fala. No script: <code>say("...", style="narrador")</code> ou <code>voice("n", template="calmo")</code>. O prompt vai para o Qwen3-TTS; marcações, estabilidade, estilo e velocidade, para o ElevenLabs.</p>
       <div class="tpl-list"></div>
@@ -36,7 +48,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
         <div class="row"><button data-a="tpl-save" class="primary">Salvar template</button><button data-a="tpl-listen">Ouvir com este template</button></div>
       </details>
     </section>
-    <section>
+    <section class="page" data-page="qwen" hidden>
       <h4>Vozes (Qwen3-TTS)</h4>
       <p class="tts-state"></p>
       <div class="row"><button data-a="install">Instalar vozes</button><button data-a="remove">Remover vozes</button></div>
@@ -46,30 +58,43 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       <label>Idioma <select data-k="tts.language">${['Portuguese', 'English', 'Spanish', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Korean', 'Chinese', 'Auto'].map((l) => `<option>${l}</option>`).join('')}</select></label>
       <label>Estilo padrão (instruct) <input data-k="tts.instruct" placeholder="ex.: tom calmo e claro"></label>
     </section>
-    <section class="clone">
+    <section class="page clone" data-page="clone" hidden>
       <h4>Vozes clonadas</h4>
       <p class="hint">Clone qualquer voz a partir de 5 a 20 segundos de fala limpa (sem música nem ruído). Use a sua voz ou a de quem autorizou. No script: <code>voice("narrador", speaker="nome")</code>.</p>
       <div class="voices"></div>
       <label>Nome (sem espaços) <input data-c="name" placeholder="ex.: minha-voz"></label>
-      <div class="row"><input data-c="file" type="file" accept="audio/*"><button data-a="record" title="Grava pelo microfone (até 20 s)">● Gravar</button></div>
+      <div class="row"><input data-c="file" type="file" accept="audio/*"><button data-a="record" title="Grava pelo microfone (até 20 s)"><i data-icon="mic"></i>Gravar</button></div>
       <audio data-c="preview" controls hidden></audio>
       <label>Texto falado no áudio (melhora a cópia; pode deixar vazio) <textarea data-c="text" rows="2"></textarea></label>
       <label>Idioma da voz <select data-c="language">${['Portuguese', 'English', 'Spanish', 'French', 'German', 'Italian', 'Russian', 'Japanese', 'Korean', 'Chinese'].map((l) => `<option>${l}</option>`).join('')}</select></label>
       <label>Modelo de clonagem <select data-k="tts.cloneModel"></select></label>
       <div class="row"><button data-a="clone" class="primary">Clonar voz</button></div>
     </section>
-    <section>
+    <section class="page" data-page="agents" hidden>
       <h4>Agentes</h4>
       ${['claude', 'codex'].map((p) => `<div class="agent" data-p="${p}">
         <b>${p === 'claude' ? 'Claude Code' : 'Codex'}</b> <span class="ver"></span>
+        <div class="hint agent-info"></div>
+        <label>Executável (vazio = procurar sozinho) <input data-k="agents.${p}.path" placeholder="${p === 'claude' ? '~/.local/bin/claude' : '/caminho/para/codex ou codex.js'}"></label>
+        <div class="row"><button data-a="agent-rescan">Detectar novamente</button><button data-a="agent-login">Ver login</button></div>
+        <div class="hint">Instalar: <code>${p === 'claude' ? 'npm i -g @anthropic-ai/claude-code' : 'npm i -g @openai/codex'}</code> · login: <code>${p === 'claude' ? 'claude' : 'codex login'}</code> num terminal</div>
         <label>Modelo padrão <select data-k="agents.${p}.model"></select></label>
         <div class="models"></div>
         <div class="row"><input placeholder="adicionar modelo (ex.: ${p === 'claude' ? 'claude-sonnet-5-5' : 'gpt-5.5-codex'})"><button data-a="add">Adicionar</button></div>
       </div>`).join('')}
     </section>
-    <pre class="log"></pre>
-    <div class="actions"><button data-a="close" class="primary">Fechar</button></div>
+    </div>
+    </div>
+    <div class="modal-foot"><pre class="log"></pre><span class="spacer"></span><button data-a="close" class="primary">Concluído</button></div>
   </div>`;
+  hydrateIcons(box);
+  // navegação entre as categorias
+  box.querySelector('.settings-nav').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-page]');
+    if (!b) return;
+    for (const n of box.querySelectorAll('.settings-nav [data-page]')) n.classList.toggle('on', n === b);
+    for (const pg of box.querySelectorAll('.settings-pages .page')) pg.hidden = pg.dataset.page !== b.dataset.page;
+  });
   document.body.append(box);
   const $ = (s) => box.querySelector(s);
   const logEl = $('.log');
@@ -147,6 +172,14 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     $('[data-a=listen]').disabled = !st?.tts.installed;
   };
 
+  const showAgents = (agents) => {
+    for (const p of ['claude', 'codex']) {
+      const a = agents?.[p];
+      box.querySelector(`[data-p=${p}] .ver`).textContent = a ? (a.available ? `✓ ${a.version}` : '✗ não encontrado') : '';
+      box.querySelector(`[data-p=${p}] .agent-info`).textContent = !a ? '' : a.available ? a.path
+        : `${a.custom ? `o caminho configurado não funcionou. ` : ''}Tentados: ${a.tried.join(' · ') || 'nenhum candidato existe'}`;
+    }
+  };
   const open = async () => {
     box.hidden = false;
     logEl.hidden = true;
@@ -154,11 +187,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     try {
       data = await call('/settings');
       data.status = await call('/video/status').catch(() => null);
-      const agents = await call('/agent/status').catch(() => null);
-      for (const p of ['claude', 'codex']) {
-        const a = agents?.agents?.[p];
-        box.querySelector(`[data-p=${p}] .ver`).textContent = a ? (a.available ? a.version : 'não encontrado: instale o CLI e faça login') : '';
-      }
+      showAgents((await call('/agent/status').catch(() => null))?.agents);
       if (!es) {
         es = new EventSource(`/video/events?token=${encodeURIComponent(token)}`);
         es.onmessage = async (ev) => {
@@ -175,7 +204,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
 
   box.addEventListener('change', (e) => {
     const k = e.target.dataset.k;
-    if (k && (k.startsWith('tts.') || k.startsWith('agents.') || k.startsWith('elevenlabs.'))) save(patchOf(k, e.target.value)).catch((err) => log(`erro: ${err.message}`));
+    if (k && (k.startsWith('tts.') || k.startsWith('agents.') || k.startsWith('elevenlabs.'))) save(patchOf(k, e.target.value)).then(() => k.endsWith('.path') && call('/agent/rescan', {}).then((r) => showAgents(r.agents))).catch((err) => log(`erro: ${err.message}`));
   });
   box.addEventListener('click', async (e) => {
     const a = e.target.dataset.a;
@@ -261,6 +290,12 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
         if (a === 'voice-listen') { log(`gerando a amostra de '${id}'…`); await listen(id); }
         else if (a === 'voice-default') await save({ tts: { speaker: id } });
         else if (a === 'voice-delete' && confirm(`Remover a voz '${id}'?`)) { data.settings = (await call('/voices/delete', { name: id })).settings; onChange(data.settings); render(); }
+      } else if (a === 'agent-rescan') {
+        showAgents((await call('/agent/rescan', {})).agents);
+      } else if (a === 'agent-login') {
+        const p = e.target.closest('.agent').dataset.p;
+        const r = await call(`/agent/login?p=${p}`);
+        log(`${p}: ${r.ok ? '' : 'sem login ou erro: '}${r.text}`);
       } else if (a === 'add') {
         const p = e.target.closest('.agent').dataset.p;
         const input = e.target.previousElementSibling;
@@ -276,7 +311,7 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
     const err = $('.eleven-error');
     err.hidden = true;
     let r;
-    try { r = await call('/video/eleven-voices'); }
+    try { r = await call('/video/eleven-voices', {}); }
     catch (e) {
       // chave sem a permissão de listar vozes: explica e oferece colar o ID
       err.hidden = false;
@@ -319,14 +354,14 @@ export function createSettingsDialog({ button, onChange = () => {} }) {
       stream.getTracks().forEach((t) => t.stop());
       recorded = new Blob(chunks, { type: recorder.mimeType });
       recorder = null;
-      btn.textContent = '● Gravar de novo';
+      btn.textContent = 'Gravar de novo';
       const pv = $('[data-c=preview]');
       pv.src = URL.createObjectURL(recorded);
       pv.hidden = false;
       log(`gravado (${(recorded.size / 1024).toFixed(0)} KB); confira na prévia e clique em Clonar voz`);
     };
     recorder.start();
-    btn.textContent = '■ Parar';
+    btn.textContent = 'Parar gravação';
     log('gravando… fale de 5 a 20 segundos e clique em Parar');
     setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 20000);
   };

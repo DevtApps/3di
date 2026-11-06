@@ -1,23 +1,45 @@
 // Botão Vídeo: renderiza a cena (timeline, chaves, câmera e roteiro) num MP4 com falas e legendas.
 // Os quadros são desenhados aqui, pela própria vista; o servidor do 3DI (src/services/video.mjs)
 // codifica com o ffmpeg do pacote, gera as falas e junta tudo na pasta out/ do projeto.
+import { hydrateIcons } from './icons.js';
+
 export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
   const box = document.createElement('div');
   box.id = 'videoDialog';
   box.hidden = true;
-  box.innerHTML = `<div class="card">
-    <h3>Vídeo</h3>
-    <label>Nome <input data-k="name" value="video"></label>
-    <label>Tamanho <select data-k="size"><option>640x360</option><option selected>1280x720</option><option>1920x1080</option><option>1080x1920</option></select></label>
-    <label>Quadros por segundo <input data-k="fps" type="number" min="1" max="120"></label>
-    <label>Legendas <select data-k="subs"><option value="soft">faixa embutida (liga/desliga no player)</option><option value="burn">gravadas na imagem</option><option value="off">sem legendas</option></select></label>
-    <label class="row"><input data-k="audio" type="checkbox" checked> Falas com voz</label>
-    <label>Voz <select data-k="voice"><option value="">voz do roteiro</option></select></label>
-    <p class="tts"></p>
-    <div class="progress"><div></div></div>
-    <pre class="log"></pre>
-    <div class="actions"><button data-a="settings" title="Vozes e modelo do TTS">⚙ Vozes</button><button data-a="install" hidden>Instalar vozes</button><button data-a="close">Fechar</button><button data-a="render" class="primary">Renderizar</button></div>
+  box.className = 'modal';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-labelledby', 'videoTitle');
+  box.innerHTML = `<div class="modal-card">
+    <div class="modal-head">
+      <div><h3 id="videoTitle">Exportar vídeo</h3><p>MP4 com timeline, falas, legendas e textos</p></div>
+      <span class="spacer"></span>
+      <button data-a="close" class="ghost icon-btn" title="Fechar (Esc)" aria-label="Fechar"><i data-icon="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <label class="field">Nome do arquivo <input data-k="name" value="video"></label>
+      <div class="grid-2">
+        <label class="field">Tamanho <select data-k="size"><option value="640x360">640 × 360</option><option value="1280x720" selected>1280 × 720 (HD)</option><option value="1920x1080">1920 × 1080 (Full HD)</option><option value="1080x1920">1080 × 1920 (vertical)</option></select></label>
+        <label class="field">Quadros por segundo <input data-k="fps" type="number" min="1" max="120"></label>
+      </div>
+      <label class="field">Legendas <select data-k="subs"><option value="soft">Faixa embutida (liga/desliga no player)</option><option value="burn">Gravadas na imagem</option><option value="off">Sem legendas</option></select></label>
+      <div class="card">
+        <label class="check"><input data-k="audio" type="checkbox" checked> Falas com voz</label>
+        <label class="field">Voz <select data-k="voice"><option value="">Voz do roteiro</option></select></label>
+        <p class="tts hint"></p>
+        <div class="row"><button data-a="settings" class="sm" title="Vozes e modelo do TTS"><i data-icon="audio-lines"></i>Gerenciar vozes</button><button data-a="install" class="sm" hidden><i data-icon="download"></i>Instalar vozes</button></div>
+      </div>
+      <div class="progress"><div></div></div>
+      <pre class="log"></pre>
+    </div>
+    <div class="modal-foot">
+      <span class="status">Salvo na pasta Downloads</span>
+      <button data-a="close">Fechar</button>
+      <button data-a="render" class="primary"><i data-icon="clapperboard"></i>Renderizar</button>
+    </div>
   </div>`;
+  hydrateIcons(box);
   document.body.append(box);
   const $ = (s) => box.querySelector(s);
   const logEl = $('.log'), bar = $('.progress div'), tts = $('.tts'), renderBtn = $('[data-a=render]'), installBtn = $('[data-a=install]');
@@ -76,7 +98,7 @@ export function createVideoDialog({ button, tdi, openSettings = () => {} }) {
       const t0 = performance.now();
       for (let i = 0; i < n; i++) {
         if (cancel) throw new Error('cancelado');
-        const png = tdi.frame({ t: i / fps, width: w, height: h });
+        const png = await tdi.frame({ t: i / fps, width: w, height: h });
         await api(`frame?id=${id}`, null, b64ToBytes(png));
         bar.style.width = `${(70 * (i + 1)) / n}%`;
         if (i % fps === 0) tts.textContent = `quadro ${i + 1}/${n} · ${((i + 1) / ((performance.now() - t0) / 1000)).toFixed(0)} q/s`;

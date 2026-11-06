@@ -3,6 +3,7 @@ import { ScriptError } from './parser.js';
 import { Native, bindArgs, didYouMean, num, numT, vec2, vec3, tuple, typeName, fmtNum } from './runtime.js';
 import { isExpr, val0, sym as esym } from './expr.js';
 import { parsePoints, regularPolygon, starPoints, smoothOpen, lathePolygon, boundsOf } from './profile.js';
+import { text3d } from './text3d.js';
 import { convexHull, ringPoints, lowSphere, bevelPoints, loftRings } from './hull.js';
 
 export const INF = 1e4;
@@ -796,6 +797,10 @@ export function shapeBuiltins(scene) {
     prism: N('prism', ['w=1', 'h=0.5', 'd=1'], (a) => new Shape('prism', { w: positive(a.w, 'w'), h: positive(a.h, 'h'), d: positive(a.d, 'd') })),
     plane: N('plane', [], () => new Shape('plane')),
     // ---- formas a partir de perfis 2D ----
+    // texto 3D (letras extrudadas, com furos): no plano x,y virado para +z, base da 1ª linha em y = 0
+    text3d: N('text3d', ['text', 'size=1', 'depth=0.2', 'font="sans"', 'align="center"', 'spacing=0', 'line=1.2', 'round=0'], (a) => text3d({
+      text: a.text, size: num(a.size, 'size'), depth: num(a.depth, 'depth'), font: String(a.font), align: String(a.align),
+      spacing: num(a.spacing, 'spacing'), line: num(a.line, 'line'), round: num(a.round, 'round') })),
     extrude: N('extrude', ['points', 'h=1', 'axis="z"', 'round=0'], (a) => {
       const pts = parsePoints(a.points, 'extrude()');
       return extrudeShape(pts, positive(a.h, 'h'), String(a.axis).toLowerCase(), num(a.round, 'round'), 'extrude()');

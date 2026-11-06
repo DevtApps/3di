@@ -29,6 +29,14 @@ function track(points, kind, T) {
   return e;
 }
 
+// props das sobreposições: só valores simples (atravessam o worker e vão para o React)
+function plain(v, k) {
+  if (v === null || typeof v === 'string' || typeof v === 'boolean' || isNum(v)) return v;
+  if (Array.isArray(v)) return v.map((x) => plain(x, k));
+  if (v instanceof Map) return Object.fromEntries([...v].map(([kk, x]) => [String(kk), plain(x, k)]));
+  if (isExpr(v)) throw new ScriptError(`overlay(): ${k} não pode ser keys()/time; anime dentro do componente com t e progress`, null);
+  throw new ScriptError(`overlay(): ${k} deve ser texto, número, lista ou dict (recebeu ${typeName(v)})`, null);
+}
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 // fala em português do TTS: ~12 caracteres por segundo
 const estimateDuration = (text) => Math.max(1.4, 0.5 + String(text).length / 12);
@@ -37,6 +45,7 @@ export function timelineBuiltins(scene) {
   scene.keyTimes ??= [];
   scene.script ??= [];
   scene.voices ??= {};
+  scene.overlays ??= [];
   const N = (name, params, fn) => new Native(name, params, fn);
   // Próximo instante livre do roteiro (falas sem `at` entram em sequência)
   const cursor = () => scene.script.reduce((m, l) => Math.max(m, l.end), 0);
@@ -101,6 +110,21 @@ export function timelineBuiltins(scene) {
     // template de áudio ou um estilo livre.
     // dur estima pelo tamanho do texto; no vídeo, vale a duração real do áudio. Devolve o fim (s).
     say: N('say', ['text', 'at=None', 'dur=None', 'voice=None', 'style=None'], (a) => line(a, true)),
+    // Sobreposição em React + Tailwind sobre a imagem, de `at` até `at + dur` (sem dur: até o fim).
+    // component: nome de um componente do 3DI ("titulo", "lower_third", "texto", ...), arquivo .jsx
+    // ao lado da cena ou o próprio código JSX (string com '<'). Os outros argumentos nomeados viram
+    // props do componente. z: ordem de empilhamento.
+    overlay: N('overlay', ['component', 'at=0', 'dur=None', 'z=0', '**props'], (a) => {
+      const src = String(a.component);
+      if (!src.trim()) throw new ScriptError('overlay(): component vazio', null);
+      const start = num(a.at, 'at'), dur = a.dur === null ? null : num(a.dur, 'dur');
+      if (start < 0 || (dur !== null && !(dur > 0))) throw new ScriptError('overlay(): at >= 0 e dur > 0 (segundos)', null);
+      const props = {};
+      for (const [k, v] of Object.entries(a.props)) props[k] = plain(v, k);
+      scene.overlays.push({ src, start, end: dur === null ? null : start + dur, z: num(a.z, 'z'), props });
+      if (dur !== null) scene.keyTimes.push(start + dur);
+      return null;
+    }),
     // só legenda, sem áudio
     caption: N('caption', ['text', 'at=None', 'dur=None'], (a) => line({ ...a, voice: null, style: null }, false)),
   };
@@ -110,6 +134,8 @@ export function timelineBuiltins(scene) {
 export function sceneDuration(scene) {
   if (scene.anim?.duration) return scene.anim.duration;
   const ends = [...(scene.keyTimes ?? []), ...(scene.script ?? []).map((l) => l.end)];
+  // sem dur, a sobreposição dura até o fim; ela conta pelo início
+  for (const o of scene.overlays ?? []) ends.push(o.end ?? o.start + 3);
   return ends.length ? Math.max(...ends) + 0.5 : 0;
 }
 

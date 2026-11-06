@@ -5,27 +5,42 @@
 //
 // Eventos normalizados (enviados à IDE): { kind: 'start' | 'text' | 'tool' | 'tool-result' | 'session'
 //   | 'done' | 'error' | 'log', ... }. 'text' traz delta (parcial) ou final (mensagem completa).
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { loadSettings } from './settings.mjs';
 
 const INSTRUCTIONS = 'Você está dentro do 3DI, um editor de cenas 3D por código. O usuário vê a cena aberta no editor ao lado deste chat. ' +
   'Use as ferramentas do MCP "3di": comece por get_documentation(topic="inicio"), leia get_script antes de editar, valide com check_script, ' +
   'aplique com set_script e confira com screenshot(view="grid"). Responda em português, de forma curta.';
 
 // Executável de cada agente. O atalho em ~/.local/bin pode apontar para uma instalação que sumiu:
-// por isso cada candidato é testado com --version. THREEDI_CLAUDE / THREEDI_CODEX forçam um caminho.
-function candidates(name) {
-  const list = [process.env[`THREEDI_${name.toUpperCase()}`], name, join(homedir(), '.local', 'bin', name)];
-  if (name === 'codex') {
-    // instalações globais do npm em versões do Node do nvm
-    const nvm = join(homedir(), '.nvm', 'versions', 'node');
-    try {
-      for (const v of readdirSync(nvm).sort().reverse()) list.push(join(nvm, v, 'lib', 'node_modules', '@openai', 'codex', 'bin', 'codex.js'));
-    } catch {}
+// por isso cada candidato é testado com --version. O caminho escolhido em ⚙ → Agentes, ou
+// THREEDI_CLAUDE / THREEDI_CODEX, vem primeiro. Lançado pelo menu, o app não tem o PATH do shell
+// (nvm, pnpm): as pastas comuns de instalação global também são procuradas.
+function candidates(name, custom) {
+  const h = homedir();
+  const list = [custom, process.env[`THREEDI_${name.toUpperCase()}`], name, join(h, '.local', 'bin', name),
+    join(h, '.local', 'share', 'pnpm', name), join(h, '.npm-global', 'bin', name), join(h, '.bun', 'bin', name),
+    join(h, '.claude', 'local', name), `/usr/local/bin/${name}`, `/usr/bin/${name}`];
+  const pkg = name === 'codex' ? ['@openai', 'codex', 'bin', 'codex.js'] : ['@anthropic-ai', 'claude-code', 'cli.js'];
+  const nvm = join(h, '.nvm', 'versions', 'node');
+  try {
+    for (const v of readdirSync(nvm).sort(byVersion)) list.push(join(nvm, v, 'bin', name), join(nvm, v, 'lib', 'node_modules', ...pkg));
+  } catch {}
+  return [...new Set(list.filter(Boolean))];
+}
+const byVersion = (a, b) => b.localeCompare(a, undefined, { numeric: true });
+
+// Node para rodar um .js: o da mesma instalação do nvm, o do PATH, ou o próprio Electron como Node
+function nodeFor(js) {
+  const sibling = join(js.split('/lib/node_modules/')[0], 'bin', 'node');
+  if (js.includes('/lib/node_modules/') && existsSync(sibling)) return { cmd: [sibling], env: {} };
+  for (const n of ['node', join(homedir(), '.local', 'bin', 'node'), '/usr/local/bin/node', '/usr/bin/node']) {
+    try { execFileSync(n, ['--version'], { timeout: 4000, stdio: 'ignore' }); return { cmd: [n], env: {} }; } catch {}
   }
-  return list.filter(Boolean);
+  return { cmd: [process.execPath], env: process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {} };
 }
 
 // Ambiente do agente: o do usuário, sem as variáveis de uma sessão do Claude Code que tenha aberto
@@ -34,28 +49,49 @@ export function agentEnv(base = process.env) {
   return Object.fromEntries(Object.entries(base).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDE_AGENT_SDK|CLAUDECODE$|CLAUDE_PID$|CLAUDE_EFFORT$)/.test(k)));
 }
 
+const customPath = (name) => { try { return loadSettings().agents?.[name]?.path || null; } catch { return null; } };
 const resolved = new Map();
+// esquece o que foi achado (depois de instalar o CLI ou trocar o caminho nas configurações)
+export function rescanAgents() { resolved.clear(); }
 export function findAgent(name) {
   if (resolved.has(name)) return resolved.get(name);
   let found = null;
-  for (const c of candidates(name)) {
+  const custom = customPath(name);
+  const tried = [];
+  for (const c of candidates(name, custom)) {
     if (c.includes('/') && !existsSync(c)) continue;
-    const cmd = c.endsWith('.js') ? [process.execPath, c] : [c];
+    const node = c.endsWith('.js') ? nodeFor(c) : null;
+    const cmd = node ? [...node.cmd, c] : [c];
+    const env = { ...agentEnv(), ...(node?.env ?? {}) };
     try {
-      const version = execFileSync(cmd[0], [...cmd.slice(1), '--version'], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-      found = { cmd, version };
+      const out = execFileSync(cmd[0], [...cmd.slice(1), '--version'], { encoding: 'utf8', timeout: 8000, env, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      found = { cmd, env: node?.env ?? {}, version: out.split('\n').pop(), path: c };
       break;
-    } catch {}
+    } catch (e) { tried.push(`${c}: ${String(e.stderr || e.message).trim().split('\n').find((l) => /error|not found|cannot/i.test(l)) ?? 'falhou'}`.slice(0, 200)); }
   }
+  if (!found) found = null;
   resolved.set(name, found);
+  if (!found) resolved.set(`${name}:tried`, { custom, tried });
   return found;
 }
 
 export function agentStatus() {
   return Object.fromEntries(['claude', 'codex'].map((n) => {
     const a = findAgent(n);
-    return [n, a ? { available: true, version: a.version } : { available: false }];
+    if (a) return [n, { available: true, version: a.version, path: a.path }];
+    const t = resolved.get(`${n}:tried`) ?? {};
+    return [n, { available: false, custom: t.custom ?? null, tried: t.tried ?? [] }];
   }));
+}
+
+// Login do agente (o CLI tem de estar autenticado para responder)
+export function agentLogin(name) {
+  const a = findAgent(name);
+  if (!a) return { ok: false, text: 'CLI não encontrado' };
+  const args = name === 'codex' ? ['login', 'status'] : ['auth', 'status'];
+  const r = spawnSync(a.cmd[0], [...a.cmd.slice(1), ...args], { encoding: 'utf8', timeout: 10000, env: { ...agentEnv(), ...a.env } });
+  try { const j = JSON.parse(r.stdout); if ('loggedIn' in j) return { ok: !!j.loggedIn, text: j.loggedIn ? `logado (${j.authMethod ?? 'ok'})` : 'sem login: rode claude num terminal' }; } catch {}
+  return { ok: r.status === 0, text: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().slice(0, 300) || (r.error?.message ?? '') };
 }
 
 // ---------- Claude Code: claude -p --output-format stream-json ----------
@@ -158,7 +194,7 @@ export class AgentSession {
     // o Codex recebe as instruções só na primeira mensagem; nas seguintes a conversa já as tem
     const prompt = this.provider === 'codex' && this.turns ? text : P.prompt(text);
     const args = P.args({ resume: this.session, mcpEndpoint: this.mcpEndpoint, model: this.model });
-    const proc = spawn(agent.cmd[0], [...agent.cmd.slice(1), ...args], { cwd: this.cwd, env: agentEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn(agent.cmd[0], [...agent.cmd.slice(1), ...args], { cwd: this.cwd, env: { ...agentEnv(), ...agent.env }, stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     this.turns++;
     const state = { session: this.session, done: null };

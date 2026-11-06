@@ -10,7 +10,6 @@ export function setupWorkspace() {
   try { previewOnly = localStorage.getItem('3di.previewOnly') === 'true'; } catch {}
   const applyPreview = () => {
     app.classList.toggle('preview-only', previewOnly);
-    $('btnToggleCode').textContent = previewOnly ? 'Mostrar código' : 'Ocultar código';
     $('btnToggleCode').setAttribute('aria-expanded', String(!previewOnly));
   };
   const TABS = [['code', 'tabCode', 'codePanel'], ['agent', 'tabAgent', 'agentPanel'], ['integrations', 'tabIntegrations', 'integrations']];
@@ -31,21 +30,21 @@ export function setupWorkspace() {
     applyPreview();
     try { localStorage.setItem('3di.previewOnly', String(previewOnly)); } catch {}
   };
-  $('tabCode').onclick = () => selectTab('code');
-  $('tabIntegrations').onclick = () => selectTab('integrations');
-  $('tabAgent').onclick = () => selectTab('agent');
-  $('btnIntegrations').onclick = () => {
-    previewOnly = false;
-    applyPreview();
-    selectTab('integrations');
-    $('tabIntegrations').focus();
-    try { localStorage.setItem('3di.previewOnly', 'false'); } catch {}
-  };
+  // barra de atividades: clicar na aba aberta recolhe o painel; clicar noutra abre o painel nela
+  const setPreview = (v) => { previewOnly = v; applyPreview(); try { localStorage.setItem('3di.previewOnly', String(v)); } catch {} };
+  for (const [name, tabId] of TABS) {
+    $(tabId).onclick = () => {
+      const active = $(tabId).getAttribute('aria-selected') === 'true';
+      if (active && !previewOnly) { setPreview(true); return; }
+      selectTab(name);
+      if (previewOnly) setPreview(false);
+    };
+  }
   document.querySelector('.workspace-tabs').addEventListener('keydown', (event) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     const i = TABS.findIndex(([, tabId]) => $(tabId).getAttribute('aria-selected') === 'true');
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (i + (event.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? TABS.length - 1 : (i + (event.key === 'ArrowDown' ? 1 : TABS.length - 1)) % TABS.length;
     selectTab(TABS[next][0]);
     $(TABS[next][1]).focus();
   });

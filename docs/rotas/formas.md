@@ -21,6 +21,7 @@
 
 ## Perfis
 
+- `text3d(text, size=1, depth=0.2, font="sans", align="center", spacing=0, line=1.2, round=0)`: texto 3D: letras extrudadas (com furos e acentos) no plano x,y, viradas para +z, com a base da 1ª linha em y = 0. `size` = altura da fonte, `depth` = espessura, `font` = "sans", "serif" ou "mono", `\n` quebra linha, `round` arredonda as quinas. Até 200 letras.
 - `extrude(points, h=1, axis="z", round=0)`: polígono qualquer (3 a 128 pontos, côncavo vale).
   `axis="z"`: pontos `(x, y)` vistos de frente, `h` = profundidade. `axis="y"`: pontos `(x, z)` no chão, `h` = altura.
   As coordenadas valem como escritas: finalize com `.place()` / `.ground()`.

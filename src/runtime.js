@@ -9,16 +9,20 @@ export class Native {
     this.fn = fn;
     this.params = params.map(parseParam);
     this.star = this.params.find((p) => p.star)?.name ?? null;
-    this.params = this.params.filter((p) => !p.star);
+    // **nome: recebe os argumentos nomeados que não são parâmetros (num objeto)
+    this.kwstar = this.params.find((p) => p.kwstar)?.name ?? null;
+    this.params = this.params.filter((p) => !p.star && !p.kwstar);
   }
   signature() {
     const ps = this.params.map((p) => (p.required ? p.name : `${p.name}=${repr(p.def)}`));
     if (this.star) ps.splice(this.params.filter((p) => p.required).length, 0, `*${this.star}`);
+    if (this.kwstar) ps.push(`**${this.kwstar}`);
     return `${this.name}(${ps.join(', ')})`;
   }
 }
 
 function parseParam(spec) {
+  if (spec.startsWith('**')) return { name: spec.slice(2), kwstar: true };
   if (spec.startsWith('*')) return { name: spec.slice(1), star: true };
   const eq = spec.indexOf('=');
   if (eq < 0) return { name: spec, required: true };
@@ -45,8 +49,10 @@ export function bindArgs(native, args, kwargs) {
       `assinatura: ${native.signature()}`);
   }
   if (native.star) out[native.star] = extra;
+  if (native.kwstar) out[native.kwstar] = {};
   for (const [k, v] of kwargs) {
     const p = ps.find((q) => q.name === k);
+    if (!p && native.kwstar) { out[native.kwstar][k] = v; continue; }
     if (!p) {
       throw new ScriptError(`${native.name}() não tem o parâmetro '${k}'`, null,
         didYouMean(k, ps.map((q) => q.name)) ?? `assinatura: ${native.signature()}`);

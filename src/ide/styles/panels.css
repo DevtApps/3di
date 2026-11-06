@@ -1,0 +1,122 @@
+/* Conteúdo dos painéis: editor de código e saída, agente, integrações, e as camadas da vista
+   (peças, vistas, referência, sobreposições). */
+
+/* ---------- editor ---------- */
+#codePanel { position: relative; }
+#editorWrap { position: relative; display: flex; flex: 1; min-height: 0; overflow: hidden; background: var(--surface-0); }
+#gutter { width: 44px; padding: 10px 8px 10px 0; flex: none; overflow: hidden; text-align: right; color: var(--text-3); font: 13px/1.5 var(--mono); user-select: none; }
+#gutter div.err { color: #fff; background: var(--danger); border-radius: 3px; }
+#code { flex: 1; resize: none; border: 0; outline: 0; padding: 10px; background: transparent; color: var(--text); font: 13px/1.5 var(--mono); white-space: pre; tab-size: 4; overflow: auto; }
+
+/* saída da compilação: estado da cena, logs e erros */
+#status {
+  flex: none; max-height: 30vh; overflow: auto; padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line); background: var(--surface-1);
+  color: var(--text-2); font: var(--fs-sm)/1.55 var(--mono); white-space: pre-wrap;
+}
+#status.ok { color: var(--success); }
+#status.err { color: var(--danger); background: linear-gradient(var(--danger-soft), var(--danger-soft)), var(--surface-1); }
+#status .log { color: var(--text-3); }
+
+/* ---------- agente ---------- */
+#agentPanel { gap: 0; }
+#agentPanel .agent-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4) 0; }
+#agentPanel .agent-bar :is(select, input) { height: var(--control-h-sm); font-size: var(--fs-sm); }
+#agentPanel .agent-info { padding: var(--sp-2) var(--sp-4) 0; color: var(--text-3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+#agentPanel .agent-info:empty { display: none; }
+#agentPanel .agent-log { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); }
+#agentPanel .msg { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-lg); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); line-height: 1.55; }
+#agentPanel .msg.user { align-self: flex-end; max-width: 85%; background: var(--accent); color: var(--text-on-accent); border-bottom-right-radius: var(--r-sm); }
+#agentPanel .msg.assistant { background: var(--surface-2); border: 1px solid var(--line); border-bottom-left-radius: var(--r-sm); }
+#agentPanel .msg.tool { align-self: flex-start; padding: 3px var(--sp-2); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-3); font: var(--fs-xs) var(--mono); }
+#agentPanel .msg.tool.fail { color: var(--danger); }
+#agentPanel .msg.error { background: var(--danger-soft); color: #ffb3b5; }
+#agentPanel .msg.note { align-self: center; color: var(--text-3); font-size: var(--fs-xs); }
+#agentPanel .agent-input { flex: none; display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4) var(--sp-4); border-top: 1px solid var(--line); }
+#agentPanel textarea { min-height: 72px; max-height: 40vh; background: var(--surface-0); }
+#agentPanel .agent-actions { display: flex; align-items: center; gap: var(--sp-2); }
+#agentPanel .agent-state { flex: 1; color: var(--text-3); font-size: var(--fs-sm); }
+
+/* ---------- integrações ---------- */
+.panel-intro h3 { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -.3px; margin-bottom: var(--sp-1); }
+.integration-settings code { color: var(--text); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.integration-tabs { align-self: flex-start; }
+.guide-card { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) 0; border-top: 1px solid var(--line); }
+.guide-card h3 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.guide-card p { color: var(--text-2); line-height: 1.65; }
+.guide-card pre { margin: 0; padding: var(--sp-3); white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-0); font-size: var(--fs-sm); }
+.guide-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+#integrationFeedback { min-height: 20px; color: var(--accent); font-size: var(--fs-sm); }
+
+/* ---------- camadas da vista ---------- */
+.viewport iframe.overlay-stage { z-index: 1; }
+#parts {
+  display: none; position: absolute; right: var(--sp-3); top: var(--sp-3); z-index: 3; width: 280px; max-height: calc(100% - 24px); overflow: auto;
+  padding: var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--overlay); backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-2); font: var(--fs-xs)/1.6 var(--mono); color: var(--text-2);
+}
+#parts.show { display: block; }
+#parts b { color: var(--text); font-weight: var(--fw-semibold); }
+#parts .part { cursor: pointer; border-radius: var(--r-sm); padding: 1px 4px; margin: 0 -4px; }
+#parts .part:hover { background: var(--accent-soft); color: var(--text); }
+#views { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center; padding: var(--sp-4); background: rgba(8, 9, 12, .9); cursor: zoom-out; }
+#views img { max-width: 100%; max-height: 100%; border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-3); }
+
+#refLayer { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#refLayer img { width: 100%; height: 100%; object-fit: contain; transform-origin: center; }
+#refLayer.side { inset: 0 50% 0 0; background: var(--surface-1); }
+#refLayer.side img { opacity: 1 !important; }
+#refBar {
+  position: absolute; left: 50%; top: var(--sp-3); transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: center; gap: var(--sp-3); padding: 4px 4px 4px var(--sp-3);
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--overlay); backdrop-filter: blur(8px); box-shadow: var(--shadow-2);
+  color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap;
+}
+#refBar b { color: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+#refBar label { display: inline-flex; align-items: center; gap: 5px; }
+#refBar input[type=range] { width: 64px; }
+#refBar button.on { color: var(--text); }
+#btnRef.on { color: var(--text); background: var(--accent-soft); }
+
+/* ---------- Configurações: navegação por categorias + página ---------- */
+.settings-card { width: min(860px, 100%); height: min(680px, 100%); }
+.settings-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); flex: 1; min-height: 0; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3); border-right: 1px solid var(--line); background: var(--surface-1); }
+.settings-nav button { justify-content: flex-start; width: 100%; border: 0; background: transparent; color: var(--text-2); font-weight: var(--fw-medium); }
+.settings-nav button:hover:not(:disabled) { background: var(--surface-3); border: 0; color: var(--text); }
+.settings-nav button.on { background: var(--surface-3); color: var(--text); }
+.settings-nav button.on .icon { color: var(--accent); }
+.settings-pages { overflow: auto; padding: var(--sp-5) var(--sp-6); }
+.settings-pages .page { display: flex; flex-direction: column; gap: var(--sp-4); max-width: 600px; }
+.settings-pages .page > h4 { font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.settings-pages label:not(.check) { display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.settings-pages label > :is(input, select, textarea) { color: var(--text); font-weight: 400; }
+.settings-pages .row { align-items: flex-end; }
+.settings-pages .row > label { flex: 1; min-width: 0; }
+.settings-pages .row > input:not([type=file]) { flex: 1; }
+.settings-pages input[type=file] { flex: 1; min-width: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.settings-pages input[type=file]::file-selector-button { height: var(--control-h); margin-right: var(--sp-3); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-3); color: var(--text); font: var(--fw-medium) var(--fs-md) var(--font); cursor: pointer; }
+.settings-pages .hint code { color: var(--text-2); }
+.settings-pages .eleven-error { padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--danger-soft); color: #ffb3b5; }
+.settings-pages .ver, .settings-pages .tts-state { color: var(--text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.settings-pages .agent { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); }
+.settings-pages .agent > b { font-size: var(--fs-md); }
+.settings-pages .models { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.settings-pages .models:empty { display: none; }
+.settings-pages .chip { padding-right: 2px; background: var(--accent-soft); color: var(--text); }
+.settings-pages .voices, .settings-pages .tpl-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.settings-pages .voices:empty, .settings-pages .tpl-list:empty { display: none; }
+.settings-pages .voice { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3); background: var(--surface-1); }
+.settings-pages .voice + .voice { border-top: 1px solid var(--line); }
+.settings-pages .voice span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-sm); }
+.settings-pages .voice button { height: var(--control-h-sm); padding: 0 var(--sp-2); font-size: var(--fs-sm); }
+.settings-pages details { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); }
+.settings-pages details > summary { cursor: pointer; color: var(--text); font-weight: var(--fw-medium); }
+.settings-pages details[open] > *:not(summary) { margin-top: var(--sp-3); }
+.settings-pages audio { width: 100%; height: 36px; }
+.settings-card .modal-foot .log { flex: 1; max-height: 64px; margin-right: var(--sp-3); }
+@media (max-width: 760px) {
+  .settings-layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .settings-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .settings-nav button { width: auto; }
+}

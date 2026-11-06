@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { AgentSession, agentStatus } from './agents.mjs';
+import { AgentSession, agentStatus, agentLogin, rescanAgents } from './agents.mjs';
 import { ffmpegPath, ttsStatus, installTts, removeTts, speech, synthesize, clipFile, toSrt, scriptRange, frameEncoder, muxVideo } from './video.mjs';
 import { loadSettings, saveSettings, ttsConfig, voicesDir, VOICE_NAME, TTS_MODELS, CLONE_MODELS, SPEAKERS, PROVIDERS, ELEVEN_MODELS, elevenKey, setElevenKey, elevenKeyInfo } from './settings.mjs';
 import { elevenVoices } from './elevenlabs.mjs';
@@ -29,7 +29,7 @@ export function appToken() {
   return t;
 }
 
-const FS_READ = new Set(['.3di']);
+const FS_READ = new Set(['.3di', '.jsx']);
 const FS_WRITE = new Set(['.3di', '.glb', '.png']);
 
 const MIME = {
@@ -337,6 +337,8 @@ export async function startIdeServer({ root, port = 8317, log = () => {}, fallba
         json({ agents: agentStatus(), active: agent ? { provider: agent.provider, busy: agent.busy, session: agent.session, model: agent.model } : null, cwd: await agents.cwd(), mcp: agents.mcpEndpoint() });
         return;
       }
+      if (url.pathname === '/agent/rescan' && req.method === 'POST') { rescanAgents(); json({ agents: agentStatus() }); return; }
+      if (url.pathname === '/agent/login' && req.method === 'GET') { json(agentLogin(url.searchParams.get('p') === 'codex' ? 'codex' : 'claude')); return; }
       if (url.pathname === '/agent/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
         res.write(`data: ${JSON.stringify({ kind: 'history', events: agentLog })}\n\n`);

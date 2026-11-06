@@ -115,3 +115,42 @@ export function extrudeDist(d2, hz, half, r) {
   const wx = d2 + r, wy = Math.abs(hz) - (half - r);
   return Math.min(Math.max(wx, wy), 0) + Math.hypot(Math.max(wx, 0), Math.max(wy, 0)) - r;
 }
+
+// Vários contornos (letras com furos, como A, O, B): a distância é a menor até qualquer aresta e o
+// sinal vem da regra par-ímpar somando os cruzamentos de todos os contornos.
+const contourEdges = (contours) => contours.flatMap((c) => c.map((p, i) => [c[(i + c.length - 1) % c.length], p]));
+export function contoursSDF(contours) {
+  const E = contourEdges(contours);
+  return (px, py) => {
+    let d = Infinity, s = 1;
+    for (const [[jx, jy], [ix, iy]] of E) {
+      const ex = jx - ix, ey = jy - iy, wx = px - ix, wy = py - iy;
+      const t = Math.max(0, Math.min(1, (wx * ex + wy * ey) / (ex * ex + ey * ey)));
+      const bx = wx - ex * t, by = wy - ey * t;
+      d = Math.min(d, bx * bx + by * by);
+      const c1 = py >= iy, c2 = py < jy, c3 = ex * wy > ey * wx;
+      if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) s = -s;
+    }
+    return s * Math.sqrt(d);
+  };
+}
+
+export function contoursGlsl(name, contours) {
+  const f = (x) => { const s = String(+x.toFixed(5)); return /[.e]/.test(s) ? s : `${s}.0`; };
+  const E = contourEdges(contours), n = E.length;
+  return `float ${name}(vec2 p) {
+  const vec4 e[${n}] = vec4[${n}](${E.map(([j, i]) => `vec4(${f(i[0])}, ${f(i[1])}, ${f(j[0])}, ${f(j[1])})`).join(', ')});
+  float d = 1e10;
+  float s = 1.0;
+  for (int k = 0; k < ${n}; k++) {
+    vec2 vi = e[k].xy, vj = e[k].zw;
+    vec2 ed = vj - vi;
+    vec2 w = p - vi;
+    vec2 b = w - ed * clamp(dot(w, ed) / dot(ed, ed), 0.0, 1.0);
+    d = min(d, dot(b, b));
+    bvec3 c = bvec3(p.y >= vi.y, p.y < vj.y, ed.x * w.y > ed.y * w.x);
+    if (all(c) || all(not(c))) s = -s;
+  }
+  return s * sqrt(d);
+}`;
+}

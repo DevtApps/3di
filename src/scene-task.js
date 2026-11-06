@@ -23,8 +23,9 @@ export function executeSceneTask({ code, task = 'compile', time = 0, res = 128 }
 // A câmera animada vira trilha amostrada e a câmera em si leva os valores em t = 0.
 export function sceneMeta(scene) {
   const { fog, sun, sky, light, script, voices } = scene;
+  const overlays = (scene.overlays ?? []).map((o) => ({ ...o }));
   const duration = sceneDuration(scene);
   const camTrack = cameraTrack(scene.camera, duration);
   const camera = scene.camera && { pos: scene.camera.pos.map(val0), look: scene.camera.look?.map(val0) ?? null, fov: val0(scene.camera.fov) };
-  return { camera, camTrack, fog, sun, sky, light, script, voices, duration, keyTimes: [...(scene.keyTimes ?? [])].sort((p, q) => p - q), fps: scene.anim?.fps ?? 30 };
+  return { camera, camTrack, fog, sun, sky, light, script, voices, overlays, duration, keyTimes: [...(scene.keyTimes ?? [])].sort((p, q) => p - q), fps: scene.anim?.fps ?? 30 };
 }

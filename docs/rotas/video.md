@@ -58,6 +58,57 @@ fala limpa e, se puder, o texto falado nele. A voz entra no catálogo e é usada
 `voice("narrador", speaker="minha-voz")`. O áudio de referência fica em `~/.local/share/3di/voices/`; a geração usa
 o modelo Base do Qwen3-TTS (1.7B ou 0.6B, baixado na primeira vez). Clone só vozes que você tem permissão de usar.
 
+## Textos e sobreposições: `overlay()`
+
+`overlay(component, at=0, dur=None, z=0, **props)` põe um componente **React com Tailwind CSS** por
+cima da imagem, de `at` até `at + dur` (sem `dur`, até o fim). Aparece no preview e é gravado no vídeo.
+Os outros argumentos nomeados viram props do componente; `z` ordena as camadas.
+
+| `component` | o que é |
+|---|---|
+| `"titulo"` | título grande com subtítulo (`title`, `subtitle`, `align`, `position`, `color`, `accent`) |
+| `"lower_third"` | tarja de nome (`name`, `role`, `accent`, `side`) |
+| `"texto"` | texto livre (`text`, `x`, `y` de 0 a 1, `size`, `color`, `weight`, `animation` = fade/slide/pop/typewriter/none, `className`) |
+| `"contador"` | número que conta (`from`, `to`, `prefix`, `suffix`, `decimals`, `label`) |
+| `"lista"` | tópicos que entram um a um (`title`, `items`, `every`, `accent`) |
+| `"arquivo.jsx"` | componente seu, na mesma pasta da cena (salve a cena antes) |
+| `"""(props) => <div …/>"""` | o JSX direto no script |
+
+```python
+overlay("titulo", at=0, dur=3, title="3DI", subtitle="cenas 3D com código")
+overlay("lower_third", at=3, dur=3, name="Ana", role="apresentadora")
+overlay("selo.jsx", text="NOVO!")
+overlay("""({ local }) => <div className="absolute top-12 right-16 text-3xl text-white">{local.toFixed(1)} s</div>""")
+```
+
+Um componente recebe, além das props: `t` (tempo da cena), `local` (tempo desde `at`), `duration`,
+`progress` (0 a 1 no trecho), `frame`, `fps`, `width` (sempre 1920) e `height`. O palco tem 1920 px de
+largura lógica e é escalado para a imagem: o mesmo componente fica igual no preview e no vídeo em
+qualquer resolução.
+
+```jsx
+// selo.jsx
+import { spring, interpolate, fade, typewriter, easing } from '3di';
+export default ({ text, local, duration }) => (
+  <div className="absolute left-16 top-16 rounded-3xl bg-rose-500 px-10 py-5 text-5xl font-black text-white"
+       style={{ transform: `scale(${spring(local, { from: 0, to: 1 })})`, opacity: fade(local, duration) }}>
+    {text}
+  </div>
+);
+```
+
+Funções de animação (`import … from '3di'`, também disponíveis sem import):
+`interpolate(t, [t0, t1, …], [v0, v1, …], { easing, clamp })`, `spring(t, { from, to, delay, stiffness,
+damping })`, `fade(local, duration, entrada, saída)`, `typewriter(texto, progress)` e `easing`
+(linear, in, out, inOut, smooth, back, elastic).
+
+Regras:
+- **Anime pelo tempo** (`t`, `local`, `progress`): cada quadro do vídeo é desenhado num instante; `transition`,
+  `animate-*` e outras animações CSS não ficam sincronizadas no vídeo.
+- Só dá para importar `react` e `3di`. Imagens precisam ser `data:` URLs; fontes, as do sistema.
+- O React, o Tailwind (v4, gerado no navegador) e o compilador de JSX vão no pacote do 3DI: funciona offline.
+  Os componentes rodam num iframe isolado: o CSS deles não afeta a IDE.
+
 ## Preview
 
 A barra de timeline embaixo da vista toca/pausa, arrasta o tempo, mostra as chaves (amarelo) e as falas

@@ -129,6 +129,12 @@ async function launch(chrome, url, flags, src) {
     }
     return r.result.value;
   };
+  // captura da janela inteira (PNG em base64), para conferir a interface
+  b.screenshot = async ({ width = 1440, height = 900 } = {}) => {
+    await page('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await new Promise((r) => setTimeout(r, 300));
+    return (await page('Page.captureScreenshot', { format: 'png' })).data;
+  };
 
   await page('Runtime.enable');
   await page('Page.enable');

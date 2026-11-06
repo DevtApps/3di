@@ -284,6 +284,7 @@ function primitive(s, seg) {
     }
     case 'extrude': {
       if (P.r > 1e-9) throw new Unsupported('extrude arredondado');
+      if (P.contours) throw new Unsupported('extrude com furos (texto)');
       const h = P.h / 2;
       // perfil (u, v) -> 3D: eixo z: (u, v, ±h); eixo y: (u, ±h, v)
       const at = (q, side) => (P.axis === 'z' ? [q[0], q[1], side * h] : [q[0], side * h, q[1]]);

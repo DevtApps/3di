@@ -7,7 +7,7 @@ import { center } from './shapes.js';
 import { isExpr, val0 } from './expr.js';
 import { rotMatrix, texOffset } from './shapes.js';
 import { splitScene, inv3, isHeavy } from './compiler.js';
-import { polygonSDF, extrudeDist } from './profile.js';
+import { polygonSDF, contoursSDF, extrudeDist } from './profile.js';
 
 const at = (v, t) => (isExpr(v) ? v.eval(t) : v);
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -343,7 +343,7 @@ function primDist(s) {
       };
     }
     case 'extrude': {
-      const poly = polygonSDF(P.pts), half = P.h / 2;
+      const poly = P.contours ? contoursSDF(P.contours) : polygonSDF(P.pts), half = P.h / 2;
       return P.axis === 'z' ? (x, y, z) => extrudeDist(poly(x, y), z, half, P.r) : (x, y, z) => extrudeDist(poly(x, z), y, half, P.r);
     }
     case 'implicit': {

@@ -1,6 +1,8 @@
 // Imagem de referência sobre a vista 3D (como o "blueprint" dos programas de modelagem):
 // fica por cima do canvas, sem capturar o mouse, com opacidade, escala e deslocamento ajustáveis.
 // Fica salva no navegador (localStorage) e pode vir da ponte MCP (set_reference).
+import { hydrateIcons } from './icons.js';
+
 const KEY = '3di.reference';
 
 export function createReference({ host, button, getShot }) {
@@ -13,14 +15,15 @@ export function createReference({ host, button, getShot }) {
   const bar = document.createElement('div');
   bar.id = 'refBar';
   bar.hidden = true;
-  bar.innerHTML = `<span>Referência</span>
-    <label title="Opacidade">◐ <input type="range" min="0" max="100" value="50" data-k="opacity"></label>
-    <label title="Escala">⤢ <input type="range" min="20" max="300" value="100" data-k="scale"></label>
-    <label title="Deslocamento horizontal">↔ <input type="range" min="-50" max="50" value="0" data-k="x"></label>
-    <label title="Deslocamento vertical">↕ <input type="range" min="-50" max="50" value="0" data-k="y"></label>
-    <button data-a="side" title="Mostra a referência ao lado da cena em vez de por cima">Lado a lado</button>
-    <button data-a="hide" title="Esconde sem apagar">Esconder</button>
-    <button data-a="clear" title="Remove a referência">✕</button>`;
+  bar.innerHTML = `<b>Referência</b>
+    <label title="Opacidade"><i data-icon="eye"></i><input type="range" min="0" max="100" value="50" data-k="opacity"></label>
+    <label title="Escala"><i data-icon="maximize"></i><input type="range" min="20" max="300" value="100" data-k="scale"></label>
+    <label title="Deslocamento horizontal">X<input type="range" min="-50" max="50" value="0" data-k="x"></label>
+    <label title="Deslocamento vertical">Y<input type="range" min="-50" max="50" value="0" data-k="y"></label>
+    <button data-a="side" class="ghost sm" title="Mostra a referência ao lado da cena em vez de por cima">Lado a lado</button>
+    <button data-a="hide" class="ghost sm" title="Esconde sem apagar">Esconder</button>
+    <button data-a="clear" class="ghost icon-btn sm" title="Remove a referência" aria-label="Remover referência"><i data-icon="trash-2"></i></button>`;
+  hydrateIcons(bar);
   host.append(layer, bar);
   const input = document.createElement('input');
   input.type = 'file';

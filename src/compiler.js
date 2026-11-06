@@ -5,7 +5,7 @@
 import { ScriptError } from './parser.js';
 import { isExpr, glslOf } from './expr.js';
 import { resolveRig } from './rig.js';
-import { polygonGlsl } from './profile.js';
+import { polygonGlsl, contoursGlsl } from './profile.js';
 import { PATTERN_GLSL, patternLip } from './pattern.js';
 import { Shape, union, isFiniteBB, center, size, unionBB, collectParts, mul3, mulMV, corners, fromPoints, texOffset } from './shapes.js';
 
@@ -259,9 +259,14 @@ class Gen {
     this.tag = tag;
   }
   // registra uma função GLSL com nome único e devolve o nome
+  // funções geradas iguais (a mesma letra repetida no texto 3D) são reaproveitadas
   fn(prefix, make) {
+    const key = prefix + make('@');
+    this.fnCache ??= new Map();
+    if (this.fnCache.has(key)) return this.fnCache.get(key);
     const name = `${prefix}${this.tag}${this.n++}`;
     this.funcs.push(make(name));
+    this.fnCache.set(key, name);
     return name;
   }
   line(s) { this.lines.push('  '.repeat(this.indent) + s); }
@@ -411,7 +416,7 @@ class Gen {
         return this.emit(c0, this.vec(`${p} - clamp(${p}, -${hv}, ${hv})`), mat);
       }
       case 'extrude': {
-        const name = this.fn('sdPoly', (n) => polygonGlsl(n, P.pts));
+        const name = this.fn('sdPoly', (n) => (P.contours ? contoursGlsl(n, P.contours) : polygonGlsl(n, P.pts)));
         const d2 = P.axis === 'z' ? `${name}(${p}.xy)` : `${name}(${p}.xz)`;
         return this.leaf(`sdExt(${d2}, ${P.axis === 'z' ? `${p}.z` : `${p}.y`}, ${f(P.h / 2)}, ${f(P.r)})`, mat);
       }

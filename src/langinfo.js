@@ -27,6 +27,7 @@ const DOCS = {
   polygon: 'Pilar de base poligonal regular: `sides` lados (3 a 64), circunraio `r`, altura `h`; `round` arredonda as quinas.',
   star: 'Estrela extrudada deitada: `points` pontas em `r`, vales em `inner` (padrão 0.45 r), espessura `h`.',
   wedge: 'Rampa: sobe de -x até +x; profundidade `d` em z.',
+  text3d: 'Texto 3D: letras extrudadas no plano x,y viradas para +z, base em y = 0. `size` (altura), `depth` (espessura), `font` = "sans", "serif" ou "mono", `align`, `spacing`, `line`, `round`; \\n quebra linha.',
   extrude: 'Extruda um polígono qualquer: `points` = [(x, y), ...]. `axis="z"` (perfil de frente, `h` é a profundidade) ou `"y"` (perfil no chão, `h` é a altura); `round` arredonda as quinas.',
   lathe: 'Sólido de revolução em volta de y: `profile` = [(raio, altura), ...] de baixo para cima; `smooth` (1 a 8) suaviza o perfil. Vasos, colunas, taças.',
   hemisphere: 'Meia esfera (cúpula) de raio `r`.',
@@ -62,6 +63,7 @@ const DOCS = {
   keys: 'Valor animado por chaves (tempo, valor): número ou tupla. `ease` linear/smooth/in/out/step, `loop` repete. Vale onde vale time (at, rotate, scale, glow, camera).',
   timeline: 'Duração (s) e quadros por segundo do vídeo e da animação.',
   voice: 'Define uma voz para as falas: provider ("qwen" local ou "elevenlabs"), speaker (voz pronta do Qwen, voz clonada ou voz do ElevenLabs pelo nome), language, template (template de áudio) e instruct (estilo livre). Sem speaker/provider valem os padrões das configurações.',
+  overlay: 'Sobreposição React + Tailwind sobre a imagem (texto, títulos): component = "titulo", "lower_third", "texto", "contador", "lista", arquivo .jsx ou JSX direto; at, dur, z; os outros argumentos nomeados viram props. Anime pelo tempo (local, progress).',
   say: 'Fala do roteiro: legenda + áudio. Sem `at`, entra depois da anterior; `voice`; `style` = nome de um template de áudio (narrador, animado, calmo, sussurro...) ou estilo livre. Devolve o fim (s).',
   caption: 'Legenda sem áudio no instante `at` por `dur` segundos.',
   // matemática e Python
@@ -139,8 +141,8 @@ const CATEGORY = {
   capsule: 'primitiva', ellipsoid: 'primitiva', pyramid: 'primitiva', prism: 'primitiva', plane: 'primitiva', segment: 'primitiva', chain: 'primitiva',
   group: 'combinar', union: 'combinar', merge: 'combinar', subtract: 'combinar', intersect: 'combinar',
   show: 'cena', camera: 'cena', sun: 'cena', sky: 'cena', fog: 'cena',
-  skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação', keys: 'animação', timeline: 'animação', voice: 'roteiro', say: 'roteiro', caption: 'roteiro',
-  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', loft: 'primitiva', implicit: 'primitiva',
+  skeleton: 'rig', animation: 'animação', time: 'animação', osc: 'animação', keys: 'animação', timeline: 'animação', voice: 'roteiro', say: 'roteiro', caption: 'roteiro', overlay: 'roteiro',
+  polygon: 'primitiva', star: 'primitiva', wedge: 'primitiva', extrude: 'primitiva', text3d: 'primitiva', lathe: 'primitiva', hemisphere: 'primitiva', tube: 'primitiva', hull: 'primitiva', loft: 'primitiva', implicit: 'primitiva',
   space: 'estrutura', spline: 'curva', bezier: 'curva', sweep: 'curva', grass: 'gerador', plant: 'gerador', tree: 'gerador', person: 'gerador', vehicle: 'gerador', light: 'cena',
 };
 

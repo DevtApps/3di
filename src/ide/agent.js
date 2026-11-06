@@ -1,5 +1,6 @@
 // Painel Agente: conversa com o Claude Code ou o Codex rodando no servidor do 3DI (src/services/agents.mjs).
 // O agente usa o MCP do 3DI, então as mudanças aparecem direto no editor e na vista.
+import { hydrateIcons } from './icons.js';
 const MODELS = {
   claude: [['', 'padrão do Claude Code'], ['sonnet', 'Sonnet'], ['opus', 'Opus'], ['haiku', 'Haiku']],
   codex: [['', 'padrão do Codex']],
@@ -8,18 +9,25 @@ const STORE = '3di.agent';
 
 export function createAgentPanel(panel) {
   panel.innerHTML = `
+    <div class="panel-head"><h2>Agente</h2><span class="spacer"></span>
+      <button data-a="reset" class="ghost sm" title="Começa uma conversa nova"><i data-icon="rotate-ccw"></i>Nova conversa</button>
+    </div>
     <div class="agent-bar">
       <select data-k="provider" title="Agente"><option value="claude">Claude Code</option><option value="codex">Codex</option></select>
       <select data-k="model" title="Modelo"></select>
       <input data-k="custom" placeholder="outro modelo" title="Nome de modelo (opcional)">
-      <button data-a="reset" title="Começa uma conversa nova">Nova</button>
     </div>
     <div class="agent-info"></div>
     <div class="agent-log" aria-live="polite"></div>
     <form class="agent-input">
-      <textarea rows="3" placeholder="Peça ao agente: &quot;crie uma casa com telhado vermelho&quot;, &quot;deixe o gato mais gordo&quot;... (Ctrl+Enter envia)"></textarea>
-      <div class="agent-actions"><span class="agent-state"></span><button type="button" data-a="stop" hidden>Parar</button><button type="submit">Enviar</button></div>
+      <textarea rows="3" placeholder="Peça ao agente: &quot;crie uma casa com telhado vermelho&quot;, &quot;deixe o gato mais gordo&quot;…"></textarea>
+      <div class="agent-actions"><span class="agent-state"></span>
+        <span class="kbd">Ctrl Enter</span>
+        <button type="button" data-a="stop" class="sm" hidden><i data-icon="square"></i>Parar</button>
+        <button type="submit" class="primary sm"><i data-icon="send"></i>Enviar</button>
+      </div>
     </form>`;
+  hydrateIcons(panel);
   const $ = (sel) => panel.querySelector(sel);
   const provider = $('[data-k=provider]'), model = $('[data-k=model]'), custom = $('[data-k=custom]');
   const log = $('.agent-log'), info = $('.agent-info'), input = $('textarea'), state = $('.agent-state'), stopBtn = $('[data-a=stop]'), send = $('[type=submit]');

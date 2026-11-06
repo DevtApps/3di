@@ -60,7 +60,14 @@ export async function createEditor({ wrap, textarea, gutter, keys = {} }) {
         { token: 'string', foreground: '98c379' },
         { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
       ],
-      colors: { 'editor.background': '#15171c', 'editorGutter.background': '#15171c', 'editor.lineHighlightBackground': '#1c1f26' },
+      // cores dos tokens do studio (src/ide/styles/tokens.css)
+      colors: {
+        'editor.background': '#0e1014', 'editorGutter.background': '#0e1014', 'editor.lineHighlightBackground': '#15181e',
+        'editor.lineHighlightBorder': '#00000000', 'editorLineNumber.foreground': '#4a5163', 'editorLineNumber.activeForeground': '#a9b0bf',
+        'editor.selectionBackground': '#5b8cff40', 'editorCursor.foreground': '#7aa2ff', 'editorIndentGuide.background1': '#1f242d',
+        'scrollbarSlider.background': '#34394680', 'scrollbarSlider.hoverBackground': '#3e4555a0', 'editorWidget.background': '#1b1f27',
+        'editorWidget.border': '#343b4a', 'editorSuggestWidget.selectedBackground': '#2c3240',
+      },
     });
     textarea.hidden = true;
     gutter.hidden = true;
@@ -73,6 +80,11 @@ export async function createEditor({ wrap, textarea, gutter, keys = {} }) {
       theme: '3di-escuro',
       automaticLayout: true,
       fontSize: 13,
+      fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
+      fontLigatures: false,
+      lineHeight: 20,
+      padding: { top: 10 },
+      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       tabSize: 4,
       insertSpaces: true,
       minimap: { enabled: false },

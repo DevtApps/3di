@@ -13,8 +13,11 @@ import { createTimeline } from './ide/timeline.js';
 import { createVideoDialog } from './ide/video.js';
 import { createPreviewAudio, voiceOverride } from './ide/audio.js';
 import { createSettingsDialog } from './ide/settings.js';
+import { createOverlays } from './ide/overlays.js';
+import { setupLayout } from './ide/layout.js';
+import { icon } from './ide/icons.js';
 
-const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'video', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
+const EXAMPLES = ['boneco', 'casa-longa', 'curvas', 'animacao', 'video', 'textos', 'materiais', 'vila', 'pinguim', 'gato', 'cachorro', 'robo', 'cemiterio', 'arvore', 'mesa', 'basico', 'castelo', 'organico', 'templo', 'grama', 'campo', 'gramas', 'gramas-estilos', 'plantas', 'arvores', 'arvores-estilos', 'pessoas', 'pessoas-poses', 'veiculos', 'veiculos-estilos', 'formas', 'formulas'];
 const STORAGE_KEY = '3di.code';
 const TEMPLATE = `# Nova cena 3DI. Digite e veja ao lado; Ctrl+Espaço sugere funções.
 chao = plane().color("lightgray")
@@ -25,6 +28,7 @@ show(chao, objeto)
 
 const $ = (id) => document.getElementById(id);
 const status = $('status'), canvas = $('view'), partsEl = $('parts');
+setupLayout();
 setupWorkspace();
 
 let renderer;
@@ -198,13 +202,29 @@ const previewAudio = createPreviewAudio({
   onStatus(text, extra = {}) { timeline.setAudio({ has: (sceneInfo.scene?.script ?? []).some((l) => l.speak), status: text, ...extra }); },
 });
 const timeline = createTimeline({
-  host: $('right'),
+  host: $('timelineDock'),
+  captionHost: $('right'),
   onMute(off) { previewAudio.setMuted(off); },
   // a voz escolhida troca todas as falas; o roteiro volta ao original (tempos do script) antes de gerar
   onVoice(o) { if (sceneInfo.scene) { sceneInfo.scene.script = originalScript.map((l) => ({ ...l })); previewAudio.setVoice(o, sceneInfo.scene); } },
   onSeek(t) { anim.time = t; anim.last = 0; draw(1); },
   onToggle() { $('btnPlay').click(); },
   onFollow(on) { follow = on; timeline.setFollow(on); requestRender(); draw(1); },
+});
+
+// sobreposições React + Tailwind (overlay) por cima da imagem; .jsx do projeto vêm da pasta da cena
+const overlays = createOverlays({
+  host: $('right'),
+  async readFile(name) {
+    if (window.tdi?.overlayFiles?.[name] !== undefined) return window.tdi.overlayFiles[name];
+    const path = files.state().path;
+    const token = new URLSearchParams(location.hash.slice(1)).get('token');
+    if (!path || !token) return null;
+    const full = name.startsWith('/') ? name : `${path.replace(/[^/]*$/, '')}${name}`;
+    const r = await fetch(`/fs/read?path=${encodeURIComponent(full)}`, { headers: { 'X-3DI-Token': token } }).catch(() => null);
+    return r?.ok ? r.text() : null;
+  },
+  onError(msg) { status.className = 'err'; status.textContent = `✗ ${msg}`; },
 });
 
 // opts.size = [w, h] desenha numa resolução fixa; opts.time sobrepõe o relógio da animação
@@ -214,7 +234,7 @@ function draw(scale, opts = {}) {
   // opts.view = { eye, target, fov } desenha de outro ângulo sem mexer na câmera do editor
   const v = opts.view ?? (follow && sc?.camTrack ? trackView(sc.camTrack, opts.time ?? anim.time) : null);
   timeline.update(opts.time ?? anim.time, anim.on && anim.playing);
-  if (!opts.size) previewAudio.update(opts.time ?? anim.time, anim.on && anim.playing);
+  if (!opts.size) { previewAudio.update(opts.time ?? anim.time, anim.on && anim.playing); overlays.update(opts.time ?? anim.time); }
   const dist = v ? Math.hypot(v.eye[0] - v.target[0], v.eye[1] - v.target[1], v.eye[2] - v.target[2]) : cam.dist;
   // névoa padrão proporcional à distância da câmera: só some com o horizonte do chão
   const fog = sc?.fog ?? (sceneInfo.hasPlane ? 1 / (Math.max(dist, r, 1) * 14) : 0);
@@ -421,6 +441,7 @@ async function compile() {
   originalScript = (scene.script ?? []).map((l) => ({ ...l }));
   if (hasSpeech && !voicesLoaded) { voicesLoaded = true; previewAudio.voiceOptions().then((o) => timeline.setVoices(o, voiceOverride())).catch(() => { voicesLoaded = false; }); }
   previewAudio.setScene(scene);
+  overlays.setScene(scene).then(() => draw(1));
   if (scene.camTrack && camChanged) { follow = true; timeline.setFollow(true); }
   setAnimated(timed);
   markLine(null);
@@ -494,7 +515,7 @@ addEventListener('beforeunload', (e) => { if (files.state().dirty && files.state
 $('btnFrame').onclick = frame;
 $('btnPlay').onclick = () => {
   anim.playing = !anim.playing;
-  $('btnPlay').textContent = anim.playing ? '⏸' : '▶';
+  $('btnPlay').innerHTML = icon(anim.playing ? 'pause' : 'play');
   anim.last = 0;
   if (!anim.playing) requestRender();
 };
@@ -602,12 +623,14 @@ window.tdi = {
     anim.time = t;
     const sc = sceneInfo.scene;
     const view = sc?.camTrack ? trackView(sc.camTrack, t) : { eye: eye(), target: cam.target, fov: cam.fov };
-    draw(1, { time: t, size: [width, height], view });
-    return canvas.toDataURL('image/png').split(',')[1];
+    const shot = () => { draw(1, { time: t, size: [width, height], view }); return canvas; };
+    if (!overlays.has()) return shot().toDataURL('image/png').split(',')[1];
+    // com sobreposição: o quadro WebGL e o palco React são compostos num canvas 2D
+    return overlays.compose(t, width, height, shot).then((c) => c.toDataURL('image/png').split(',')[1]);
   },
   info() {
     const sc = sceneInfo.scene ?? {};
-    return { duration: sc.duration ?? 0, fps: sc.fps ?? 30, script: sc.script ?? [], voices: sc.voices ?? {}, animated: !!sceneInfo.animated };
+    return { duration: sc.duration ?? 0, fps: sc.fps ?? 30, script: sc.script ?? [], voices: sc.voices ?? {}, overlays: (sc.overlays ?? []).length, animated: !!sceneInfo.animated };
   },
   status: () => status.textContent,
   // diagnóstico: resolução usada durante a interação (0.22 a 0.75)
@@ -676,7 +699,7 @@ connectBridge({
   setTime: ({ time, playing }) => {
     if (typeof time === 'number') { anim.time = time; if (playing === undefined) anim.playing = false; }
     if (typeof playing === 'boolean') anim.playing = playing;
-    $('btnPlay').textContent = anim.playing ? '⏸' : '▶';
+    $('btnPlay').innerHTML = icon(anim.playing ? 'pause' : 'play');
     anim.last = 0;
     draw(1);
     return `t = ${anim.time.toFixed(2)} s, ${anim.playing ? 'tocando' : 'pausada'}${anim.on ? '' : ' (a cena não usa time)'}`;

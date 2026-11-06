@@ -43,6 +43,12 @@ const log = (s) => process.stderr.write(`${s}\n`);
 async function main() {
   const b = await openEditor(src, { cpu: opt.cpu, log });
   try {
+    // componentes .jsx de overlay() ao lado da cena: o editor headless não lê o disco
+    const jsx = {};
+    for (const [, name] of src.matchAll(/["']([^"'\n]+\.(?:jsx|tsx))["']/g)) {
+      try { jsx[name] = readFileSync(resolve(dirname(input), name), 'utf8'); } catch {}
+    }
+    await b.evaluate(`window.tdi.overlayFiles = ${JSON.stringify(jsx)}`);
     const status = await b.evaluate(`window.tdi.load(${JSON.stringify(src)})`);
     if (!status.startsWith('✓')) throw new Error(status.replace(/^✗\s*/, ''));
     const info = await b.evaluate('window.tdi.info()');

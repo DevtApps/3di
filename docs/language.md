@@ -76,6 +76,7 @@ No editor, o botão **Vistas** mostra as mesmas 4 vistas sobre a cena (clique ou
 | `polygon(sides=6, r=0.5, h=1, round=0)` | pilar de base poligonal regular (3 a 64 lados), em pé |
 | `star(points=5, r=0.5, inner=None, h=0.2, round=0)` | estrela extrudada deitada, de 3 a 32 pontas em `r`; vales em `inner` (padrão `0.45*r`) |
 | `wedge(w=1, h=1, d=1)` | rampa: sobe de -x até +x, com profundidade d em z |
+| `text3d(text, size=1, depth=0.2, font="sans", align="center", spacing=0, line=1.2, round=0)` | texto 3D: letras extrudadas (com furos e acentos) no plano x,y, viradas para +z, com a base da 1ª linha em y = 0. `size` = altura da fonte, `depth` = espessura, `font` = "sans", "serif" ou "mono", `\n` quebra linha, `round` arredonda as quinas. Até 200 letras |
 | `extrude(points, h=1, axis="z", round=0)` | polígono qualquer extrudado (veja "Formas por perfil") |
 | `lathe(profile, smooth=0)` | sólido de revolução a partir de um perfil (veja "Formas por perfil") |
 | `hemisphere(r=0.5)` | meia esfera (cúpula), centrada como as outras formas |
